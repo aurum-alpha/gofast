@@ -95,8 +95,11 @@ CI compile/test use GitHub-hosted Node **22** and Go **1.23** (same major/minor 
 
 ## Config
 
-- File: `/data/config.yaml` (documented example: `config.example.yaml`, added in M0)
-- Env overrides: `FASTGEN_LISTEN`, `FASTGEN_BASE_URL`, `FASTGEN_DATA_DIR`
+Follow [12factor.net/config](https://12factor.net/config) (see `AGENTS.md`):
+
+- **Deploy-varying values** (`listen`, `base_url`, `data_dir`, credentials later) → environment (`FASTGEN_LISTEN`, `FASTGEN_BASE_URL`, `FASTGEN_DATA_DIR`). Env always wins.
+- **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings. Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.
+- **Precedence:** code defaults → YAML (if present) → **env**.
 - Layered schemas: core → providers → proxy / logo TLS / health
 
 Deps target: **stdlib + `gopkg.in/yaml.v3`** only unless an issue justifies more.

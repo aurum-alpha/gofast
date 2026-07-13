@@ -64,3 +64,15 @@ Honor Linear **project milestones** M0 → M5. Do not start issues in milestone 
 - **fastgen** is the primary product (M3U/XMLTV, UI, health).
 - **fastproxy** is an optional add-on (separate binary and Docker image).
 - Prefer extending shared `internal/` packages over duplicating logic.
+
+## Config (Twelve-Factor)
+
+Follow [12factor.net/config](https://12factor.net/config) for deploy-varying configuration:
+
+1. **Strict separation of config from code.** Anything that changes between deploys (listen address, public `base_url`, data directory, credentials, backing-service URLs) must not be hardcoded and must not be committed as a real deploy file.
+2. **Environment variables are the primary interface** for per-deploy values. Prefer `FASTGEN_*` (and future service-specific) env vars that Portainer/`stack.env` can set without rebuilding images.
+3. **Litmus test:** the repo could be made public without leaking credentials or private hostnames.
+4. **No named environment bundles** in code (`development` / `staging` / `production` switches). Each deploy gets an independent set of env vars.
+5. **Optional YAML on the data volume** (`/data/config.yaml`) may hold structured, non-secret app settings (providers, exclusions, etc.) that are awkward as flat env. That file is **runtime data**, not source: ship `config.example.yaml` as documentation only; never commit a filled production `config.yaml`.
+6. **Precedence:** defaults → YAML file (if present) → **environment** (env always wins for overlapping keys).
+7. **Secrets** only via env (or a secret store injected as env)—never in git, never in example files as real values.
