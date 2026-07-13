@@ -91,7 +91,7 @@ Why this works: both artifacts are **standalone** — static Go (`CGO_ENABLED=0`
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI compile/test run inside the **same** `node:22-bookworm` and `golang:1.23-bookworm` images as the local `Dockerfile` stages so build tooling matches. Homelab never builds from source for production; it pulls `:latest` / pinned `IMAGE_TAG` after logging into GHCR.
+CI compile/test use GitHub-hosted Node **22** and Go **1.23** (same major/minor as the local `Dockerfile` image pins). Production images are packaged only via `Dockerfile.prod` from those CI binaries. Homelab never builds from source for production; it pulls `:latest` / pinned `IMAGE_TAG` after logging into GHCR.
 
 ## Config
 
