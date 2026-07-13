@@ -14,7 +14,7 @@ func main() {
 	ctx, stop := run.SignalContext(context.Background())
 	defer stop()
 
-	addr := envOr("FASTPROXY_LISTEN", ":8081")
+	addr := envOr("FASTPROXY_LISTEN", ":8181")
 	slog.Info("starting", "listen", addr)
 
 	stub := &server.Stub{Addr: addr}

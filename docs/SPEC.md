@@ -197,7 +197,7 @@ streams).
 Download every channel logo at refresh time into an on-disk cache
 (`/data/logos/{provider}/{id}.{ext}`), and rewrite `tvg-logo` and XMLTV `<icon>`
 to this service's own `/logos/...` URLs (base URL configurable, e.g.
-`http://fastgen.lan:8080`). Rationale: Jellyfin fetches artwork itself and
+`http://fastgen.lan:8180`). Rationale: Jellyfin fetches artwork itself and
 chokes on hostile CDNs. Requirements:
 
 - Fetch logos with per-provider request headers (mjh metadata's `headers` field,
@@ -248,12 +248,12 @@ nice-to-have.
   and `fastproxy`. NOTE: images MUST include an up-to-date ca-certificates
   bundle; TLS trust is a first-class concern in this service.
 - Volume on gen: `/data` (config, logo cache, last-good snapshots).
-- Expose gen `8080` (and document proxy port, e.g. `8081`). Healthcheck hits
+- Expose gen `8180` (and document proxy port, e.g. `8181`). Healthcheck hits
   `/healthz` on each service.
 - Provide `docker-compose.yml`: `fastgen` required by default; `fastproxy`
   optional via a compose profile (e.g. `proxy`). Include comments showing the
-  Jellyfin tuner/guide URLs to configure: tuner `http://fastgen:8080/lg.m3u`,
-  guide `http://fastgen:8080/lg.xml`, etc., and how to set `proxy_base_url` when
+  Jellyfin tuner/guide URLs to configure: tuner `http://fastgen:8180/lg.m3u`,
+  guide `http://fastgen:8180/lg.xml`, etc., and how to set `proxy_base_url` when
   the proxy profile is enabled.
 
 ## Testing

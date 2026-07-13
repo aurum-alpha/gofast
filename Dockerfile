@@ -13,13 +13,13 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
 FROM gcr.io/distroless/static-debian12:nonroot AS fastgen
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/fastgen /fastgen
-EXPOSE 8080
-ENV FASTGEN_LISTEN=:8080
+EXPOSE 8180
+ENV FASTGEN_LISTEN=:8180
 ENTRYPOINT ["/fastgen"]
 
 FROM gcr.io/distroless/static-debian12:nonroot AS fastproxy
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/fastproxy /fastproxy
-EXPOSE 8081
-ENV FASTPROXY_LISTEN=:8081
+EXPOSE 8181
+ENV FASTPROXY_LISTEN=:8181
 ENTRYPOINT ["/fastproxy"]

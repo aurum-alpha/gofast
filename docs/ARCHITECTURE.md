@@ -21,8 +21,8 @@ Shared logic lives under `internal/` (model, config, httpx, classifier, etc.). T
 
 ### Compose topologies
 
-- **Gen-only (default):** `docker compose up` runs `fastgen` on port 8080 with `/data` for config, cache, logos.
-- **Gen + proxy:** `docker compose --profile proxy up` also runs `fastproxy` (e.g. 8081). Set `proxy_base_url` in gen config to the address **reachable by Jellyfin/ffmpeg** (not merely by gen).
+- **Gen-only (default):** `docker compose up` runs `fastgen` on port 8180 with `/data` for config, cache, logos.
+- **Gen + proxy:** `docker compose --profile proxy up` also runs `fastproxy` on 8181. Set `proxy_base_url` in gen config to the address **reachable by Jellyfin/ffmpeg** (not merely by gen).
 
 ## Data flow
 

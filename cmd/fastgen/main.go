@@ -14,7 +14,7 @@ func main() {
 	ctx, stop := run.SignalContext(context.Background())
 	defer stop()
 
-	addr := envOr("FASTGEN_LISTEN", ":8080")
+	addr := envOr("FASTGEN_LISTEN", ":8180")
 	slog.Info("starting", "listen", addr)
 
 	stub := &server.Stub{Addr: addr}

@@ -5,11 +5,11 @@ services:
       dockerfile: Dockerfile
       target: fastgen
     ports:
-      - "8080:8080"
+      - "8180:8180"
     volumes:
       - fastgen-data:/data
     environment:
-      FASTGEN_LISTEN: ":8080"
+      FASTGEN_LISTEN: ":8180"
 
   fastproxy:
     profiles:
@@ -19,9 +19,9 @@ services:
       dockerfile: Dockerfile
       target: fastproxy
     ports:
-      - "8081:8081"
+      - "8181:8181"
     environment:
-      FASTPROXY_LISTEN: ":8081"
+      FASTPROXY_LISTEN: ":8181"
 
 volumes:
   fastgen-data:
