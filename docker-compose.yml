@@ -1,0 +1,27 @@
+services:
+  fastgen:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: fastgen
+    ports:
+      - "8080:8080"
+    volumes:
+      - fastgen-data:/data
+    environment:
+      FASTGEN_LISTEN: ":8080"
+
+  fastproxy:
+    profiles:
+      - proxy
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: fastproxy
+    ports:
+      - "8081:8081"
+    environment:
+      FASTPROXY_LISTEN: ":8081"
+
+volumes:
+  fastgen-data:
