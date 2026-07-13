@@ -1,0 +1,85 @@
+# Example / starter config for FASTGen.
+# Copy to the data volume as /data/config.yaml (never commit a filled production copy).
+#
+# Deploy-varying values prefer env (see AGENTS.md / 12factor):
+#   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG
+# Env always wins over this file for overlapping keys.
+#
+# base_url: public origin Jellyfin/browsers use for logos and absolute links.
+# Include the port unless clients hit 80/443. No trailing slash.
+# Prefer setting FASTGEN_BASE_URL in Portainer/stack.env for the deploy.
+
+listen: ":8180"
+# base_url: "http://192.168.1.50:8180"
+data_dir: /data
+
+timeouts:
+  http_client: 60s
+
+logging:
+  level: info
+
+# Well-known providers — listed here only; nothing is baked into the binary.
+# Copy this file to /data/config.yaml (or your bind mount). Keys are stable provider ids.
+# Set enabled: false to disable. Omitted "enabled" = true.
+# Channel-number ranges are spaced so lineups do not collide when merged.
+providers:
+  lg:
+    label: LG
+    chno_offset: 1000
+    min_channels: 50
+    refresh_interval: 6h
+    exclusions:
+      # Upstream junk that appears on LG feeds (must never reach Jellyfin).
+      - dinospluto-lgus
+
+  pluto:
+    label: Pluto
+    region: us
+    chno_offset: 2000
+    min_channels: 50
+    refresh_interval: 6h
+    # Pluto mjh metadata has no slug field — required override.
+    slug_template: "plu-{id}.m3u8"
+
+  samsung:
+    label: Samsung
+    region: us
+    chno_offset: 3000
+    min_channels: 50
+    refresh_interval: 6h
+    # DRM channels (license_url) are dropped by the adapter/classifier.
+
+  roku:
+    label: Roku
+    # Regionless mjh shape; slug has no metadata field.
+    slug_template: "rok-{id}.m3u8"
+    chno_offset: 4000
+    min_channels: 50
+    refresh_interval: 6h
+
+  xumo:
+    label: Xumo
+    # No upstream tvg-chno — persisted id→number map starts at this base.
+    synthesize_chno: 5000
+    min_channels: 100
+    refresh_interval: 6h
+    # URLs default in the adapter; override only if upstream moves:
+    # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_playlist.m3u
+    # epg_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_epg.xml.gz
+
+  distrotv:
+    label: DistroTV
+    synthesize_chno: 6000
+    min_channels: 50
+    refresh_interval: 6h
+
+  localnow:
+    label: LocalNow
+    synthesize_chno: 7000
+    min_channels: 10
+    refresh_interval: 6h
+    # apsattv may 403 datacenter IPs / non-browser UAs.
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+# proxy_base_url / proxy_all, logo TLS, and health knobs: J27-8 / config.example expansion (J27-9).

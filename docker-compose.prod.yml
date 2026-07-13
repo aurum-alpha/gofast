@@ -24,7 +24,8 @@ services:
       - ${FASTGEN_DATA:-fastgen-data}:/data
     environment:
       PORT: "8180"
-      # Optional: FASTGEN_BASE_URL, FASTGEN_DATA_DIR
+      # Public origin for logos/links (include :port unless 80/443). Example:
+      # FASTGEN_BASE_URL: "http://192.168.1.50:8180"
     restart: unless-stopped
     networks:
       - gofast

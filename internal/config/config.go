@@ -21,14 +21,15 @@ const (
 	DefaultDataDir = "/data"
 )
 
-// Config is the core (M0) configuration surface.
-// Provider, proxy, and health layers land in later issues.
+// Config is the configuration surface for fastgen.
+// Proxy / logo TLS / health layers land in J27-8.
 type Config struct {
-	Listen   string   `yaml:"listen"`
-	BaseURL  string   `yaml:"base_url"`
-	DataDir  string   `yaml:"data_dir"`
-	Timeouts Timeouts `yaml:"timeouts"`
-	Logging  Logging  `yaml:"logging"`
+	Listen    string              `yaml:"listen"`
+	BaseURL   string              `yaml:"base_url"`
+	DataDir   string              `yaml:"data_dir"`
+	Timeouts  Timeouts            `yaml:"timeouts"`
+	Logging   Logging             `yaml:"logging"`
+	Providers map[string]Provider `yaml:"providers"`
 }
 
 // Timeouts holds outbound and request-bound durations.
@@ -75,6 +76,11 @@ func Load(path string) (Config, error) {
 		cfg = mergeDefaults(cfg)
 	}
 	ApplyEnv(&cfg)
+	providers, err := compileProviders(cfg.Providers)
+	if err != nil {
+		return Config{}, fmt.Errorf("config: %w", err)
+	}
+	cfg.Providers = providers
 	return cfg, nil
 }
 
