@@ -1,0 +1,36 @@
+# Portainer / homelab production stack.
+# Pull-only (no local build). Auth to GHCR in Portainer → Registries (not here).
+#
+# Deploy:
+#   1. Add ghcr.io registry credentials in Portainer (PAT with read:packages)
+#   2. Create stack from this repo file, or paste compose + load stack.env
+#   3. Override IMAGE_TAG / ports in stack.env as needed
+#
+# Gen only (default): leave COMPOSE_PROFILES empty
+# Gen + proxy: set COMPOSE_PROFILES=proxy in stack.env
+
+services:
+  fastgen:
+    image: ghcr.io/j27-aurum/gofast/fastgen:${IMAGE_TAG:-latest}
+    ports:
+      - "${FASTGEN_HOST_PORT:-8180}:8180"
+    volumes:
+      # Default: named volume. For a host path, set FASTGEN_DATA=/mnt/.../gofast in stack.env
+      - ${FASTGEN_DATA:-fastgen-data}:/data
+    environment:
+      FASTGEN_LISTEN: ":8180"
+      # Optional later: FASTGEN_BASE_URL, FASTGEN_DATA_DIR
+    restart: unless-stopped
+
+  fastproxy:
+    profiles:
+      - proxy
+    image: ghcr.io/j27-aurum/gofast/fastproxy:${IMAGE_TAG:-latest}
+    ports:
+      - "${FASTPROXY_HOST_PORT:-8181}:8181"
+    environment:
+      FASTPROXY_LISTEN: ":8181"
+    restart: unless-stopped
+
+volumes:
+  fastgen-data:

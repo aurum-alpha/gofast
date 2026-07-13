@@ -1,5 +1,6 @@
 services:
   fastgen:
+    image: ghcr.io/j27-aurum/gofast/fastgen:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,6 +15,7 @@ services:
   fastproxy:
     profiles:
       - proxy
+    image: ghcr.io/j27-aurum/gofast/fastproxy:latest
     build:
       context: .
       dockerfile: Dockerfile
