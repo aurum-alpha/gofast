@@ -102,10 +102,10 @@ testdata/
 config.example.yaml
 Dockerfile          # multi-target: fastgen, fastproxy
 docker-compose.yml
-.github/workflows/  # Go CI + GHCR publish (images under ghcr.io/j27-aurum/gofast/)
+.github/workflows/  # unified CI: compile → test → package GHCR images (ghcr.io/j27-aurum/gofast/)
 ```
 
-CI publishes both targets to GHCR on merge to `main` (`…/fastgen`, `…/fastproxy`). Homelab pull requires `docker login ghcr.io` while the repo/packages are private.
+CI compiles both binaries once, runs `go test ./...`, then builds distroless images from those binaries (`BIN_SOURCE=prebuilt`). Local `docker compose build` still compiles inside Docker (`BIN_SOURCE=build`). Homelab pull requires `docker login ghcr.io` while the repo/packages are private.
 
 ## Operational notes
 
