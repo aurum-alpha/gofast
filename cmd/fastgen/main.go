@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/j27-aurum/gofast/internal/run"
 	"github.com/j27-aurum/gofast/internal/server"
+	"github.com/j27-aurum/gofast/internal/ui"
 )
 
 func main() {
@@ -17,7 +19,12 @@ func main() {
 	addr := envOr("FASTGEN_LISTEN", ":8180")
 	slog.Info("starting", "listen", addr)
 
-	stub := &server.Stub{Addr: addr}
+	stub := &server.Stub{
+		Addr: addr,
+		Routes: func(mux *http.ServeMux) {
+			mux.Handle("/", ui.Handler())
+		},
+	}
 	if err := stub.Run(ctx); err != nil {
 		slog.Error("server stopped", "err", err)
 		os.Exit(1)

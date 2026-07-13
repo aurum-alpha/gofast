@@ -242,19 +242,24 @@ nice-to-have.
 
 ## Docker
 
-- Multi-stage build: `golang:1.23` builder → `gcr.io/distroless/static` (or
-  scratch + tzdata + ca-certificates). `CGO_ENABLED=0`, static binaries.
-  Produce **two images** (Dockerfile targets or separate Dockerfiles): `fastgen`
-  and `fastproxy`. NOTE: images MUST include an up-to-date ca-certificates
-  bundle; TLS trust is a first-class concern in this service.
+- **CI builds artifacts; production images only package them.** Pipeline: Node
+  builds the React UI → Go embeds it and compiles static `fastgen` /
+  `fastproxy` → tests → `Dockerfile.prod` copies those binaries into
+  `gcr.io/distroless/static` (plus ca-certificates; healthcheck helper as
+  needed). Do **not** re-run `npm` / `go build` inside the production image
+  build. Images MUST include an up-to-date ca-certificates bundle; TLS trust
+  is a first-class concern.
+- Produce **two images**: `fastgen` and `fastproxy` (targets or twin final
+  stages in `Dockerfile.prod`).
+- Optional `Dockerfile` may multi-stage build from source for local compose
+  convenience; it is not the GHCR ship path.
 - Volume on gen: `/data` (config, logo cache, last-good snapshots).
 - Expose gen `8180` (and document proxy port, e.g. `8181`). Healthcheck hits
   `/healthz` on each service.
-- Provide `docker-compose.yml`: `fastgen` required by default; `fastproxy`
-  optional via a compose profile (e.g. `proxy`). Include comments showing the
-  Jellyfin tuner/guide URLs to configure: tuner `http://fastgen:8180/lg.m3u`,
-  guide `http://fastgen:8180/lg.xml`, etc., and how to set `proxy_base_url` when
-  the proxy profile is enabled.
+- Provide `docker-compose.yml` for local/dev and `docker-compose.prod.yml` for
+  Portainer/homelab (pull GHCR; `fastgen`/`gen` required; `fastproxy`/`proxy`
+  optional via compose profile). Document Jellyfin tuner/guide URLs and
+  `proxy_base_url` when the proxy profile is enabled.
 
 ## Testing
 
@@ -268,11 +273,12 @@ nice-to-have.
 
 ## Web UI (required)
 
-Embedded web UI **in the fastgen binary**: assets compiled via Go `embed` — no
-Node runtime or separate frontend container. Server-rendered templates or a
-small embedded SPA; keep it dependency-light. Backed by a JSON API (also usable
-directly). Ship the UI foundation early and feather features as gen capabilities
-land (classification, export reasons, health, config editor).
+Embedded web UI **in the fastgen binary**: a React (Vite) app under `web/` is
+built to static assets and embedded with Go `embed`, then served by the same
+fastgen process — no separate frontend container. Node is required only to
+*build* the UI (CI/Docker/`npm run build`); runtime stays one Go binary.
+Proxy has no product UI. Ship the UI foundation early and feather features as
+gen capabilities land (classification, export reasons, health, config editor).
 
 Core view — the channel table: every channel from every provider with a
 classification badge and export status:
