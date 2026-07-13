@@ -17,7 +17,15 @@ type Stub struct {
 func (s *Stub) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthz)
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		mux.ServeHTTP(w, r)
+		slog.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"duration", time.Since(start),
+		)
+	})
 }
 
 // Run listens until ctx is cancelled, then shuts down gracefully.

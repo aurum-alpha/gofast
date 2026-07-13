@@ -27,13 +27,19 @@ FROM ${BIN_SOURCE} AS artifacts
 FROM gcr.io/distroless/static-debian12:nonroot AS fastgen
 COPY --from=artifacts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=artifacts /out/fastgen /fastgen
+COPY --from=busybox:1.36.1-musl /bin/wget /wget
 EXPOSE 8180
 ENV FASTGEN_LISTEN=:8180
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8180/healthz"]
 ENTRYPOINT ["/fastgen"]
 
 FROM gcr.io/distroless/static-debian12:nonroot AS fastproxy
 COPY --from=artifacts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=artifacts /out/fastproxy /fastproxy
+COPY --from=busybox:1.36.1-musl /bin/wget /wget
 EXPOSE 8181
 ENV FASTPROXY_LISTEN=:8181
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8181/healthz"]
 ENTRYPOINT ["/fastproxy"]

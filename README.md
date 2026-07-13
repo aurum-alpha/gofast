@@ -62,10 +62,11 @@ Production files (pull-only, no secrets):
 | [`stack.env`](stack.env) | Non-secret defaults (`IMAGE_TAG`, ports, optional bind path) |
 
 1. In Portainer → **Registries**, add `ghcr.io` with a GitHub PAT (`read:packages`).
-2. Create a stack from `docker-compose.prod.yml`.
+2. Create a stack from `docker-compose.prod.yml` (services: `gen`, optional `proxy`).
 3. Paste or load `stack.env` as the stack environment variables.
 4. Gen-only by default. To also run proxy, set `COMPOSE_PROFILES=proxy` in the stack env.
 5. Optional: set `FASTGEN_DATA=/path/on/host` for a bind mount instead of the named volume.
+6. Smoke test: `curl http://HOST:8180/healthz` → `{"ok":true}` (container logs a `request` line; Docker/Portainer healthcheck uses the same path).
 
 ### Local build from source
 

@@ -8,9 +8,13 @@
 #
 # Gen only (default): leave COMPOSE_PROFILES empty
 # Gen + proxy: set COMPOSE_PROFILES=proxy in stack.env
+#
+# Host access: `ports` publishes on the Docker host (e.g. http://host:8180/healthz).
+# The `gofast` bridge is for container↔container DNS later; it does not replace `ports`.
 
+name: gofast
 services:
-  fastgen:
+  gen:
     image: ghcr.io/j27-aurum/gofast/fastgen:${IMAGE_TAG:-latest}
     ports:
       - "${FASTGEN_HOST_PORT:-8180}:8180"
@@ -21,8 +25,16 @@ services:
       FASTGEN_LISTEN: ":8180"
       # Optional later: FASTGEN_BASE_URL, FASTGEN_DATA_DIR
     restart: unless-stopped
+    networks:
+      - gofast
+    healthcheck:
+      test: ["CMD", "/wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8180/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
-  fastproxy:
+  proxy:
     profiles:
       - proxy
     image: ghcr.io/j27-aurum/gofast/fastproxy:${IMAGE_TAG:-latest}
@@ -31,6 +43,18 @@ services:
     environment:
       FASTPROXY_LISTEN: ":8181"
     restart: unless-stopped
+    networks:
+      - gofast
+    healthcheck:
+      test: ["CMD", "/wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8181/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  gofast:
+    driver: bridge
 
 volumes:
   fastgen-data:
