@@ -24,11 +24,22 @@ Implement **one Linear issue at a time**. Do not invent parallel workstreams fro
 1. **Automated tests must pass** before commit:
    - `go test ./...`
    - Any issue-specific checks called out in the Linear acceptance criteria
-2. **Manual verification must pass** before commit **and** before push:
-   - Exercise the acceptance criteria in the Linear issue
-   - For Docker/UI issues: run the relevant compose/UI path and confirm behavior
-3. Do not commit or push with failing tests or unmet manual checks.
+2. **Agent smoke checks** (optional, on the branch): run quick local verification to catch obvious breakage before handing off.
+3. Do not commit or push with failing tests.
 4. Do not use `--no-verify` to skip hooks.
+
+## Human approval gate (required)
+
+**Do not commit, push, merge, or mark a Linear issue Done until the human has manually tested and given feedback.**
+
+Workflow for agents:
+
+1. Implement on a branch; leave changes **uncommitted** or **committed locally only** until the human confirms — ask if unclear.
+2. Post a short handoff: what changed, exact commands to run, expected results.
+3. Wait for explicit human sign-off (e.g. “looks good”, “merge it”, “commit and push”).
+4. Only after sign-off: commit (if needed), push, open/update PR, merge if requested, set Linear to **Done**.
+
+Agents may set Linear to **In Progress** while coding and **In Review** when a PR is ready for human testing. Never skip straight to **Done** on agent-only verification.
 
 ## Linear status workflow
 
@@ -39,8 +50,8 @@ Keep the issue status honest as you work:
 | Not started | Backlog |
 | Next up / ready to pull | Todo |
 | Actively coding on the branch | In Progress |
-| PR open, waiting on review/CI | In Review |
-| Merged and acceptance met | Done |
+| Ready for human manual test / PR open | In Review |
+| Human verified; merged or accepted | Done |
 
 Update the Linear issue as you go (short comments on blockers, verification notes, PR link).
 
