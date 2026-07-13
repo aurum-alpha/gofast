@@ -10,7 +10,7 @@ services:
     volumes:
       - fastgen-data:/data
     environment:
-      FASTGEN_LISTEN: ":8180"
+      PORT: "8180"
 
   fastproxy:
     profiles:
@@ -23,7 +23,7 @@ services:
     ports:
       - "8181:8181"
     environment:
-      FASTPROXY_LISTEN: ":8181"
+      PORT: "8181"
 
 volumes:
   fastgen-data:

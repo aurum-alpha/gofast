@@ -40,10 +40,8 @@ logging:
 		t.Fatal(err)
 	}
 
-	t.Setenv("FASTGEN_LISTEN", "")
-	t.Setenv("FASTGEN_BASE_URL", "")
-	t.Setenv("FASTGEN_DATA_DIR", "")
-	_ = os.Unsetenv("FASTGEN_LISTEN")
+	t.Setenv("PORT", "")
+	_ = os.Unsetenv("PORT")
 	_ = os.Unsetenv("FASTGEN_BASE_URL")
 	_ = os.Unsetenv("FASTGEN_DATA_DIR")
 
@@ -80,7 +78,7 @@ data_dir: "/from-file"
 		t.Fatal(err)
 	}
 
-	t.Setenv("FASTGEN_LISTEN", ":8180")
+	t.Setenv("PORT", "8180")
 	t.Setenv("FASTGEN_BASE_URL", "http://from-env")
 	t.Setenv("FASTGEN_DATA_DIR", "/from-env")
 
@@ -89,7 +87,7 @@ data_dir: "/from-file"
 		t.Fatal(err)
 	}
 	if cfg.Listen != ":8180" {
-		t.Errorf("Listen: env should win, got %q", cfg.Listen)
+		t.Errorf("Listen: PORT should win, got %q", cfg.Listen)
 	}
 	if cfg.BaseURL != "http://from-env" {
 		t.Errorf("BaseURL: env should win, got %q", cfg.BaseURL)
@@ -100,7 +98,7 @@ data_dir: "/from-file"
 }
 
 func TestLoadEmptyPathUsesDefaultsAndEnv(t *testing.T) {
-	t.Setenv("FASTGEN_LISTEN", ":7777")
+	t.Setenv("PORT", ":7777")
 	t.Setenv("FASTGEN_BASE_URL", "http://env-only")
 	t.Setenv("FASTGEN_DATA_DIR", "/tmp/data")
 
@@ -132,7 +130,7 @@ func TestLoadPartialYAMLKeepsDefaults(t *testing.T) {
 	if err := os.WriteFile(path, []byte("base_url: http://only-base\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_ = os.Unsetenv("FASTGEN_LISTEN")
+	_ = os.Unsetenv("PORT")
 	_ = os.Unsetenv("FASTGEN_BASE_URL")
 	_ = os.Unsetenv("FASTGEN_DATA_DIR")
 
@@ -167,7 +165,7 @@ func TestDurationYAML(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_ = os.Unsetenv("FASTGEN_LISTEN")
+			_ = os.Unsetenv("PORT")
 			cfg, err := Load(path)
 			if err != nil {
 				t.Fatal(err)
@@ -176,5 +174,32 @@ func TestDurationYAML(t *testing.T) {
 				t.Fatalf("got %v want %v", cfg.Timeouts.HTTPClient, tt.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeListen(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"8180", ":8180"},
+		{":8180", ":8180"},
+		{"0.0.0.0:8180", "0.0.0.0:8180"},
+		{" 9191 ", ":9191"},
+	}
+	for _, tt := range tests {
+		if got := NormalizeListen(tt.in); got != tt.want {
+			t.Errorf("NormalizeListen(%q)=%q want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestListenFromEnv(t *testing.T) {
+	t.Setenv("PORT", "9191")
+	if got := ListenFromEnv(":8181"); got != ":9191" {
+		t.Fatalf("got %q", got)
+	}
+	_ = os.Unsetenv("PORT")
+	if got := ListenFromEnv("8181"); got != ":8181" {
+		t.Fatalf("fallback got %q", got)
 	}
 }

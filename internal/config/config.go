@@ -1,4 +1,4 @@
-// Package config loads deploy and runtime settings for fastgen.
+// Package config loads deploy and runtime settings for fastgen / fastproxy.
 //
 // Deploy-varying values follow https://12factor.net/config: environment variables
 // are the primary override. An optional YAML file on the data volume may supply
@@ -8,7 +8,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -76,10 +78,12 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// ApplyEnv overlays FASTGEN_* deploy vars. Env always wins for overlapping keys.
+// ApplyEnv overlays deploy vars. Env always wins for overlapping keys.
+// Shared across services: PORT (listen address).
+// Gen-specific: FASTGEN_BASE_URL, FASTGEN_DATA_DIR.
 func ApplyEnv(cfg *Config) {
-	if v := os.Getenv("FASTGEN_LISTEN"); v != "" {
-		cfg.Listen = v
+	if v := os.Getenv("PORT"); v != "" {
+		cfg.Listen = NormalizeListen(v)
 	}
 	if v := os.Getenv("FASTGEN_BASE_URL"); v != "" {
 		cfg.BaseURL = v
@@ -87,6 +91,39 @@ func ApplyEnv(cfg *Config) {
 	if v := os.Getenv("FASTGEN_DATA_DIR"); v != "" {
 		cfg.DataDir = v
 	}
+}
+
+// ListenFromEnv returns the shared PORT listen address, or fallback if unset.
+// Used by both fastgen and fastproxy.
+func ListenFromEnv(fallback string) string {
+	if v := os.Getenv("PORT"); v != "" {
+		return NormalizeListen(v)
+	}
+	return NormalizeListen(fallback)
+}
+
+// NormalizeListen accepts "8180", ":8180", or "0.0.0.0:8180".
+func NormalizeListen(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return v
+	}
+	if isDigits(v) {
+		return ":" + v
+	}
+	return v
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func mergeDefaults(cfg Config) Config {

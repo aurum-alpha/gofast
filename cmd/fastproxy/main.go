@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/run"
 	"github.com/j27-aurum/gofast/internal/server"
 )
@@ -14,7 +15,7 @@ func main() {
 	ctx, stop := run.SignalContext(context.Background())
 	defer stop()
 
-	addr := envOr("FASTPROXY_LISTEN", ":8181")
+	addr := config.ListenFromEnv(":8181")
 	slog.Info("starting", "listen", addr)
 
 	stub := &server.Stub{Addr: addr}
@@ -23,11 +24,4 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("shutting down")
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

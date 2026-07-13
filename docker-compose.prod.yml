@@ -23,8 +23,8 @@ services:
       # Default: named volume. For a host path, set FASTGEN_DATA=/mnt/.../gofast in stack.env
       - ${FASTGEN_DATA:-fastgen-data}:/data
     environment:
-      FASTGEN_LISTEN: ":8180"
-      # Optional later: FASTGEN_BASE_URL, FASTGEN_DATA_DIR
+      PORT: "8180"
+      # Optional: FASTGEN_BASE_URL, FASTGEN_DATA_DIR
     restart: unless-stopped
     networks:
       - gofast
@@ -42,7 +42,7 @@ services:
     ports:
       - "${FASTPROXY_HOST_PORT:-8181}:8181"
     environment:
-      FASTPROXY_LISTEN: ":8181"
+      PORT: "8181"
     restart: unless-stopped
     networks:
       - gofast
