@@ -1,32 +1,33 @@
 # syntax=docker/dockerfile:1
+#
+# LOCAL / DEV — build UI + Go from source (docker compose build).
+# Production/GHCR uses Dockerfile.prod (CI binaries only). Keep image pins in sync:
+#   node:22-bookworm
+#   golang:1.23-bookworm
+#   gcr.io/distroless/static-debian12:nonroot
+#   busybox:1.36.1-musl
 
-# BIN_SOURCE=build (default, local compose) | prebuilt (CI packages bin/)
-ARG BIN_SOURCE=build
+FROM node:22-bookworm AS web
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN mkdir -p /src/internal/ui && npm run build
 
-# Default path: compile inside Docker (local `docker compose build`).
 FROM golang:1.23-bookworm AS build
 WORKDIR /src
 COPY go.mod ./
 COPY cmd/ cmd/
 COPY internal/ internal/
+COPY --from=web /src/internal/ui/dist/ internal/ui/dist/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV CGO_ENABLED=0
-RUN go build -trimpath -ldflags="-s -w" -o /out/fastgen ./cmd/fastgen
-RUN go build -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
-
-# CI path: package prebuilt static binaries from the compile job (bin/).
-# Artifact upload/download often strips +x; force mode before the final image.
-FROM debian:bookworm-slim AS prebuilt
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY bin/fastgen /out/fastgen
-COPY bin/fastproxy /out/fastproxy
-RUN chmod 755 /out/fastgen /out/fastproxy
-
-FROM ${BIN_SOURCE} AS artifacts
+RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastgen ./cmd/fastgen
+RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
 
 FROM gcr.io/distroless/static-debian12:nonroot AS fastgen
-COPY --from=artifacts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=artifacts /out/fastgen /fastgen
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /out/fastgen /fastgen
 COPY --from=busybox:1.36.1-musl /bin/wget /wget
 EXPOSE 8180
 ENV FASTGEN_LISTEN=:8180
@@ -35,8 +36,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/fastgen"]
 
 FROM gcr.io/distroless/static-debian12:nonroot AS fastproxy
-COPY --from=artifacts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=artifacts /out/fastproxy /fastproxy
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /out/fastproxy /fastproxy
 COPY --from=busybox:1.36.1-musl /bin/wget /wget
 EXPOSE 8181
 ENV FASTPROXY_LISTEN=:8181

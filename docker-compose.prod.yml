@@ -1,5 +1,6 @@
 # Portainer / homelab production stack.
-# Pull-only (no local build). Auth to GHCR in Portainer → Registries (not here).
+# Pull-only from GHCR (no build:). Images are produced by CI via Dockerfile.prod.
+# Auth to GHCR in Portainer → Registries (not here).
 #
 # Deploy:
 #   1. Add ghcr.io registry credentials in Portainer (PAT with read:packages)

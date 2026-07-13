@@ -62,7 +62,36 @@ The embedded UI ships early and grows with each milestone (no big-bang UI epic):
 | M4 | Config editor + formal acceptance |
 | M5 | Proxy-aware states / passive health views |
 
-Tech: Go `html/template` + vanilla JS via `go:embed` (no Node toolchain).
+Tech: React (Vite) SPA under `web/`. Production build lands in `internal/ui/dist` and is **`go:embed`’d into the fastgen binary**, which serves the static files (SPA fallback for client routes). Node is a **build-time** dependency only. Runtime is one static Go binary — no Node in the container. Proxy has no product UI.
+
+```mermaid
+flowchart LR
+  webSrc["web/ React source"] -->|npm run build| dist["internal/ui/dist"]
+  dist -->|go:embed| fastgenBin["fastgen binary"]
+  fastgenBin -->|serves| browser["Browser /"]
+```
+
+## Build and packaging
+
+**Production images must not recompile.** CI is the build authority; `Dockerfile.prod` only packages artifacts.
+
+| Stage | What runs | Output |
+|-------|-----------|--------|
+| CI — UI | Node 22, `npm ci && npm run build` in `web/` | `internal/ui/dist` |
+| CI — Go | Go 1.23, `CGO_ENABLED=0`, linux binaries | `bin/fastgen`, `bin/fastproxy` (UI already inside fastgen) |
+| CI — test | `go test ./...` (after UI build so embed is present) | pass/fail gate |
+| CI — image | `Dockerfile.prod` copies binaries + ca-certs (+ healthcheck wget) into distroless | GHCR `…/fastgen`, `…/fastproxy` |
+
+Why this works: both artifacts are **standalone** — static Go (`CGO_ENABLED=0`) with the UI baked in, so the image runtime (distroless) does not need a matching glibc/Node toolchain. The only contract is **GOOS/GOARCH** (and any future libc choice): CI must build for the platforms you deploy (today: `linux/amd64` on `ubuntu-latest`; add `arm64` later if a NAS/Pi needs it).
+
+| File | Role |
+|------|------|
+| `Dockerfile.prod` | **Ship path** — copy CI binaries into distroless; used by CI to push GHCR |
+| `Dockerfile` | **Local/dev** — multi-stage Node + Go build from source (`docker compose build`) |
+| `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
+| `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
+
+CI compile/test use GitHub-hosted Node **22** and Go **1.23** (same major/minor as the local `Dockerfile` image pins). Production images are packaged only via `Dockerfile.prod` from those CI binaries. Homelab never builds from source for production; it pulls `:latest` / pinned `IMAGE_TAG` after logging into GHCR.
 
 ## Config
 
@@ -97,15 +126,19 @@ internal/
   health/     # M3+
   epg/ m3u/ logocache/ refresh/
   proxy/      # M5
-  server/ ui/
+  server/ ui/   # ui embeds Vite dist from web/
+web/            # React + Vite source (build → internal/ui/dist)
 testdata/
 config.example.yaml
-Dockerfile          # multi-target: fastgen, fastproxy
+Dockerfile.prod     # production: package CI-built binaries only (no Node/Go rebuild)
+Dockerfile          # optional local multi-stage build from source
 docker-compose.yml
-.github/workflows/  # unified CI: compile → test → package GHCR images (ghcr.io/j27-aurum/gofast/)
+docker-compose.prod.yml
+stack.env
+.github/workflows/  # UI build → go build → test → Dockerfile.prod → GHCR
 ```
 
-CI compiles both binaries once, runs `go test ./...`, then builds distroless images from those binaries (`BIN_SOURCE=prebuilt`). Local `docker compose build` still compiles inside Docker (`BIN_SOURCE=build`). Homelab pull requires `docker login ghcr.io` while the repo/packages are private.
+Homelab pull requires `docker login ghcr.io` while the repo/packages are private.
 
 ## Operational notes
 

@@ -8,18 +8,27 @@ import (
 	"time"
 )
 
-// Stub serves a minimal HTTP API until full gen/proxy handlers land.
+// Stub serves healthz (and optional extra routes) until full handlers land.
 type Stub struct {
-	Addr string
+	Addr   string
+	Routes func(mux *http.ServeMux) // optional; called after /healthz is registered
 }
 
-// Handler returns the stub HTTP handler (healthz only for now).
+// Handler returns the HTTP handler for this stub.
 func (s *Stub) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", healthz)
+	mux.HandleFunc("/healthz", Healthz)
+	if s.Routes != nil {
+		s.Routes(mux)
+	}
+	return WithRequestLog(mux)
+}
+
+// WithRequestLog logs method, path, and duration for each request.
+func WithRequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		mux.ServeHTTP(w, r)
+		next.ServeHTTP(w, r)
 		slog.Info("request",
 			"method", r.Method,
 			"path", r.URL.Path,
@@ -60,7 +69,8 @@ func (s *Stub) Run(ctx context.Context) error {
 	}
 }
 
-func healthz(w http.ResponseWriter, r *http.Request) {
+// Healthz responds with {"ok":true}.
+func Healthz(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return

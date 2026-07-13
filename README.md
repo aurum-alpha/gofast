@@ -19,7 +19,7 @@ Implementation proceeds **one Linear issue at a time**.
 
 ## Run with Docker
 
-Images are published to GHCR on every merge to `main` (after compile + test pass):
+Images are published to GHCR on every merge to `main` (after UI build + compile + test pass):
 
 | Service | Image |
 |---------|-------|
@@ -30,27 +30,17 @@ Default ports: **8180** (gen), **8181** (proxy).
 
 ### Homelab (pull published images)
 
-The GitHub repo is private, so log in to GHCR once with a PAT that has `read:packages`:
+Use [`docker-compose.prod.yml`](docker-compose.prod.yml) (pull-only; no build). The GitHub repo is private, so log in to GHCR once with a PAT that has `read:packages`:
 
 ```bash
 echo YOUR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-```
 
-Then:
-
-```bash
-# gen only
-docker compose pull
-docker compose up -d
+docker compose -f docker-compose.prod.yml --env-file stack.env pull
+docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 curl http://localhost:8180/healthz
-
-# gen + proxy
-docker compose --profile proxy pull
-docker compose --profile proxy up -d
-curl http://localhost:8181/healthz
 ```
 
-Compose references the GHCR `image:` names and also keeps a local `build:` block, so `docker compose build` still works for development.
+CI builds UI + binaries inside `node:22-bookworm` / `golang:1.23-bookworm` (same pins as local `Dockerfile`), then packages with [`Dockerfile.prod`](Dockerfile.prod) into GHCR.
 
 ### Portainer (homelab stack)
 
@@ -58,8 +48,9 @@ Production files (pull-only, no secrets):
 
 | File | Purpose |
 |------|---------|
-| [`docker-compose.prod.yml`](docker-compose.prod.yml) | Portainer stack compose |
+| [`docker-compose.prod.yml`](docker-compose.prod.yml) | Portainer stack compose (pull GHCR; no `build:`) |
 | [`stack.env`](stack.env) | Non-secret defaults (`IMAGE_TAG`, ports, optional bind path) |
+| [`Dockerfile.prod`](Dockerfile.prod) | CI ship path only — not used on the homelab host |
 
 1. In Portainer → **Registries**, add `ghcr.io` with a GitHub PAT (`read:packages`).
 2. Create a stack from `docker-compose.prod.yml` (services: `gen`, optional `proxy`).
@@ -70,9 +61,19 @@ Production files (pull-only, no secrets):
 
 ### Local build from source
 
+Full rebuild via [`Dockerfile`](Dockerfile) (Node + Go multi-stage — same image pins as CI):
+
 ```bash
 docker compose build
 docker compose up -d
+```
+
+Or build UI/Go on the host, then run the binary:
+
+```bash
+cd web && npm ci && npm run build && cd ..
+go run ./cmd/fastgen
+# open http://localhost:8180/
 ```
 
 ## Status

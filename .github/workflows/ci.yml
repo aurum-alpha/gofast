@@ -13,6 +13,8 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+  # Versions align with Dockerfile pins (node:22-bookworm, golang:1.23-bookworm).
+  NODE_VERSION: "22"
   GO_VERSION: "1.23.x"
 
 jobs:
@@ -22,6 +24,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -34,6 +49,7 @@ jobs:
           mkdir -p bin
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/fastgen ./cmd/fastgen
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/fastproxy ./cmd/fastproxy
+          chmod 755 bin/fastgen bin/fastproxy
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
@@ -49,6 +65,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -109,10 +138,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ./Dockerfile.prod
           target: ${{ matrix.target }}
-          build-args: |
-            BIN_SOURCE=prebuilt
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
