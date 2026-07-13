@@ -77,5 +77,6 @@ Follow [12factor.net/config](https://12factor.net/config) for deploy-varying con
 6. **Litmus test:** the repo could be made public without leaking credentials or private hostnames.
 7. **No named environment bundles** in code (`development` / `staging` / `production` switches). Each deploy gets an independent set of env vars.
 8. **Optional YAML on the data volume** (`/data/config.yaml`) holds structured, non-secret app settings. **Provider lineups are config-only** — the binary does not bake in LG/Pluto/etc.; copy `config.example.yaml` to `/data/config.yaml` to enable them. That file is **runtime data**, not source: never commit a filled production `config.yaml`.
-9. **Precedence:** defaults → YAML file (if present) → **environment** (env always wins for overlapping keys).
-10. **Secrets** only via env (or a secret store injected as env)—never in git, never in example files as real values.
+9. **Config grows with features — do not pre-land knobs.** Only add YAML/env keys in the same Linear issue/PR that implements the feature that reads them (e.g. `proxy_base_url` with emission, logo TLS with logo cache, health schedules with probes). Extend `config.example.yaml` in that same PR. Do not open standalone “config layer” issues ahead of the feature.
+10. **Precedence:** defaults → YAML file (if present) → **environment** (env always wins for overlapping keys).
+11. **Secrets** only via env (or a secret store injected as env)—never in git, never in example files as real values.

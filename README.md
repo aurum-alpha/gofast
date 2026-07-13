@@ -66,7 +66,7 @@ Runtime YAML on the gen data volume (not baked into the image). **Providers are 
 
 - [`config.example.yaml`](config.example.yaml) — starter template with the well-known providers; copy to `/data/config.yaml`.
 
-Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, …) stay in env — see `AGENTS.md`. Proxy / logo TLS / health sections expand later; adapters that fetch these providers arrive in M1.
+Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, …) stay in env — see `AGENTS.md`. Config keys for proxy, logo TLS, and health are added later **with those features**, not as a standalone M0 layer. Adapters that fetch providers arrive in M1.
 
 ### Local build from source
 

@@ -101,7 +101,7 @@ Follow [12factor.net/config](https://12factor.net/config) (see `AGENTS.md`):
 - **`FASTGEN_BASE_URL` / `base_url`:** public origin for logos and absolute links as seen by Jellyfin/browsers. Include the port unless on 80/443 (`http://host:8180`); omit port behind TLS reverse proxy (`https://gofast.example.com`). No trailing slash.
 - **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings (including `providers`). Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.
 - **Precedence:** code defaults → YAML (if present) → **env**.
-- Layered schemas: core → providers → proxy / logo TLS / health
+- **Grow config with features:** add proxy / logo TLS / health keys only in the PRs that implement those features; extend `config.example.yaml` there. No standalone ahead-of-time config-layer issues.
 
 Deps target: **stdlib + `gopkg.in/yaml.v3`** only unless an issue justifies more.
 
@@ -109,10 +109,10 @@ Deps target: **stdlib + `gopkg.in/yaml.v3`** only unless an issue justifies more
 
 | Milestone | Focus |
 |-----------|--------|
-| **M0** | Spec, dual cmds, Docker stubs, UI shell, config layers |
+| **M0** | Spec, dual cmds, Docker stubs, UI shell, core+provider config |
 | **M1** | Model/normalize, providers, classifier, early channel UI |
-| **M2** | Refresh/emit, logos, gen HTTP, export UI, Jellyfin-ready gen image |
-| **M3** | Health subsystem + health UI; ffprobe in fastgen image |
+| **M2** | Refresh/emit, logos (+ TLS config), gen HTTP, export UI, Jellyfin-ready gen image |
+| **M3** | Health subsystem (+ health config) + health UI; ffprobe in fastgen image |
 | **M4** | Config editor polish + &lt;10s acceptance |
 | **M5** | fastproxy binary/image, compose profile, passive telemetry |
 

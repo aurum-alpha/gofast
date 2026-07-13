@@ -82,4 +82,5 @@ providers:
     # apsattv may 403 datacenter IPs / non-browser UAs.
     user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-# proxy_base_url / proxy_all, logo TLS, and health knobs: J27-8 / config.example expansion (J27-9).
+# proxy_base_url / proxy_all, logo TLS, and health knobs are added in the
+# same PRs that implement those features — not ahead of time.
