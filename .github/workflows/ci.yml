@@ -81,6 +81,9 @@ jobs:
           name: go-binaries
           path: bin/
 
+      - name: Restore execute bit
+        run: chmod 755 bin/fastgen bin/fastproxy
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

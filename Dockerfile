@@ -15,10 +15,12 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/fastgen ./cmd/fastgen
 RUN go build -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
 
 # CI path: package prebuilt static binaries from the compile job (bin/).
+# Artifact upload/download often strips +x; force mode before the final image.
 FROM debian:bookworm-slim AS prebuilt
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY bin/fastgen /out/fastgen
 COPY bin/fastproxy /out/fastproxy
+RUN chmod 755 /out/fastgen /out/fastproxy
 
 FROM ${BIN_SOURCE} AS artifacts
 
