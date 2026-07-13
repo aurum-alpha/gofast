@@ -22,8 +22,8 @@ COPY internal/ internal/
 COPY --from=web /src/internal/ui/dist/ internal/ui/dist/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV CGO_ENABLED=0
-RUN go build -trimpath -ldflags="-s -w" -o /out/fastgen ./cmd/fastgen
-RUN go build -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
+RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastgen ./cmd/fastgen
+RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
 
 FROM gcr.io/distroless/static-debian12:nonroot AS fastgen
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
