@@ -98,7 +98,8 @@ CI compile/test use GitHub-hosted Node **22** and Go **1.23** (same major/minor 
 Follow [12factor.net/config](https://12factor.net/config) (see `AGENTS.md`):
 
 - **Deploy-varying values** → environment. Shared: **`PORT`** (listen) for both gen and proxy. Gen-only: `FASTGEN_BASE_URL`, `FASTGEN_DATA_DIR`. Env always wins.
-- **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings. Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.
+- **`FASTGEN_BASE_URL` / `base_url`:** public origin for logos and absolute links as seen by Jellyfin/browsers. Include the port unless on 80/443 (`http://host:8180`); omit port behind TLS reverse proxy (`https://gofast.example.com`). No trailing slash.
+- **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings (including `providers`). Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.
 - **Precedence:** code defaults → YAML (if present) → **env**.
 - Layered schemas: core → providers → proxy / logo TLS / health
 

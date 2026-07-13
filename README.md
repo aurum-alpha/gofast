@@ -57,7 +57,16 @@ Production files (pull-only, no secrets):
 3. Paste or load `stack.env` as the stack environment variables.
 4. Gen-only by default. To also run proxy, set `COMPOSE_PROFILES=proxy` in the stack env.
 5. Optional: set `FASTGEN_DATA=/path/on/host` for a bind mount instead of the named volume.
-6. Smoke test: `curl http://HOST:8180/healthz` → `{"ok":true}` (container logs a `request` line; Docker/Portainer healthcheck uses the same path).
+6. Optional: set `FASTGEN_BASE_URL` to the public origin Jellyfin uses (include `:port` unless on 80/443), e.g. `http://192.168.1.50:8180`.
+7. Smoke test: `curl http://HOST:8180/healthz` → `{"ok":true}` (container logs a `request` line; Docker/Portainer healthcheck uses the same path).
+
+### Config (`/data/config.yaml`)
+
+Runtime YAML on the gen data volume (not baked into the image). **Providers are not hardcoded** — list them in this file (or run with an empty lineup until you do).
+
+- [`config.example.yaml`](config.example.yaml) — starter template with the well-known providers; copy to `/data/config.yaml`.
+
+Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, …) stay in env — see `AGENTS.md`. Proxy / logo TLS / health sections expand later; adapters that fetch these providers arrive in M1.
 
 ### Local build from source
 

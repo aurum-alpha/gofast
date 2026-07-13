@@ -231,8 +231,12 @@ chokes on hostile CDNs. Requirements:
 Follow [12factor.net/config](https://12factor.net/config): deploy-varying values live
 in the environment; the codebase must not embed credentials or private hostnames.
 Both `fastgen` and `fastproxy` listen via the shared **`PORT`** env var
-(`8180` or `:8180`). Optional YAML on the data volume (`/data/config.yaml`) may
-hold structured, non-secret settings. Gen-only overrides: `FASTGEN_BASE_URL`,
+(`8180` or `:8180`). `base_url` / `FASTGEN_BASE_URL` is the public origin
+clients use (logos, absolute links): include the port when not on 80/443
+(e.g. `http://fastgen.lan:8180`); omit it behind HTTPS reverse proxy
+(`https://gofast.example.com`); no trailing slash. Optional YAML on the data
+volume (`/data/config.yaml`) may hold structured, non-secret settings
+(including per-provider blocks). Gen-only overrides: `FASTGEN_BASE_URL`,
 `FASTGEN_DATA_DIR`. Env always wins over the file. Precedence: code defaults →
 YAML (if present) → env. Include a documented example (`config.example.yaml`)
 in the repo — never a filled production config. Hot-reload on SIGHUP is
