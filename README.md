@@ -19,7 +19,7 @@ Implementation proceeds **one Linear issue at a time**.
 
 ## Run with Docker
 
-Images are published to GHCR on every merge to `main`:
+Images are published to GHCR on every merge to `main` (after compile + test pass):
 
 | Service | Image |
 |---------|-------|
