@@ -52,6 +52,21 @@ curl http://localhost:8181/healthz
 
 Compose references the GHCR `image:` names and also keeps a local `build:` block, so `docker compose build` still works for development.
 
+### Portainer (homelab stack)
+
+Production files (pull-only, no secrets):
+
+| File | Purpose |
+|------|---------|
+| [`docker-compose.prod.yml`](docker-compose.prod.yml) | Portainer stack compose |
+| [`stack.env`](stack.env) | Non-secret defaults (`IMAGE_TAG`, ports, optional bind path) |
+
+1. In Portainer → **Registries**, add `ghcr.io` with a GitHub PAT (`read:packages`).
+2. Create a stack from `docker-compose.prod.yml`.
+3. Paste or load `stack.env` as the stack environment variables.
+4. Gen-only by default. To also run proxy, set `COMPOSE_PROFILES=proxy` in the stack env.
+5. Optional: set `FASTGEN_DATA=/path/on/host` for a bind mount instead of the named volume.
+
 ### Local build from source
 
 ```bash
