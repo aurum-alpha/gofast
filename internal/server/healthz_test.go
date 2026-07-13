@@ -10,7 +10,7 @@ import (
 )
 
 func TestHealthzOK(t *testing.T) {
-	s := httptest.NewServer((&server.Stub{}).Handler())
+	s := httptest.NewServer((&server.Server{}).Handler())
 	defer s.Close()
 
 	resp, err := http.Get(s.URL + "/healthz")

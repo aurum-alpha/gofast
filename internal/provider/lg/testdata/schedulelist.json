@@ -1,0 +1,69 @@
+{
+  "categories": [
+    {
+      "channels": [
+        {
+          "channelId": "ch-news",
+          "channelName": "News One",
+          "channelNumber": "10",
+          "channelLogoUrl": "https://cdn.example/logo-news.png",
+          "mediaStaticUrl": "https://stream.example/news.m3u8?token=abc&exp=1",
+          "providerId": "lgus",
+          "channelGenreName": "News",
+          "programs": [
+            {
+              "programTitle": "Morning Report",
+              "description": "Daily news",
+              "startDateTime": "2024-06-01T12:00:00Z",
+              "endDateTime": "2024-06-01T13:00:00Z"
+            }
+          ]
+        },
+        {
+          "channelId": "ch-dup",
+          "channelName": "Dup A",
+          "channelNumber": "20",
+          "mediaStaticUrl": "https://stream.example/dup.m3u8",
+          "channelGenreName": "Drama",
+          "programs": [
+            {
+              "programTitle": "Episode 1",
+              "description": "",
+              "startDateTime": "2024-06-01T14:00:00Z",
+              "endDateTime": "2024-06-01T15:00:00Z"
+            }
+          ]
+        },
+        {
+          "channelId": "",
+          "channelName": "Missing ID",
+          "mediaStaticUrl": "https://stream.example/bad.m3u8"
+        }
+      ]
+    },
+    {
+      "channels": [
+        {
+          "channelId": "ch-dup",
+          "channelName": "Dup B (should not replace)",
+          "channelNumber": "99",
+          "mediaStaticUrl": "https://stream.example/dup-other.m3u8",
+          "channelGenreName": "Other",
+          "programs": [
+            {
+              "programTitle": "Episode 2",
+              "description": "Second",
+              "startDateTime": "2024-06-01T15:00:00Z",
+              "endDateTime": "2024-06-01T16:00:00Z"
+            }
+          ]
+        },
+        {
+          "channelId": "ch-empty-stream",
+          "channelName": "No Stream",
+          "mediaStaticUrl": ""
+        }
+      ]
+    }
+  ]
+}

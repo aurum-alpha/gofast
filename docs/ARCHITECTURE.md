@@ -124,7 +124,7 @@ Honor milestone order and Linear **blocked-by** links. Critical path to a Jellyf
 cmd/fastgen/
 cmd/fastproxy/
 internal/
-  config/ model/ normalize/ httpx/
+  config/ model/ httpx/
   provider/   # lg, mjh, published-pair
   classifier/
   health/     # M3+

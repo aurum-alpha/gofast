@@ -18,8 +18,8 @@ func main() {
 	addr := config.ListenFromEnv(":8181")
 	slog.Info("starting", "listen", addr)
 
-	stub := &server.Stub{Addr: addr}
-	if err := stub.Run(ctx); err != nil {
+	srv := &server.Server{Addr: addr}
+	if err := srv.Run(ctx); err != nil {
 		slog.Error("server stopped", "err", err)
 		os.Exit(1)
 	}

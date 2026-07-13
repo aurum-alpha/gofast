@@ -23,36 +23,35 @@ func main() {
 		slog.Error("config", "err", err)
 		os.Exit(1)
 	}
-	config.LogLoaded(path, fromFile, cfg)
+	cfg.LogLoaded(path, fromFile)
 
-	stub := &server.Stub{
+	srv := &server.Server{
 		Addr: cfg.Listen,
 		Routes: func(mux *http.ServeMux) {
-			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(path, fromFile, cfg))
+			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(cfg))
 			mux.Handle("/", ui.Handler())
 		},
 	}
-	if err := stub.Run(ctx); err != nil {
+	if err := srv.Run(ctx); err != nil {
 		slog.Error("server stopped", "err", err)
 		os.Exit(1)
 	}
 	slog.Info("shutting down")
 }
 
-func loadConfig() (cfg config.Config, path string, fromFile bool, err error) {
+func loadConfig() (cfg *config.Config, path string, fromFile bool, err error) {
 	path = os.Getenv("FASTGEN_CONFIG")
 	if path == "" {
 		path = config.DefaultPath
 	}
-	cfg, err = config.Load(path)
+	cfg, err = config.New(path)
 	if err == nil {
 		return cfg, path, true, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
 		slog.Warn("config file missing; using defaults and environment", "path", path)
-		cfg = config.Defaults()
-		config.ApplyEnv(&cfg)
-		return cfg, path, false, nil
+		cfg, err = config.New("")
+		return cfg, path, false, err
 	}
-	return config.Config{}, path, false, err
+	return nil, path, false, err
 }

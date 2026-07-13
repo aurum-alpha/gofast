@@ -3,21 +3,20 @@ package provider
 import (
 	"context"
 
-	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
-// fakeProvider is a test double with fixed channels/programmes.
-type fakeProvider struct {
+// fakeReader is a test double with fixed channels/programmes.
+type fakeReader struct {
 	id         string
 	Channels   []model.Channel
 	Programmes []model.Programme
 	Err        error
 }
 
-func (f *fakeProvider) ID() string { return f.id }
+func (f *fakeReader) ID() string { return f.id }
 
-func (f *fakeProvider) Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error) {
+func (f *fakeReader) Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -29,8 +28,8 @@ func (f *fakeProvider) Fetch(ctx context.Context) ([]model.Channel, []model.Prog
 	return chs, progs, nil
 }
 
-func fakeFactory(f *fakeProvider) Factory {
-	return func(id string, _ config.Provider) (Provider, error) {
+func fakeFactory(f *fakeReader) Factory {
+	return func(id string, _ model.Provider) (Reader, error) {
 		cp := *f
 		cp.id = id
 		return &cp, nil

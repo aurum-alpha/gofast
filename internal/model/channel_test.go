@@ -1,21 +1,19 @@
-package normalize
+package model
 
 import (
 	"regexp"
 	"testing"
-
-	"github.com/j27-aurum/gofast/internal/model"
 )
 
-func TestIDDistroTVSpaces(t *testing.T) {
-	got := ID("dtv_EPGACE TV")
+func TestNormalizeIDDistroTVSpaces(t *testing.T) {
+	got := NormalizeID("dtv_EPGACE TV")
 	want := "dtv_EPGACE_TV"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
 
-func TestIDStableAndHostile(t *testing.T) {
+func TestNormalizeIDStableAndHostile(t *testing.T) {
 	tests := []struct {
 		in, want string
 	}{
@@ -27,10 +25,10 @@ func TestIDStableAndHostile(t *testing.T) {
 		{"pluto/us/123", "plutous123"},
 	}
 	for _, tt := range tests {
-		if got := ID(tt.in); got != tt.want {
-			t.Errorf("ID(%q)=%q want %q", tt.in, got, tt.want)
+		if got := NormalizeID(tt.in); got != tt.want {
+			t.Errorf("NormalizeID(%q)=%q want %q", tt.in, got, tt.want)
 		}
-		if ID(tt.in) != ID(tt.in) {
+		if NormalizeID(tt.in) != NormalizeID(tt.in) {
 			t.Errorf("unstable for %q", tt.in)
 		}
 	}
@@ -57,25 +55,25 @@ func TestDisplayNameAndGroupTitle(t *testing.T) {
 	}
 }
 
-func TestApplyChnoOffset(t *testing.T) {
-	if got := ApplyChnoOffset(42, 1000); got != 1042 {
+func TestOffsetChno(t *testing.T) {
+	if got := OffsetChno(42, 1000); got != 1042 {
 		t.Fatalf("got %d", got)
 	}
-	if got := ApplyChnoOffset(0, 1000); got != 0 {
+	if got := OffsetChno(0, 1000); got != 0 {
 		t.Fatalf("no native should stay 0, got %d", got)
 	}
-	if got := ApplyChnoOffset(-1, 1000); got != 0 {
+	if got := OffsetChno(-1, 1000); got != 0 {
 		t.Fatalf("negative native: %d", got)
 	}
 }
 
-func TestApplyChannel(t *testing.T) {
-	ch := model.Channel{
+func TestChannelNormalize(t *testing.T) {
+	ch := Channel{
 		ID:    "dtv_EPGACE TV",
 		Name:  `A&E "Crime"`,
 		Group: "News",
 	}
-	ApplyChannel(&ch)
+	ch.Normalize()
 	if ch.NormalizedID != "dtv_EPGACE_TV" {
 		t.Fatalf("id: %q", ch.NormalizedID)
 	}
@@ -86,14 +84,14 @@ func TestApplyChannel(t *testing.T) {
 
 func TestDinosplutoExclusion(t *testing.T) {
 	re := regexp.MustCompile("(?i)dinospluto-lgus")
-	ch := model.Channel{
+	ch := Channel{
 		Provider:  "lg",
 		ID:        "something",
 		Name:      "Junk",
 		StreamURL: "https://cdn.example/dinospluto-lgus/master.m3u8",
 	}
-	ApplyChannel(&ch)
-	ok, reason := MatchExclusion(ch, []*regexp.Regexp{re})
+	ch.Normalize()
+	ok, reason := ch.MatchesExclusion([]*regexp.Regexp{re})
 	if !ok {
 		t.Fatal("expected exclusion match")
 	}
@@ -101,24 +99,24 @@ func TestDinosplutoExclusion(t *testing.T) {
 		t.Fatal("expected reason")
 	}
 
-	clean := model.Channel{
+	clean := Channel{
 		Provider:  "lg",
 		ID:        "ok",
 		Name:      "Real",
 		StreamURL: "https://cdn.example/real/master.m3u8",
 	}
-	if ok, _ := MatchExclusion(clean, []*regexp.Regexp{re}); ok {
+	if ok, _ := clean.MatchesExclusion([]*regexp.Regexp{re}); ok {
 		t.Fatal("clean channel should not match")
 	}
 }
 
-func TestApplyExclusionsMarksChannel(t *testing.T) {
+func TestMarkExclusions(t *testing.T) {
 	re := regexp.MustCompile("(?i)blocked")
-	chs := []model.Channel{
+	chs := []Channel{
 		{Name: "Good", StreamURL: "https://ok"},
 		{Name: "Bad", StreamURL: "https://blocked.example"},
 	}
-	out := ApplyExclusions(chs, []*regexp.Regexp{re})
+	out := MarkExclusions(chs, []*regexp.Regexp{re})
 	if out[0].Excluded || out[1].Excluded == false {
 		t.Fatalf("%+v", out)
 	}

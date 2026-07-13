@@ -65,6 +65,34 @@ Honor Linear **project milestones** M0 → M5. Do not start issues in milestone 
 - **fastproxy** is an optional add-on (separate binary and Docker image).
 - Prefer extending shared `internal/` packages over duplicating logic.
 
+## Idiomatic Go
+
+Write Go the way Go is written — not enterprise-layer theater.
+
+**Domain vs guts**
+- Domain types in `internal/model` use product language (`Provider`, `Channel`, `Programme`). Keep the domain pure: product nouns live there, not in adapter packages.
+- Adapter/port interfaces use abstract capability/`-er` names (`provider.Reader`, later `Store`, etc.). Do not steal domain nouns for ports (`provider.Provider` is wrong when `model.Provider` is the config entity).
+- Domain nouns that happen to end in `-er` (e.g. `Provider`) are still nouns. Interface `-er` names are verbs/capabilities; package qualification (`provider.Reader` vs `io.Reader`) is how Go avoids clashes — many packages define their own `Reader`.
+
+**Behavior lives with the type**
+- Self-contained business logic that validates or mutates a domain value belongs as **methods on that type** (e.g. `Channel.Normalize`, `MatchesExclusion`), or as package funcs in the same domain package when they are pure helpers over those types.
+- Do **not** invent parallel utility packages (`normalize`, `helpers`, `utils`) whose only job is to operate on `model` types. If the code needs only the model, it belongs in `model`.
+- If a function’s first argument is `*T` / `T` and it only operates on that value, make it a **method** (`(c *Config) merge(o *Config)`), not `merge(cfg, o *Config)`.
+- Constructors are `New` / `NewXxx` returning `(*T, error)` when they load or assemble state (e.g. `config.New(path)`: start from defaults, merge a YAML overlay, merge an env overlay). Keep overlay helpers unexported when only `New` uses them.
+
+**Prefer the stdlib**
+- Use stdlib types when they already satisfy the need (e.g. `time.Duration` with yaml.v3 duration strings). Do not wrap them for “fancy” YAML/input shapes we do not need.
+
+**Serialization belongs on the domain**
+- Put `json` / `yaml` tags on domain types in `internal/model`. Those tags *are* the wire shape (what NestJS would call a DTO) — do not invent parallel `FooView` / DTO structs that mirror the model.
+- Use `MarshalJSON` / `UnmarshalJSON` on the domain type only when the stdlib codec cannot express the field (e.g. `time.Duration` as a Go duration string in JSON).
+- Keep API payloads single-purpose. Do not stuff unrelated server/runtime config (`listen`, `path`, `data_dir`) into a providers response — separate endpoints or log-only fields.
+
+**Packages and files**
+- Prefer extending shared `internal/` packages over duplicating logic.
+- Concrete adapters (`internal/provider/lg`) expose idiomatic constructors (`New` → `*Client`) that implement the port interface.
+- Prefer **many small files** over large grab-bags. One concern per file when practical (e.g. `healthz.go` for the health handler, `providers.go` for provider API routes). Same package, split by responsibility — not one god file.
+
 ## Config (Twelve-Factor)
 
 Follow [12factor.net/config](https://12factor.net/config) for deploy-varying configuration:

@@ -1,5 +1,6 @@
 // Package model holds the shared channel/programme types used across adapters,
-// classifier, emitters, and the UI.
+// classifier, emitters, and the UI. Domain types may carry self-contained
+// business logic (normalization, exclusions) that only needs the model itself.
 package model
 
 import "time"
@@ -13,10 +14,10 @@ const (
 	ClassDRM    Classification = "DRM"
 )
 
-// Channel is a normalized lineup entry after provider fetch (+ optional classify).
+// Channel is a lineup entry after provider fetch (+ optional classify).
 type Channel struct {
 	Provider  string // config key, e.g. "lg", "pluto"
-	ID        string // upstream id before NormalizeID
+	ID        string // upstream id before Normalize
 	Name      string // clean display name (tvg-name)
 	Group     string // upstream group / genre
 	Number    int    // upstream channel number; 0 if none / synthesize later

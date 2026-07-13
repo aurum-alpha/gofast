@@ -6,28 +6,48 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/j27-aurum/gofast/internal/model"
 )
 
+func clearDeployEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("PORT", "")
+	t.Setenv("FASTGEN_BASE_URL", "")
+	t.Setenv("FASTGEN_DATA_DIR", "")
+}
+
+func writeConfig(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestDefaults(t *testing.T) {
-	cfg := Defaults()
+	cfg := defaults()
 	if cfg.Listen != DefaultListen {
 		t.Fatalf("Listen: got %q want %q", cfg.Listen, DefaultListen)
 	}
 	if cfg.DataDir != DefaultDataDir {
 		t.Fatalf("DataDir: got %q want %q", cfg.DataDir, DefaultDataDir)
 	}
-	if cfg.Timeouts.HTTPClient.Duration() != 60*time.Second {
+	if cfg.Timeouts.HTTPClient != 60*time.Second {
 		t.Fatalf("HTTPClient: got %v", cfg.Timeouts.HTTPClient)
 	}
 	if cfg.Logging.Level != "info" {
 		t.Fatalf("Level: got %q", cfg.Logging.Level)
 	}
+	if len(cfg.Providers) != 0 {
+		t.Fatalf("defaults must not bake in providers, got %d", len(cfg.Providers))
+	}
 }
 
-func TestLoadParse(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	body := `
+func TestNewFromYAML(t *testing.T) {
+	clearDeployEnv(t)
+	path := writeConfig(t, `
 listen: ":9090"
 base_url: "http://example.local:9090"
 data_dir: "/var/gofast"
@@ -35,17 +55,8 @@ timeouts:
   http_client: 30s
 logging:
   level: debug
-`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("PORT", "")
-	_ = os.Unsetenv("PORT")
-	_ = os.Unsetenv("FASTGEN_BASE_URL")
-	_ = os.Unsetenv("FASTGEN_DATA_DIR")
-
-	cfg, err := Load(path)
+`)
+	cfg, err := New(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +69,7 @@ logging:
 	if cfg.DataDir != "/var/gofast" {
 		t.Errorf("DataDir: got %q", cfg.DataDir)
 	}
-	if cfg.Timeouts.HTTPClient.Duration() != 30*time.Second {
+	if cfg.Timeouts.HTTPClient != 30*time.Second {
 		t.Errorf("HTTPClient: got %v", cfg.Timeouts.HTTPClient)
 	}
 	if cfg.Logging.Level != "debug" {
@@ -66,23 +77,17 @@ logging:
 	}
 }
 
-func TestLoadEnvPrecedence(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	body := `
+func TestNewEnvOverridesYAML(t *testing.T) {
+	path := writeConfig(t, `
 listen: ":9090"
 base_url: "http://from-file"
 data_dir: "/from-file"
-`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
+`)
 	t.Setenv("PORT", "8180")
 	t.Setenv("FASTGEN_BASE_URL", "http://from-env")
 	t.Setenv("FASTGEN_DATA_DIR", "/from-env")
 
-	cfg, err := Load(path)
+	cfg, err := New(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,25 +102,28 @@ data_dir: "/from-file"
 	}
 }
 
-func TestLoadEmptyPathUsesDefaultsAndEnv(t *testing.T) {
+func TestNewEmptyPathDefaultsAndEnv(t *testing.T) {
 	t.Setenv("PORT", ":7777")
 	t.Setenv("FASTGEN_BASE_URL", "http://env-only")
 	t.Setenv("FASTGEN_DATA_DIR", "/tmp/data")
 
-	cfg, err := Load("")
+	cfg, err := New("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Listen != ":7777" || cfg.BaseURL != "http://env-only" || cfg.DataDir != "/tmp/data" {
 		t.Fatalf("unexpected cfg: %+v", cfg)
 	}
-	if cfg.Timeouts.HTTPClient.Duration() != 60*time.Second {
+	if cfg.Timeouts.HTTPClient != 60*time.Second {
 		t.Fatalf("expected default timeout, got %v", cfg.Timeouts.HTTPClient)
+	}
+	if len(cfg.Providers) != 0 {
+		t.Fatalf("empty path must not invent providers, got %d", len(cfg.Providers))
 	}
 }
 
-func TestLoadMissingFile(t *testing.T) {
-	_, err := Load(filepath.Join(t.TempDir(), "nope.yaml"))
+func TestNewMissingFile(t *testing.T) {
+	_, err := New(filepath.Join(t.TempDir(), "nope.yaml"))
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
@@ -124,17 +132,10 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
-func TestLoadPartialYAMLKeepsDefaults(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte("base_url: http://only-base\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_ = os.Unsetenv("PORT")
-	_ = os.Unsetenv("FASTGEN_BASE_URL")
-	_ = os.Unsetenv("FASTGEN_DATA_DIR")
-
-	cfg, err := Load(path)
+func TestNewPartialYAMLKeepsDefaults(t *testing.T) {
+	clearDeployEnv(t)
+	path := writeConfig(t, "base_url: http://only-base\n")
+	cfg, err := New(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,33 +148,70 @@ func TestLoadPartialYAMLKeepsDefaults(t *testing.T) {
 	if cfg.BaseURL != "http://only-base" {
 		t.Errorf("BaseURL: got %q", cfg.BaseURL)
 	}
+	if cfg.Timeouts.HTTPClient != 60*time.Second {
+		t.Errorf("HTTPClient default lost: %v", cfg.Timeouts.HTTPClient)
+	}
+	if cfg.Logging.Level != "info" {
+		t.Errorf("Level default lost: %q", cfg.Logging.Level)
+	}
 }
 
-func TestDurationYAML(t *testing.T) {
-	tests := []struct {
-		name string
-		yaml string
-		want time.Duration
-	}{
-		{"string", "timeouts:\n  http_client: 45s\n", 45 * time.Second},
-		{"seconds_int", "timeouts:\n  http_client: 15\n", 15 * time.Second},
+func TestNewDurationYAML(t *testing.T) {
+	clearDeployEnv(t)
+	path := writeConfig(t, "timeouts:\n  http_client: 45s\n")
+	cfg, err := New(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			path := filepath.Join(dir, "c.yaml")
-			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			_ = os.Unsetenv("PORT")
-			cfg, err := Load(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if cfg.Timeouts.HTTPClient.Duration() != tt.want {
-				t.Fatalf("got %v want %v", cfg.Timeouts.HTTPClient, tt.want)
-			}
-		})
+	if cfg.Timeouts.HTTPClient != 45*time.Second {
+		t.Fatalf("got %v want 45s", cfg.Timeouts.HTTPClient)
+	}
+}
+
+func TestMergeNilOverlay(t *testing.T) {
+	cfg := defaults()
+	cfg.merge(nil)
+	if cfg.Listen != DefaultListen {
+		t.Fatalf("nil overlay changed Listen: %q", cfg.Listen)
+	}
+}
+
+func TestMergeOverlaysSetFieldsOnly(t *testing.T) {
+	cfg := defaults()
+	cfg.merge(&Config{BaseURL: "http://from-overlay"})
+	if cfg.BaseURL != "http://from-overlay" {
+		t.Fatalf("BaseURL: %q", cfg.BaseURL)
+	}
+	if cfg.Listen != DefaultListen || cfg.DataDir != DefaultDataDir {
+		t.Fatalf("unset fields changed: listen=%q data_dir=%q", cfg.Listen, cfg.DataDir)
+	}
+	if cfg.Timeouts.HTTPClient != 60*time.Second || cfg.Logging.Level != "info" {
+		t.Fatalf("defaults lost: %+v", cfg)
+	}
+}
+
+func TestMergeProviders(t *testing.T) {
+	cfg := defaults()
+	cfg.Providers = map[string]model.Provider{"keep": {Label: "Keep"}}
+
+	cfg.merge(&Config{}) // Providers nil → keep base
+	if _, ok := cfg.Providers["keep"]; !ok {
+		t.Fatal("nil Providers overlay must leave base providers")
+	}
+
+	cfg.merge(&Config{
+		Providers: map[string]model.Provider{"lg": {Label: "LG"}},
+	})
+	if len(cfg.Providers) != 1 || cfg.Providers["lg"].Label != "LG" {
+		t.Fatalf("non-nil Providers must replace: %+v", cfg.Providers)
+	}
+	if _, ok := cfg.Providers["keep"]; ok {
+		t.Fatal("replaced map must not keep old keys")
+	}
+
+	cfg.merge(&Config{Providers: map[string]model.Provider{}})
+	if cfg.Providers == nil || len(cfg.Providers) != 0 {
+		t.Fatalf("empty Providers map must replace with empty: %+v", cfg.Providers)
 	}
 }
 
@@ -185,6 +223,8 @@ func TestNormalizeListen(t *testing.T) {
 		{":8180", ":8180"},
 		{"0.0.0.0:8180", "0.0.0.0:8180"},
 		{" 9191 ", ":9191"},
+		{"", ""},
+		{"not-a-port", "not-a-port"},
 	}
 	for _, tt := range tests {
 		if got := NormalizeListen(tt.in); got != tt.want {
@@ -194,12 +234,29 @@ func TestNormalizeListen(t *testing.T) {
 }
 
 func TestListenFromEnv(t *testing.T) {
-	t.Setenv("PORT", "9191")
-	if got := ListenFromEnv(":8181"); got != ":9191" {
-		t.Fatalf("got %q", got)
+	t.Run("port set", func(t *testing.T) {
+		t.Setenv("PORT", "9191")
+		if got := ListenFromEnv(":8181"); got != ":9191" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("fallback", func(t *testing.T) {
+		t.Setenv("PORT", "")
+		if got := ListenFromEnv("8181"); got != ":8181" {
+			t.Fatalf("fallback got %q", got)
+		}
+	})
+}
+
+func TestEnvOverlay(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("FASTGEN_BASE_URL", "http://env")
+	t.Setenv("FASTGEN_DATA_DIR", "/env-data")
+	o := envOverlay()
+	if o.Listen != ":8080" || o.BaseURL != "http://env" || o.DataDir != "/env-data" {
+		t.Fatalf("%+v", o)
 	}
-	_ = os.Unsetenv("PORT")
-	if got := ListenFromEnv("8181"); got != ":8181" {
-		t.Fatalf("fallback got %q", got)
+	if o.Timeouts.HTTPClient != 0 || o.Logging.Level != "" || o.Providers != nil {
+		t.Fatalf("overlay must only set env fields: %+v", o)
 	}
 }

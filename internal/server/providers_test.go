@@ -7,16 +7,17 @@ import (
 	"testing"
 
 	"github.com/j27-aurum/gofast/internal/config"
+	"github.com/j27-aurum/gofast/internal/model"
 )
 
 func TestProvidersAPI(t *testing.T) {
-	cfg := config.Config{
+	cfg := &config.Config{
 		Listen: ":8180",
-		Providers: map[string]config.Provider{
+		Providers: map[string]model.Provider{
 			"lg": {Label: "LG", MinChannels: 50},
 		},
 	}
-	h := ProvidersHandler("/data/config.yaml", true, cfg)
+	h := ProvidersHandler(cfg)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
 	rec := httptest.NewRecorder()
@@ -24,12 +25,23 @@ func TestProvidersAPI(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
-	var view config.ProvidersView
-	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+	var list model.ProviderList
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	if !view.FromFile || len(view.Providers) != 1 || view.Providers[0].ID != "lg" {
-		t.Fatalf("%+v", view)
+	if len(list.Providers) != 1 || list.Providers[0].ID != "lg" {
+		t.Fatalf("%+v", list)
+	}
+	// Server listen/path must not leak into the providers payload.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["listen"]; ok {
+		t.Fatal("providers API must not include listen")
+	}
+	if _, ok := raw["path"]; ok {
+		t.Fatal("providers API must not include path")
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/api/providers", nil)

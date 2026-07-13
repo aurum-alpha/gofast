@@ -13,8 +13,8 @@ import (
 func boolPtr(v bool) *bool { return &v }
 
 func TestRegistryEnableDisable(t *testing.T) {
-	cfg := config.Config{
-		Providers: map[string]config.Provider{
+	cfg := &config.Config{
+		Providers: map[string]model.Provider{
 			"lg": {
 				Enabled: boolPtr(true),
 				Label:   "LG",
@@ -25,7 +25,7 @@ func TestRegistryEnableDisable(t *testing.T) {
 			},
 		},
 	}
-	fake := &fakeProvider{
+	fake := &fakeReader{
 		Channels: []model.Channel{{ID: "1", Name: "One", StreamURL: "https://x"}},
 	}
 	reg, err := NewRegistry(cfg, map[string]Factory{
@@ -42,8 +42,8 @@ func TestRegistryEnableDisable(t *testing.T) {
 }
 
 func TestRegistrySkipsUnknownFactory(t *testing.T) {
-	cfg := config.Config{
-		Providers: map[string]config.Provider{
+	cfg := &config.Config{
+		Providers: map[string]model.Provider{
 			"lg": {Label: "LG"},
 		},
 	}
@@ -58,8 +58,8 @@ func TestRegistrySkipsUnknownFactory(t *testing.T) {
 
 func TestFakeRoundTripFetchAll(t *testing.T) {
 	re := regexp.MustCompile("(?i)dinospluto-lgus")
-	cfg := config.Config{
-		Providers: map[string]config.Provider{
+	cfg := &config.Config{
+		Providers: map[string]model.Provider{
 			"lg": {
 				Label:            "LG",
 				ChnoOffset:       1000,
@@ -68,7 +68,7 @@ func TestFakeRoundTripFetchAll(t *testing.T) {
 			},
 		},
 	}
-	fake := &fakeProvider{
+	fake := &fakeReader{
 		Channels: []model.Channel{
 			{ID: "dtv_EPGACE TV", Name: "Good", Number: 5, StreamURL: "https://ok/stream"},
 			{ID: "junk", Name: "Bad", StreamURL: "https://cdn/dinospluto-lgus/x"},
@@ -105,13 +105,13 @@ func TestFakeRoundTripFetchAll(t *testing.T) {
 }
 
 func TestFetchAllRecordsProviderError(t *testing.T) {
-	cfg := config.Config{
-		Providers: map[string]config.Provider{
+	cfg := &config.Config{
+		Providers: map[string]model.Provider{
 			"lg": {Label: "LG"},
 		},
 	}
 	reg, err := NewRegistry(cfg, map[string]Factory{
-		"lg": fakeFactory(&fakeProvider{Err: errors.New("upstream down")}),
+		"lg": fakeFactory(&fakeReader{Err: errors.New("upstream down")}),
 	})
 	if err != nil {
 		t.Fatal(err)

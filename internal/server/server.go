@@ -2,20 +2,20 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
 )
 
-// Stub serves healthz (and optional extra routes) until full handlers land.
-type Stub struct {
+// Server is the HTTP process for fastgen/fastproxy: listen address, route
+// registration, request logging, and graceful shutdown.
+type Server struct {
 	Addr   string
 	Routes func(mux *http.ServeMux) // optional; called after /healthz is registered
 }
 
-// Handler returns the HTTP handler for this stub.
-func (s *Stub) Handler() http.Handler {
+// Handler returns the HTTP handler for this server.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", Healthz)
 	if s.Routes != nil {
@@ -38,7 +38,7 @@ func WithRequestLog(next http.Handler) http.Handler {
 }
 
 // Run listens until ctx is cancelled, then shuts down gracefully.
-func (s *Stub) Run(ctx context.Context) error {
+func (s *Server) Run(ctx context.Context) error {
 	srv := &http.Server{
 		Addr:    s.Addr,
 		Handler: s.Handler(),
@@ -67,14 +67,4 @@ func (s *Stub) Run(ctx context.Context) error {
 	case err := <-errCh:
 		return err
 	}
-}
-
-// Healthz responds with {"ok":true}.
-func Healthz(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }

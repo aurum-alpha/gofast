@@ -5,17 +5,18 @@ import (
 	"net/http"
 
 	"github.com/j27-aurum/gofast/internal/config"
+	"github.com/j27-aurum/gofast/internal/model"
 )
 
-// ProvidersHandler serves GET /api/providers from the loaded config snapshot.
-func ProvidersHandler(path string, fromFile bool, cfg config.Config) http.HandlerFunc {
-	view := config.ViewProviders(path, fromFile, cfg)
+// ProvidersHandler serves GET /api/providers — the configured provider list only.
+func ProvidersHandler(cfg *config.Config) http.HandlerFunc {
+	list := model.ListProviders(cfg.Providers)
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(view)
+		_ = json.NewEncoder(w).Encode(list)
 	}
 }

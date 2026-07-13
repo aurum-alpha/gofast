@@ -1,18 +1,18 @@
 package config
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/j27-aurum/gofast/internal/model"
 )
 
-func TestLoadMultiProviderYAML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	body := `
+func TestNewMultiProviderYAML(t *testing.T) {
+	clearDeployEnv(t)
+	path := writeConfig(t, `
 base_url: http://fastgen.lan:8180
 providers:
   lg:
@@ -39,14 +39,8 @@ providers:
     user_agent: "Mozilla/5.0 (compatible; GoFAST/0)"
     headers:
       Accept: text/plain
-`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_ = os.Unsetenv("PORT")
-	_ = os.Unsetenv("FASTGEN_BASE_URL")
-
-	cfg, err := Load(path)
+`)
+	cfg, err := New(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +64,7 @@ providers:
 	if !lg.ExclusionRegexes[0].MatchString("https://cdn/dinospluto-lgus/stream") {
 		t.Fatal("expected dinospluto match")
 	}
-	if lg.RefreshInterval.Duration() != 6*time.Hour {
+	if lg.RefreshInterval != 6*time.Hour {
 		t.Fatalf("lg default refresh: %v", lg.RefreshInterval)
 	}
 
@@ -78,7 +72,7 @@ providers:
 	if pluto.SlugTemplate != "plu-{id}.m3u8" || pluto.Region != "us" {
 		t.Fatalf("pluto: %+v", pluto)
 	}
-	if pluto.RefreshInterval.Duration() != 3*time.Hour || pluto.MinChannels != 50 {
+	if pluto.RefreshInterval != 3*time.Hour || pluto.MinChannels != 50 {
 		t.Fatalf("pluto refresh/min: %+v", pluto)
 	}
 
@@ -102,19 +96,15 @@ providers:
 	}
 }
 
-func TestLoadBadExclusionRegex(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	body := `
+func TestNewBadExclusionRegex(t *testing.T) {
+	clearDeployEnv(t)
+	path := writeConfig(t, `
 providers:
   lg:
     exclusions:
       - "(unclosed"
-`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Load(path)
+`)
+	_, err := New(path)
 	if err == nil {
 		t.Fatal("expected regex compile error")
 	}
@@ -123,30 +113,14 @@ providers:
 	}
 }
 
-func TestDefaultsHaveNoProviders(t *testing.T) {
-	cfg := Defaults()
-	if len(cfg.Providers) != 0 {
-		t.Fatalf("code defaults must not bake in providers, got %d", len(cfg.Providers))
-	}
-}
-
-func TestLoadWithoutProvidersFile(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cfg.Providers) != 0 {
-		t.Fatalf("empty path must not invent providers, got %d", len(cfg.Providers))
-	}
-}
-
-func TestExampleConfigLoads(t *testing.T) {
+func TestNewExampleConfig(t *testing.T) {
+	clearDeployEnv(t)
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller")
 	}
 	path := filepath.Join(filepath.Dir(file), "..", "..", "config.example.yaml")
-	cfg, err := Load(path)
+	cfg, err := New(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,14 +136,9 @@ func TestExampleConfigLoads(t *testing.T) {
 	if !cfg.Providers["lg"].ExclusionRegexes[0].MatchString("dinospluto-lgus") {
 		t.Fatal("example lg exclusion did not compile")
 	}
-}
 
-func TestProviderIsEnabled(t *testing.T) {
-	if !(Provider{}).IsEnabled() {
-		t.Fatal("nil enabled => true")
-	}
-	f := false
-	if (Provider{Enabled: &f}).IsEnabled() {
-		t.Fatal("false => disabled")
+	list := model.ListProviders(cfg.Providers)
+	if len(list.Providers) != 7 || list.Providers[0].ID != "distrotv" {
+		t.Fatalf("sorted list: %+v", list.Providers)
 	}
 }

@@ -1,4 +1,4 @@
-// Package provider defines the Fetch interface and a config-driven registry.
+// Package provider defines the Reader interface and a config-driven registry.
 package provider
 
 import (
@@ -9,17 +9,16 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/model"
-	"github.com/j27-aurum/gofast/internal/normalize"
 )
 
-// Provider fetches a normalized lineup for one configured provider id.
-type Provider interface {
+// Reader fetches a normalized lineup for one configured provider id.
+type Reader interface {
 	ID() string
 	Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error)
 }
 
-// Factory constructs a Provider from its config block.
-type Factory func(id string, cfg config.Provider) (Provider, error)
+// Factory constructs a Reader from a model.Provider config block.
+type Factory func(id string, cfg model.Provider) (Reader, error)
 
 // Result is the outcome of fetching one enabled provider.
 type Result struct {
@@ -30,21 +29,21 @@ type Result struct {
 	Err        error
 }
 
-// Registry holds enabled providers built from config + registered factories.
+// Registry holds enabled readers built from config + registered factories.
 type Registry struct {
 	items []entry
 }
 
 type entry struct {
 	id  string
-	cfg config.Provider
-	p   Provider
+	cfg model.Provider
+	r   Reader
 }
 
 // NewRegistry builds a registry for enabled providers that have a registered factory.
 // Unknown ids (no factory yet) are skipped with a warning — adapters land later.
 // Disabled providers are omitted.
-func NewRegistry(cfg config.Config, factories map[string]Factory) (*Registry, error) {
+func NewRegistry(cfg *config.Config, factories map[string]Factory) (*Registry, error) {
 	ids := make([]string, 0, len(cfg.Providers))
 	for id := range cfg.Providers {
 		ids = append(ids, id)
@@ -63,14 +62,14 @@ func NewRegistry(cfg config.Config, factories map[string]Factory) (*Registry, er
 			slog.Warn("provider has no adapter registered yet", "id", id)
 			continue
 		}
-		p, err := factory(id, pcfg)
+		reader, err := factory(id, pcfg)
 		if err != nil {
 			return nil, fmt.Errorf("provider %q: %w", id, err)
 		}
-		if p == nil {
+		if reader == nil {
 			return nil, fmt.Errorf("provider %q: factory returned nil", id)
 		}
-		r.items = append(r.items, entry{id: id, cfg: pcfg, p: p})
+		r.items = append(r.items, entry{id: id, cfg: pcfg, r: reader})
 	}
 	return r, nil
 }
@@ -84,13 +83,13 @@ func (r *Registry) IDs() []string {
 	return out
 }
 
-// FetchAll runs Fetch on each registered provider and applies normalize + exclusions.
+// FetchAll runs Fetch on each registered reader and applies Channel.Normalize + exclusions.
 // A single provider error does not abort the others; it is recorded on Result.Err.
 func (r *Registry) FetchAll(ctx context.Context) []Result {
 	out := make([]Result, 0, len(r.items))
 	for _, e := range r.items {
 		res := Result{ID: e.id}
-		chs, progs, err := e.p.Fetch(ctx)
+		chs, progs, err := e.r.Fetch(ctx)
 		if err != nil {
 			res.Err = err
 			out = append(out, res)
@@ -98,10 +97,10 @@ func (r *Registry) FetchAll(ctx context.Context) []Result {
 		}
 		for i := range chs {
 			chs[i].Provider = e.id
-			normalize.ApplyChannel(&chs[i])
-			chs[i].Number = normalize.ApplyChnoOffset(chs[i].Number, e.cfg.ChnoOffset)
+			chs[i].Normalize()
+			chs[i].ApplyChnoOffset(e.cfg.ChnoOffset)
 		}
-		chs = normalize.ApplyExclusions(chs, e.cfg.ExclusionRegexes)
+		chs = model.MarkExclusions(chs, e.cfg.ExclusionRegexes)
 		res.Channels = chs
 		res.Programmes = progs
 		out = append(out, res)

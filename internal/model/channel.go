@@ -1,21 +1,18 @@
-// Package normalize applies stable id/name/number transforms shared by all providers.
-package normalize
+package model
 
 import (
 	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
-
-	"github.com/j27-aurum/gofast/internal/model"
 )
 
 // allowedID keeps [A-Za-z0-9._-] after whitespace→_ and quote/control stripping.
 var allowedID = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
-// ID normalizes a channel id for M3U tvg-id, XMLTV <channel id>, and programme channel.
+// NormalizeID normalizes a channel id for M3U tvg-id, XMLTV <channel id>, and programme channel.
 // Deterministic: same input always yields the same output.
-func ID(raw string) string {
+func NormalizeID(raw string) string {
 	var b strings.Builder
 	b.Grow(len(raw))
 	for _, r := range raw {
@@ -31,7 +28,6 @@ func ID(raw string) string {
 		}
 	}
 	s := allowedID.ReplaceAllString(b.String(), "")
-	// Collapse runs of underscores from whitespace sequences.
 	for strings.Contains(s, "__") {
 		s = strings.ReplaceAll(s, "__", "_")
 	}
@@ -72,30 +68,38 @@ func GroupTitle(label, group string) string {
 	return label + ": " + group
 }
 
-// ApplyChnoOffset adds a per-provider offset to an upstream channel number.
+// OffsetChno adds a per-provider offset to an upstream channel number.
 // native <= 0 means "no upstream number" — returns 0 (synthesize path handles it).
-func ApplyChnoOffset(native, offset int) int {
+func OffsetChno(native, offset int) int {
 	if native <= 0 {
 		return 0
 	}
 	return native + offset
 }
 
-// ApplyChannel fills NormalizedID and applies quote stripping to Name/Group.
-func ApplyChannel(ch *model.Channel) {
-	if ch == nil {
+// Normalize fills NormalizedID and applies quote stripping to Name/Group.
+func (c *Channel) Normalize() {
+	if c == nil {
 		return
 	}
-	ch.ID = strings.TrimSpace(ch.ID)
-	ch.NormalizedID = ID(ch.ID)
-	ch.Name = strings.TrimSpace(StripQuotes(ch.Name))
-	ch.Group = strings.TrimSpace(StripQuotes(ch.Group))
+	c.ID = strings.TrimSpace(c.ID)
+	c.NormalizedID = NormalizeID(c.ID)
+	c.Name = strings.TrimSpace(StripQuotes(c.Name))
+	c.Group = strings.TrimSpace(StripQuotes(c.Group))
 }
 
-// MatchExclusion reports whether any compiled regex matches stream URL, provider id, or name.
+// ApplyChnoOffset sets Number from the upstream number plus a provider offset.
+func (c *Channel) ApplyChnoOffset(offset int) {
+	if c == nil {
+		return
+	}
+	c.Number = OffsetChno(c.Number, offset)
+}
+
+// MatchesExclusion reports whether any compiled regex matches stream URL, provider id, or name.
 // Patterns are expected already compiled with (?i) as config does at load.
-func MatchExclusion(ch model.Channel, regexes []*regexp.Regexp) (matched bool, reason string) {
-	haystacks := []string{ch.StreamURL, ch.Provider, ch.ID, ch.Name, ch.NormalizedID}
+func (c Channel) MatchesExclusion(regexes []*regexp.Regexp) (matched bool, reason string) {
+	haystacks := []string{c.StreamURL, c.Provider, c.ID, c.Name, c.NormalizedID}
 	for _, re := range regexes {
 		if re == nil {
 			continue
@@ -109,16 +113,16 @@ func MatchExclusion(ch model.Channel, regexes []*regexp.Regexp) (matched bool, r
 	return false, ""
 }
 
-// ApplyExclusions marks channels that match any provider exclusion regex.
+// MarkExclusions marks channels that match any provider exclusion regex.
 // Excluded channels stay in the slice with Excluded/FilterReason set so the UI can explain drops.
-func ApplyExclusions(channels []model.Channel, regexes []*regexp.Regexp) []model.Channel {
+func MarkExclusions(channels []Channel, regexes []*regexp.Regexp) []Channel {
 	if len(regexes) == 0 {
 		return channels
 	}
-	out := make([]model.Channel, len(channels))
+	out := make([]Channel, len(channels))
 	copy(out, channels)
 	for i := range out {
-		if ok, reason := MatchExclusion(out[i], regexes); ok {
+		if ok, reason := out[i].MatchesExclusion(regexes); ok {
 			out[i].Excluded = true
 			out[i].FilterReason = reason
 		}
