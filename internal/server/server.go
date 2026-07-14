@@ -17,7 +17,7 @@ type Server struct {
 // Handler returns the HTTP handler for this server.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", Healthz)
+	mux.HandleFunc("GET /healthz", Healthz)
 	if s.Routes != nil {
 		s.Routes(mux)
 	}

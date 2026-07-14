@@ -118,6 +118,8 @@ Deps target: **stdlib + `gopkg.in/yaml.v3`** only unless an issue justifies more
 
 Honor milestone order and Linear **blocked-by** links. Critical path to a Jellyfin-usable feed ends at M2 gen HTTP + production compose/README.
 
+**Vertical slice first:** prove one provider end-to-end (LG: registry → fetch → emit → `GET /{id}.m3u|.xml`) before adding more adapters (mjh / published-pair). Do not stack all adapters ahead of a callable playlist.
+
 ## Package layout (target)
 
 ```
@@ -125,10 +127,11 @@ cmd/fastgen/
 cmd/fastproxy/
 internal/
   config/ model/ httpx/
-  provider/   # lg, mjh, published-pair
+  provider/   # lg first (E2E), then mjh, published-pair
+  emit/       # M3U + XMLTV
   classifier/
   health/     # M3+
-  epg/ m3u/ logocache/ refresh/
+  logocache/ refresh/
   proxy/      # M5
   server/ ui/   # ui embeds Vite dist from web/
 web/            # React + Vite source (build → internal/ui/dist)

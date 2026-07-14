@@ -1,0 +1,47 @@
+package server_test
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/j27-aurum/gofast/internal/server"
+	"github.com/j27-aurum/gofast/internal/snapshot"
+)
+
+func TestPlaylistHandlers(t *testing.T) {
+	store := snapshot.NewStore()
+	store.Put(snapshot.Snapshot{
+		ProviderID: "lg",
+		M3U:        []byte("#EXTM3U\n"),
+		XML:        []byte("<tv></tv>"),
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(store))
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/lg.m3u", nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "#EXTM3U\n" {
+		t.Fatalf("m3u: %d %q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/lg.xml", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<tv>") {
+		t.Fatalf("xml: %d %q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing.m3u", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nope.txt", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for unknown suffix, got %d", rec.Code)
+	}
+}

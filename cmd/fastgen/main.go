@@ -8,8 +8,13 @@ import (
 	"os"
 
 	"github.com/j27-aurum/gofast/internal/config"
+	"github.com/j27-aurum/gofast/internal/httpx"
+	"github.com/j27-aurum/gofast/internal/provider"
+	"github.com/j27-aurum/gofast/internal/provider/lg"
+	"github.com/j27-aurum/gofast/internal/refresh"
 	"github.com/j27-aurum/gofast/internal/run"
 	"github.com/j27-aurum/gofast/internal/server"
+	"github.com/j27-aurum/gofast/internal/snapshot"
 	"github.com/j27-aurum/gofast/internal/ui"
 )
 
@@ -25,10 +30,23 @@ func main() {
 	}
 	cfg.LogLoaded(path, fromFile)
 
+	client := httpx.NewClient(cfg.Timeouts.HTTPClient, 0)
+	reg, err := provider.NewRegistry(cfg, map[string]provider.Factory{
+		"lg": lg.Factory(client),
+	})
+	if err != nil {
+		slog.Error("provider registry", "err", err)
+		os.Exit(1)
+	}
+	store := snapshot.NewStore()
+	refresh.Once(ctx, reg, cfg, store)
+	go refresh.Loop(ctx, reg, cfg, store)
+
 	srv := &server.Server{
 		Addr: cfg.Listen,
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(cfg))
+			mux.HandleFunc("GET /{file}", server.PlaylistFile(store))
 			mux.Handle("/", ui.Handler())
 		},
 	}

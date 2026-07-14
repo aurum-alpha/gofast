@@ -9,6 +9,8 @@ services:
       - "8180:8180"
     volumes:
       - fastgen-data:/data
+      # Seed providers for local smoke; override by replacing the file on the volume.
+      - ./config.example.yaml:/data/config.yaml:ro
     environment:
       PORT: "8180"
 

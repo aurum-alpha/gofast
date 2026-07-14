@@ -101,6 +101,18 @@ func (r *Registry) FetchAll(ctx context.Context) []Result {
 			chs[i].ApplyChnoOffset(e.cfg.ChnoOffset)
 		}
 		chs = model.MarkExclusions(chs, e.cfg.ExclusionRegexes)
+		normByRaw := make(map[string]string, len(chs))
+		for _, ch := range chs {
+			normByRaw[ch.ID] = ch.NormalizedID
+		}
+		for i := range progs {
+			raw := progs[i].ChannelID
+			if n, ok := normByRaw[raw]; ok {
+				progs[i].ChannelID = n
+			} else {
+				progs[i].ChannelID = model.NormalizeID(raw)
+			}
+		}
 		res.Channels = chs
 		res.Programmes = progs
 		out = append(out, res)

@@ -59,6 +59,8 @@ Update the Linear issue as you go (short comments on blockers, verification note
 
 Honor Linear **project milestones** M0 → M5. Do not start issues in milestone N+1 until milestone N exit criteria are met (tests green, milestone issues Done), unless the issue is explicitly unblocked and parallel-safe per its blocker list.
 
+**Vertical slice over adapter breadth:** ship one provider end-to-end (fetch → emit → HTTP playlist) before starting the next adapter epic. Current critical path after LG adapter: **J27-36** (LG vertical slice), then mjh / published-pair.
+
 ## Product boundaries
 
 - **fastgen** is the primary product (M3U/XMLTV, UI, health).
