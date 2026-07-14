@@ -30,6 +30,19 @@ function displayNumber(n: number): string {
   return n > 0 ? String(n) : '—'
 }
 
+function classBadge(classification?: string): { label: string; kind: string } {
+  switch (classification) {
+    case 'NATIVE':
+      return { label: 'NATIVE', kind: 'native' }
+    case 'BEACON':
+      return { label: 'BEACON', kind: 'beacon' }
+    case 'DRM':
+      return { label: 'DRM', kind: 'drm' }
+    default:
+      return { label: '—', kind: 'none' }
+  }
+}
+
 export function ChannelsPage() {
   const [data, setData] = useState<ChannelsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -76,6 +89,7 @@ export function ChannelsPage() {
       if (!needle) return true
       return (
         ch.name.toLowerCase().includes(needle) ||
+        ch.id.toLowerCase().includes(needle) ||
         ch.normalized_id.toLowerCase().includes(needle) ||
         ch.group.toLowerCase().includes(needle) ||
         String(ch.number).includes(needle) ||
@@ -88,8 +102,8 @@ export function ChannelsPage() {
     <>
       <h1>Channels</h1>
       <p className="lead">
-        Live lineup from the last successful refresh. Classification badges
-        arrive with the stream classifier; until then Class shows —.
+        Live lineup from the last successful refresh. Class is probed at
+        refresh (NATIVE / BEACON / DRM). DRM is never exported.
       </p>
 
       {error && (
@@ -127,7 +141,7 @@ export function ChannelsPage() {
                 type="search"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="name, id, group, number…"
+                placeholder="name, raw/normalized id, group, number…"
               />
             </label>
             <span className="meta">
@@ -166,15 +180,35 @@ export function ChannelsPage() {
                       <td>{displayNumber(ch.number)}</td>
                       <td>
                         {ch.name}
-                        <div className="subtle">
-                          <code>{ch.normalized_id}</code>
-                        </div>
+                        {ch.id === ch.normalized_id ? (
+                          <div className="subtle">
+                            <code>{ch.id}</code>
+                          </div>
+                        ) : (
+                          <div className="subtle ids">
+                            <span>
+                              <span className="id-label">raw</span>
+                              <code>{ch.id}</code>
+                            </span>
+                            <span>
+                              <span className="id-label">norm</span>
+                              <code>{ch.normalized_id}</code>
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td>
                         <code>{ch.provider}</code>
                       </td>
                       <td>{ch.group || '—'}</td>
-                      <td>{ch.classification || '—'}</td>
+                      <td>
+                        {(() => {
+                          const b = classBadge(ch.classification)
+                          return (
+                            <span className={`badge badge-${b.kind}`}>{b.label}</span>
+                          )
+                        })()}
+                      </td>
                       <td>{exportLabel(ch)}</td>
                     </tr>
                   ))

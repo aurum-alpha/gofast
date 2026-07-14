@@ -1,4 +1,4 @@
-// Package refresh runs provider FetchAll, writes M3U/XMLTV playlists, and updates snapshots.
+// Package refresh runs provider FetchAll, classifies streams, writes playlists, and updates snapshots.
 package refresh
 
 import (
@@ -7,20 +7,21 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/j27-aurum/gofast/internal/config"
+	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/m3u"
+	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/snapshot"
 	"github.com/j27-aurum/gofast/internal/xmltv"
 )
 
-// Once fetches all registered providers and publishes gated snapshots.
-func Once(ctx context.Context, reg *provider.Registry, cfg *config.Config, store *snapshot.Store) {
-	if reg == nil || cfg == nil || store == nil {
+// Once fetches all enabled providers, classifies streams, and publishes gated snapshots.
+func Once(ctx context.Context, reg *provider.Registry, store *snapshot.Store, clf *classifier.Client) {
+	if reg == nil || store == nil {
 		return
 	}
 	for _, res := range reg.FetchAll(ctx) {
-		publish(cfg, store, res)
+		publish(ctx, reg, store, clf, res)
 	}
 }
 
@@ -28,11 +29,11 @@ func Once(ctx context.Context, reg *provider.Registry, cfg *config.Config, store
 // Caller should invoke Once once before starting Loop if a warm snapshot is required at boot.
 // Thin vertical-slice behavior: in-memory only, min_channels + programme gates,
 // keep last-good on failure. Full jitter/disk LKG lands in J27-18.
-func Loop(ctx context.Context, reg *provider.Registry, cfg *config.Config, store *snapshot.Store) {
-	if reg == nil || cfg == nil || store == nil {
+func Loop(ctx context.Context, reg *provider.Registry, store *snapshot.Store, clf *classifier.Client) {
+	if reg == nil || store == nil {
 		return
 	}
-	interval := refreshInterval(cfg)
+	interval := refreshInterval(reg)
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -40,16 +41,16 @@ func Loop(ctx context.Context, reg *provider.Registry, cfg *config.Config, store
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			Once(ctx, reg, cfg, store)
+			Once(ctx, reg, store, clf)
 		}
 	}
 }
 
-func refreshInterval(cfg *config.Config) time.Duration {
+func refreshInterval(reg *provider.Registry) time.Duration {
 	d := 6 * time.Hour
-	for _, p := range cfg.Providers {
-		if p.RefreshInterval > 0 && p.RefreshInterval < d {
-			d = p.RefreshInterval
+	for _, id := range reg.IDs() {
+		if ri := reg.Settings(id).RefreshInterval; ri > 0 && ri < d {
+			d = ri
 		}
 	}
 	if d < time.Minute {
@@ -58,8 +59,8 @@ func refreshInterval(cfg *config.Config) time.Duration {
 	return d
 }
 
-func publish(cfg *config.Config, store *snapshot.Store, res provider.Result) {
-	pcfg := cfg.Providers[res.ID]
+func publish(ctx context.Context, reg *provider.Registry, store *snapshot.Store, clf *classifier.Client, res provider.Result) {
+	pcfg := reg.Settings(res.ID)
 	label := pcfg.Label
 	if label == "" {
 		label = res.ID
@@ -70,8 +71,15 @@ func publish(cfg *config.Config, store *snapshot.Store, res provider.Result) {
 		return
 	}
 
+	channels := res.Channels
+	if clf != nil {
+		slog.Info("classifying channels", "provider", res.ID, "count", len(channels))
+		channels = clf.ClassifyChannels(ctx, channels)
+		channels = applyClassificationExport(channels)
+	}
+
 	exported := 0
-	for _, ch := range res.Channels {
+	for _, ch := range channels {
 		if !ch.Excluded && ch.NormalizedID != "" && ch.StreamURL != "" {
 			exported++
 		}
@@ -98,11 +106,11 @@ func publish(cfg *config.Config, store *snapshot.Store, res provider.Result) {
 	}
 
 	var m3uBuf, xmltvBuf bytes.Buffer
-	if err := m3u.Write(&m3uBuf, res.Channels, label); err != nil {
+	if err := m3u.Write(&m3uBuf, channels, label); err != nil {
 		slog.Warn("m3u write failed; keeping last-good", "provider", res.ID, "err", err)
 		return
 	}
-	if err := xmltv.Write(&xmltvBuf, res.Channels, res.Programmes, label); err != nil {
+	if err := xmltv.Write(&xmltvBuf, channels, res.Programmes, label); err != nil {
 		slog.Warn("xmltv write failed; keeping last-good", "provider", res.ID, "err", err)
 		return
 	}
@@ -111,7 +119,7 @@ func publish(cfg *config.Config, store *snapshot.Store, res provider.Result) {
 		ProviderID:     res.ID,
 		M3U:            m3uBuf.Bytes(),
 		XML:            xmltvBuf.Bytes(),
-		Channels:       res.Channels,
+		Channels:       channels,
 		ChannelCount:   exported,
 		ProgrammeCount: progN,
 	})
@@ -122,4 +130,21 @@ func publish(cfg *config.Config, store *snapshot.Store, res provider.Result) {
 		"m3u_bytes", m3uBuf.Len(),
 		"xml_bytes", xmltvBuf.Len(),
 	)
+}
+
+// applyClassificationExport drops DRM always. BEACON hard-drop when proxy is
+// unset lands with proxy_base_url emission (J27-19); until then badges show
+// BEACON while playlists stay exportable for the LG vertical slice.
+func applyClassificationExport(channels []model.Channel) []model.Channel {
+	out := make([]model.Channel, len(channels))
+	copy(out, channels)
+	for i := range out {
+		if out[i].Classification == model.ClassDRM {
+			out[i].Excluded = true
+			if out[i].FilterReason == "" {
+				out[i].FilterReason = "DRM"
+			}
+		}
+	}
+	return out
 }

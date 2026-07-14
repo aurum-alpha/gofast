@@ -25,7 +25,7 @@ func TestLogLoadedWithProviders(t *testing.T) {
 	cfg := &Config{
 		Listen:  DefaultListen,
 		DataDir: DefaultDataDir,
-		Providers: map[string]model.Provider{
+		Providers: map[string]model.ProviderSettings{
 			"lg": {Label: "LG", MinChannels: 50, RefreshInterval: 0},
 		},
 	}

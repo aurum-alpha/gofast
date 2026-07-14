@@ -8,13 +8,15 @@ import (
 	"time"
 )
 
-// Provider is a configured FAST lineup source from YAML (providers.<id>).
-// Adapters implement provider.Reader to fetch data for a Provider.
+// ProviderSettings holds the config overlay for one known provider (providers.<id>).
+// The provider implementations themselves are code (internal/provider/<id>); this
+// struct only customizes a known provider: enabled, label, offsets, exclusions,
+// URL overrides, etc. YAML that names an unknown id does not create an implementation.
 //
 // YAML tags load config; JSON tags are the HTTP/API shape. encoding/json does
 // not stringify time.Duration, so MarshalJSON/UnmarshalJSON handle
 // refresh_interval as a Go duration string and enabled as a resolved bool.
-type Provider struct {
+type ProviderSettings struct {
 	// ID is the map key (providers.<id>). Not present inside the YAML block.
 	ID string `yaml:"-" json:"id"`
 
@@ -28,7 +30,7 @@ type Provider struct {
 	RefreshInterval time.Duration `yaml:"refresh_interval" json:"-"`
 
 	// Exclusions are case-insensitive regex patterns matched against stream URL,
-	// provider id, and channel name. Compiled at load into ExclusionRegexes.
+	// provider id, and channel name. Compiled by CompileExclusions into ExclusionRegexes.
 	Exclusions       []string         `yaml:"exclusions" json:"exclusions,omitempty"`
 	ExclusionRegexes []*regexp.Regexp `yaml:"-" json:"-"`
 
@@ -38,20 +40,20 @@ type Provider struct {
 	// Region selects mjh regioned feeds (e.g. "us"). Empty for regionless (Roku).
 	Region string `yaml:"region" json:"region,omitempty"`
 
-	// Optional URL overrides (empty = adapter built-in defaults).
+	// Optional URL overrides (empty = provider built-in defaults).
 	ChannelsURL string `yaml:"channels_url" json:"channels_url,omitempty"`
 	EPGURL      string `yaml:"epg_url" json:"epg_url,omitempty"`
 	M3UURL      string `yaml:"m3u_url" json:"m3u_url,omitempty"`
 
-	// UserAgent is for adapters that need a browser-like UA (LocalNow / apsattv).
+	// UserAgent is for providers that need a browser-like UA (LocalNow / apsattv).
 	UserAgent string `yaml:"user_agent" json:"user_agent,omitempty"`
 
 	// Headers are extra outbound request headers for this provider's fetches.
 	Headers map[string]string `yaml:"headers" json:"headers,omitempty"`
 }
 
-// providerJSON is the explicit JSON wire shape for Provider.
-type providerJSON struct {
+// providerSettingsJSON is the explicit JSON wire shape for ProviderSettings.
+type providerSettingsJSON struct {
 	ID                       string            `json:"id"`
 	Enabled                  bool              `json:"enabled"`
 	Label                    string            `json:"label"`
@@ -70,7 +72,7 @@ type providerJSON struct {
 }
 
 // IsEnabled reports whether the provider should run. Omitted enabled defaults to true.
-func (p Provider) IsEnabled() bool {
+func (p ProviderSettings) IsEnabled() bool {
 	if p.Enabled == nil {
 		return true
 	}
@@ -78,8 +80,8 @@ func (p Provider) IsEnabled() bool {
 }
 
 // MarshalJSON encodes refresh_interval as a Go duration string and enabled as IsEnabled().
-func (p Provider) MarshalJSON() ([]byte, error) {
-	return json.Marshal(providerJSON{
+func (p ProviderSettings) MarshalJSON() ([]byte, error) {
+	return json.Marshal(providerSettingsJSON{
 		ID:                       p.ID,
 		Enabled:                  p.IsEnabled(),
 		Label:                    p.Label,
@@ -98,9 +100,73 @@ func (p Provider) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// UnmarshalJSON decodes the API/JSON shape into Provider.
-func (p *Provider) UnmarshalJSON(data []byte) error {
-	var j providerJSON
+// Merge overlays the set fields of o (a YAML overlay) onto p (package defaults)
+// and returns the effective settings. Zero-valued overlay fields keep the default.
+// ID is never taken from the overlay (it lives on the map key / package default).
+func (p ProviderSettings) Merge(o ProviderSettings) ProviderSettings {
+	if o.Enabled != nil {
+		p.Enabled = o.Enabled
+	}
+	if o.Label != "" {
+		p.Label = o.Label
+	}
+	if o.ChannelNumberOffset != 0 {
+		p.ChannelNumberOffset = o.ChannelNumberOffset
+	}
+	if o.SynthesizeChannelNumbers != 0 {
+		p.SynthesizeChannelNumbers = o.SynthesizeChannelNumbers
+	}
+	if o.MinChannels != 0 {
+		p.MinChannels = o.MinChannels
+	}
+	if o.RefreshInterval != 0 {
+		p.RefreshInterval = o.RefreshInterval
+	}
+	if len(o.Exclusions) > 0 {
+		p.Exclusions = o.Exclusions
+		p.ExclusionRegexes = o.ExclusionRegexes
+	}
+	if o.SlugTemplate != "" {
+		p.SlugTemplate = o.SlugTemplate
+	}
+	if o.Region != "" {
+		p.Region = o.Region
+	}
+	if o.ChannelsURL != "" {
+		p.ChannelsURL = o.ChannelsURL
+	}
+	if o.EPGURL != "" {
+		p.EPGURL = o.EPGURL
+	}
+	if o.M3UURL != "" {
+		p.M3UURL = o.M3UURL
+	}
+	if o.UserAgent != "" {
+		p.UserAgent = o.UserAgent
+	}
+	if len(o.Headers) > 0 {
+		p.Headers = o.Headers
+	}
+	return p
+}
+
+// CompileExclusions compiles Exclusions into ExclusionRegexes (case-insensitive).
+func (p *ProviderSettings) CompileExclusions() error {
+	compiled := make([]*regexp.Regexp, 0, len(p.Exclusions))
+	for i, pat := range p.Exclusions {
+		re, err := regexp.Compile("(?i)" + pat)
+		if err != nil {
+			return fmt.Errorf("exclusions[%d]: invalid regex %q: %w", i, pat, err)
+		}
+		compiled = append(compiled, re)
+	}
+	p.ExclusionRegexes = compiled
+	return nil
+}
+
+// UnmarshalJSON decodes the API/JSON shape into ProviderSettings.
+func (p *ProviderSettings) UnmarshalJSON(data []byte) error {
+	var j providerSettingsJSON
 	if err := json.Unmarshal(data, &j); err != nil {
 		return err
 	}
@@ -113,7 +179,7 @@ func (p *Provider) UnmarshalJSON(data []byte) error {
 		d = parsed
 	}
 	enabled := j.Enabled
-	*p = Provider{
+	*p = ProviderSettings{
 		ID:                       j.ID,
 		Enabled:                  &enabled,
 		Label:                    j.Label,
@@ -133,39 +199,28 @@ func (p *Provider) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// DefaultProvider returns per-field defaults applied at config load.
-func DefaultProvider() Provider {
-	return Provider{
+// DefaultSettings returns the baseline per-field defaults a provider package
+// builds on (e.g. lg.DefaultSettings starts here, then sets its own fields).
+func DefaultSettings() ProviderSettings {
+	return ProviderSettings{
 		MinChannels:     1,
 		RefreshInterval: 6 * time.Hour,
 	}
 }
 
-// MergeProviderDefaults fills zero-valued fields from DefaultProvider.
-func MergeProviderDefaults(p Provider) Provider {
-	d := DefaultProvider()
-	if p.MinChannels == 0 {
-		p.MinChannels = d.MinChannels
-	}
-	if p.RefreshInterval == 0 {
-		p.RefreshInterval = d.RefreshInterval
-	}
-	return p
-}
-
 // ProviderList is the GET /api/providers JSON envelope (providers only — no server config).
 type ProviderList struct {
-	Providers []Provider `json:"providers"`
+	Providers []ProviderSettings `json:"providers"`
 }
 
 // ListProviders returns providers sorted by id, with ID set from each map key.
-func ListProviders(byID map[string]Provider) ProviderList {
+func ListProviders(byID map[string]ProviderSettings) ProviderList {
 	ids := make([]string, 0, len(byID))
 	for id := range byID {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	out := make([]Provider, 0, len(ids))
+	out := make([]ProviderSettings, 0, len(ids))
 	for _, id := range ids {
 		p := byID[id]
 		p.ID = id

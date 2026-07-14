@@ -100,7 +100,7 @@ Follow [12factor.net/config](https://12factor.net/config) (see `AGENTS.md`):
 
 - **Deploy-varying values** → environment. Shared: **`PORT`** (listen) for both gen and proxy. Gen-only: `FASTGEN_BASE_URL`, `FASTGEN_DATA_DIR`. Env always wins.
 - **`FASTGEN_BASE_URL` / `base_url`:** public origin for logos and absolute links as seen by Jellyfin/browsers. Include the port unless on 80/443 (`http://host:8180`); omit port behind TLS reverse proxy (`https://gofast.example.com`). No trailing slash.
-- **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings (including `providers`). Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.
+- **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings. Provider *implementations* are code (packages under `internal/provider/<id>` exposing `New` + `DefaultSettings`, wired into a `map[id]provider.Reader`); the `providers` block only *overlays settings* for a known provider and cannot add one without shipping Go (unknown ids are ignored/warned). Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.
 - **Precedence:** code defaults → YAML (if present) → **env**.
 - **Grow config with features:** add proxy / logo TLS / health keys only in the PRs that implement those features; extend `config.example.yaml` there. No standalone ahead-of-time config-layer issues.
 

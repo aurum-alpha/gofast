@@ -11,6 +11,7 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/httpx"
+	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/provider/lg"
 	"github.com/j27-aurum/gofast/internal/refresh"
@@ -42,14 +43,13 @@ func TestOncePublishesLGFromFixture(t *testing.T) {
 	}
 
 	client := httpx.NewClient(5*time.Second, 0)
-	reg, err := provider.NewRegistry(cfg, map[string]provider.Factory{
-		"lg": lg.Factory(client),
-	})
-	if err != nil {
-		t.Fatal(err)
+	settings := map[string]model.ProviderSettings{
+		"lg": lg.DefaultSettings().Merge(cfg.Providers["lg"]),
 	}
+	readers := map[string]provider.Reader{"lg": lg.New(settings["lg"], client)}
+	reg := provider.NewRegistry(readers, settings)
 	store := snapshot.NewStore()
-	refresh.Once(context.Background(), reg, cfg, store)
+	refresh.Once(context.Background(), reg, store, nil)
 
 	snap, ok := store.Get("lg")
 	if !ok || len(snap.M3U) == 0 || len(snap.XML) == 0 {

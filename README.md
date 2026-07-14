@@ -62,9 +62,9 @@ Production files (pull-only, no secrets):
 
 ### Config (`/data/config.yaml`)
 
-Runtime YAML on the gen data volume (not baked into the image). **Providers are not hardcoded** — list them in this file (or run with an empty lineup until you do).
+Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Omit a setting to fall back to that provider's built-in default.
 
-- [`config.example.yaml`](config.example.yaml) — starter template with the well-known providers; copy to `/data/config.yaml`.
+- [`config.example.yaml`](config.example.yaml) — starter template with the well-known provider overlays; copy to `/data/config.yaml`.
 
 Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, …) stay in env — see `AGENTS.md`. Config keys for proxy, logo TLS, and health are added later **with those features**, not as a standalone M0 layer. Adapters that fetch providers arrive in M1.
 

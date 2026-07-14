@@ -26,12 +26,12 @@ const (
 
 // Config is the configuration surface for fastgen.
 type Config struct {
-	Listen    string                    `yaml:"listen"`
-	BaseURL   string                    `yaml:"base_url"`
-	DataDir   string                    `yaml:"data_dir"`
-	Timeouts  Timeouts                  `yaml:"timeouts"`
-	Logging   Logging                   `yaml:"logging"`
-	Providers map[string]model.Provider `yaml:"providers"`
+	Listen    string                            `yaml:"listen"`
+	BaseURL   string                            `yaml:"base_url"`
+	DataDir   string                            `yaml:"data_dir"`
+	Timeouts  Timeouts                          `yaml:"timeouts"`
+	Logging   Logging                           `yaml:"logging"`
+	Providers map[string]model.ProviderSettings `yaml:"providers"`
 }
 
 // Timeouts holds outbound and request-bound durations.
@@ -101,7 +101,9 @@ func envOverlay() *Config {
 	return o
 }
 
-// LogLoaded writes structured startup lines for this config.
+// LogLoaded writes structured startup lines for the deploy/server config.
+// Per-provider effective settings are logged by provider.Registry.LogLoaded,
+// since defaults are owned by the provider packages (not this YAML overlay).
 func (c *Config) LogLoaded(path string, fromFile bool) {
 	if c == nil {
 		return
@@ -112,26 +114,8 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"listen", c.Listen,
 		"base_url", c.BaseURL,
 		"data_dir", c.DataDir,
-		"provider_count", len(c.Providers),
+		"provider_overlays", len(c.Providers),
 	)
-	if len(c.Providers) == 0 {
-		slog.Warn("no providers configured; copy config.example.yaml to the data volume as config.yaml")
-		return
-	}
-	for _, p := range model.ListProviders(c.Providers).Providers {
-		slog.Info("provider",
-			"id", p.ID,
-			"enabled", p.IsEnabled(),
-			"label", p.Label,
-			"channel_number_offset", p.ChannelNumberOffset,
-			"synthesize_channel_numbers", p.SynthesizeChannelNumbers,
-			"min_channels", p.MinChannels,
-			"refresh_interval", p.RefreshInterval.String(),
-			"exclusions", len(p.Exclusions),
-			"slug_template", p.SlugTemplate,
-			"region", p.Region,
-		)
-	}
 }
 
 // merge overlays non-zero / non-empty fields from o onto c.

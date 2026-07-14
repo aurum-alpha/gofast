@@ -27,11 +27,3 @@ func (f *fakeReader) Fetch(ctx context.Context) ([]model.Channel, []model.Progra
 	progs := append([]model.Programme(nil), f.Programmes...)
 	return chs, progs, nil
 }
-
-func fakeFactory(f *fakeReader) Factory {
-	return func(id string, _ model.Provider) (Reader, error) {
-		cp := *f
-		cp.id = id
-		return &cp, nil
-	}
-}

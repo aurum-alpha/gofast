@@ -6,18 +6,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
 func TestProvidersAPI(t *testing.T) {
-	cfg := &config.Config{
-		Listen: ":8180",
-		Providers: map[string]model.Provider{
-			"lg": {Label: "LG", MinChannels: 50},
-		},
+	settings := map[string]model.ProviderSettings{
+		"lg": {Label: "LG", MinChannels: 50},
 	}
-	h := ProvidersHandler(cfg)
+	h := ProvidersHandler(settings)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
 	rec := httptest.NewRecorder()

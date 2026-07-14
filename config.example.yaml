@@ -19,9 +19,16 @@ timeouts:
 logging:
   level: info
 
-# Well-known providers — listed here only; nothing is baked into the binary.
+# Provider implementations are code (compiled into the binary). This block only
+# customizes the settings of a known provider — offsets, exclusions, enabled,
+# URL overrides, etc. It cannot add a provider without shipping Go: ids with no
+# implementation are ignored at startup (a warning is logged). Today only "lg"
+# is implemented; the other blocks below are intended overlays kept as
+# documentation for the adapters that land next.
+#
 # Copy this file to /data/config.yaml (or your bind mount). Keys are stable provider ids.
-# Set enabled: false to disable. Omitted "enabled" = true.
+# Set enabled: false to disable. Omitted "enabled" = true. Any setting you omit
+# falls back to the provider package's own default (e.g. lg's offset/exclusions).
 # Channel-number ranges are spaced so lineups do not collide when merged.
 providers:
   lg:

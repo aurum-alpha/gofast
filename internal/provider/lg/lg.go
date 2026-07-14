@@ -22,31 +22,39 @@ const (
 	chromeUA   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
-// Client fetches LG Channels US lineups.
+var _ provider.Reader = (*Client)(nil)
+
+// Client fetches LG Channels US lineups. It satisfies provider.Reader.
 type Client struct {
-	id     string
-	cfg    model.Provider
-	client *httpx.Client
-	url    string
+	settings model.ProviderSettings
+	client   *httpx.Client
+	url      string
 }
 
-// New constructs an LG client. id is the config key (typically "lg").
-func New(id string, cfg model.Provider, client *httpx.Client) *Client {
+// DefaultSettings returns LG's built-in defaults. A YAML providers.lg block is
+// merged over these (see model.ProviderSettings.Merge); omitting it uses these.
+func DefaultSettings() model.ProviderSettings {
+	s := model.DefaultSettings()
+	s.ID = "lg"
+	s.Label = "LG"
+	s.ChannelNumberOffset = 1000
+	s.MinChannels = 50
+	s.RefreshInterval = 6 * time.Hour
+	s.Exclusions = []string{"dinospluto-lgus"}
+	_ = s.CompileExclusions() // hardcoded patterns; cannot fail
+	return s
+}
+
+// New constructs an LG client from its effective settings.
+func New(settings model.ProviderSettings, client *httpx.Client) *Client {
 	if client == nil {
 		client = httpx.NewClient(0, 0)
 	}
-	u := cfg.ChannelsURL
+	u := settings.ChannelsURL
 	if u == "" {
 		u = defaultURL
 	}
-	return &Client{id: id, cfg: cfg, client: client, url: u}
-}
-
-// Factory returns a provider.Factory for registry wiring.
-func Factory(client *httpx.Client) provider.Factory {
-	return func(id string, cfg model.Provider) (provider.Reader, error) {
-		return New(id, cfg, client), nil
-	}
+	return &Client{settings: settings, client: client, url: u}
 }
 
 func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error) {
@@ -55,12 +63,12 @@ func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme,
 		return nil, nil, err
 	}
 	req.Header.Set("User-Agent", chromeUA)
-	if c.cfg.UserAgent != "" {
-		req.Header.Set("User-Agent", c.cfg.UserAgent)
+	if c.settings.UserAgent != "" {
+		req.Header.Set("User-Agent", c.settings.UserAgent)
 	}
 	req.Header.Set("x-device-country", "US")
 	req.Header.Set("x-device-language", "en")
-	for k, v := range c.cfg.Headers {
+	for k, v := range c.settings.Headers {
 		req.Header.Set(k, v)
 	}
 
@@ -76,7 +84,12 @@ func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme,
 	return ParseSchedule(resp.Body)
 }
 
-func (c *Client) ID() string { return c.id }
+func (c *Client) ID() string {
+	if c.settings.ID != "" {
+		return c.settings.ID
+	}
+	return "lg"
+}
 
 // ParseSchedule decodes an LG schedulelist JSON document.
 func ParseSchedule(r io.Reader) ([]model.Channel, []model.Programme, error) {

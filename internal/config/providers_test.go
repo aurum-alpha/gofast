@@ -64,8 +64,10 @@ providers:
 	if !lg.ExclusionRegexes[0].MatchString("https://cdn/dinospluto-lgus/stream") {
 		t.Fatal("expected dinospluto match")
 	}
-	if lg.RefreshInterval != 6*time.Hour {
-		t.Fatalf("lg default refresh: %v", lg.RefreshInterval)
+	// cfg.Providers is the raw YAML overlay only; per-field defaults (e.g. the
+	// 6h refresh) are owned by the provider packages and merged in the bootstrap.
+	if lg.RefreshInterval != 0 {
+		t.Fatalf("overlay should not carry a default refresh: %v", lg.RefreshInterval)
 	}
 
 	pluto := cfg.Providers["pluto"]
