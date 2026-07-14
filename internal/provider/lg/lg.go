@@ -49,8 +49,6 @@ func Factory(client *httpx.Client) provider.Factory {
 	}
 }
 
-func (c *Client) ID() string { return c.id }
-
 func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
@@ -77,6 +75,8 @@ func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme,
 	}
 	return ParseSchedule(resp.Body)
 }
+
+func (c *Client) ID() string { return c.id }
 
 // ParseSchedule decodes an LG schedulelist JSON document.
 func ParseSchedule(r io.Reader) ([]model.Channel, []model.Programme, error) {

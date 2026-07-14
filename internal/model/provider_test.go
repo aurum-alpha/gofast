@@ -8,12 +8,12 @@ import (
 
 func TestProviderJSONRoundTrip(t *testing.T) {
 	in := Provider{
-		ID:              "lg",
-		Label:           "LG",
-		ChnoOffset:      1000,
-		MinChannels:     50,
-		RefreshInterval: 6 * time.Hour,
-		Exclusions:      []string{"dinospluto-lgus"},
+		ID:                  "lg",
+		Label:               "LG",
+		ChannelNumberOffset: 1000,
+		MinChannels:         50,
+		RefreshInterval:     6 * time.Hour,
+		Exclusions:          []string{"dinospluto-lgus"},
 	}
 	b, err := json.Marshal(in)
 	if err != nil {

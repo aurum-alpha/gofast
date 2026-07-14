@@ -40,7 +40,7 @@ docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 curl http://localhost:8180/healthz
 ```
 
-CI builds UI + binaries inside `node:22-bookworm` / `golang:1.23-bookworm` (same pins as local `Dockerfile`), then packages with [`Dockerfile.prod`](Dockerfile.prod) into GHCR.
+CI builds UI + binaries inside `node:22-bookworm` / `golang:1.26.5-bookworm` (same pins as local `Dockerfile`), then packages with [`Dockerfile.prod`](Dockerfile.prod) into GHCR.
 
 ### Portainer (homelab stack)
 

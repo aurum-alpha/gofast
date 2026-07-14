@@ -14,7 +14,7 @@ One Go module, **two** entrypoints and Docker images:
 
 | Binary | Image | Role |
 |--------|-------|------|
-| `cmd/fastgen` | `fastgen` | Primary: providers, classifier, emit M3U/XMLTV, logos, health, embedded UI |
+| `cmd/fastgen` | `fastgen` | Primary: providers, classifier, M3U/XMLTV writers, logos, health, embedded UI |
 | `cmd/fastproxy` | `fastproxy` | Add-on: HLS rewrite, beacon resolve, segment shuttle |
 
 Shared logic lives under `internal/` (model, config, httpx, classifier, etc.). There is **no** single binary with `--enable-gen/--enable-proxy` flags.
@@ -78,7 +78,8 @@ flowchart LR
 | Stage | What runs | Output |
 |-------|-----------|--------|
 | CI — UI | Node 22, `npm ci && npm run build` in `web/` | `internal/ui/dist` |
-| CI — Go | Go 1.23, `CGO_ENABLED=0`, linux binaries | `bin/fastgen`, `bin/fastproxy` (UI already inside fastgen) |
+| CI — Go | Go 1.26.5, `CGO_ENABLED=0`, linux binaries | `bin/fastgen`, `bin/fastproxy` (UI already inside fastgen) |
+| CI — gofmt | `gofmt -l .` must be empty | pass/fail gate |
 | CI — test | `go test ./...` (after UI build so embed is present) | pass/fail gate |
 | CI — image | `Dockerfile.prod` copies binaries + ca-certs (+ healthcheck wget) into distroless | GHCR `…/fastgen`, `…/fastproxy` |
 
@@ -91,7 +92,7 @@ Why this works: both artifacts are **standalone** — static Go (`CGO_ENABLED=0`
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI compile/test use GitHub-hosted Node **22** and Go **1.23** (same major/minor as the local `Dockerfile` image pins). Production images are packaged only via `Dockerfile.prod` from those CI binaries. Homelab never builds from source for production; it pulls `:latest` / pinned `IMAGE_TAG` after logging into GHCR.
+CI compile/test use GitHub-hosted Node **22** and Go **1.26.5** (same pins as the local `Dockerfile` image). Production images are packaged only via `Dockerfile.prod` from those CI binaries. Homelab never builds from source for production; it pulls `:latest` / pinned `IMAGE_TAG` after logging into GHCR.
 
 ## Config
 
@@ -128,7 +129,7 @@ cmd/fastproxy/
 internal/
   config/ model/ httpx/
   provider/   # lg first (E2E), then mjh, published-pair
-  emit/       # M3U + XMLTV
+  m3u/ xmltv/ # playlist writers (external formats)
   classifier/
   health/     # M3+
   logocache/ refresh/

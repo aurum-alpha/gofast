@@ -17,7 +17,7 @@ base_url: http://fastgen.lan:8180
 providers:
   lg:
     label: LG
-    chno_offset: 1000
+    channel_number_offset: 1000
     exclusions:
       - dinospluto-lgus
       - "(?i)blocked"
@@ -31,7 +31,7 @@ providers:
   xumo:
     enabled: false
     label: Xumo
-    synthesize_chno: 2000
+    synthesize_channel_numbers: 2000
     m3u_url: https://example.com/xumo.m3u
     epg_url: https://example.com/xumo.xml.gz
   localnow:
@@ -55,7 +55,7 @@ providers:
 	if !lg.IsEnabled() {
 		t.Fatal("lg should default enabled")
 	}
-	if lg.Label != "LG" || lg.ChnoOffset != 1000 {
+	if lg.Label != "LG" || lg.ChannelNumberOffset != 1000 {
 		t.Fatalf("lg: %+v", lg)
 	}
 	if len(lg.ExclusionRegexes) != 2 {
@@ -80,7 +80,7 @@ providers:
 	if xumo.IsEnabled() {
 		t.Fatal("xumo should be disabled")
 	}
-	if xumo.SynthesizeChno != 2000 || xumo.M3UURL == "" {
+	if xumo.SynthesizeChannelNumbers != 2000 || xumo.M3UURL == "" {
 		t.Fatalf("xumo: %+v", xumo)
 	}
 

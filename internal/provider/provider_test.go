@@ -61,10 +61,10 @@ func TestFakeRoundTripFetchAll(t *testing.T) {
 	cfg := &config.Config{
 		Providers: map[string]model.Provider{
 			"lg": {
-				Label:            "LG",
-				ChnoOffset:       1000,
-				Exclusions:       []string{"dinospluto-lgus"},
-				ExclusionRegexes: []*regexp.Regexp{re},
+				Label:               "LG",
+				ChannelNumberOffset: 1000,
+				Exclusions:          []string{"dinospluto-lgus"},
+				ExclusionRegexes:    []*regexp.Regexp{re},
 			},
 		},
 	}
@@ -93,7 +93,7 @@ func TestFakeRoundTripFetchAll(t *testing.T) {
 		t.Fatalf("channels: %d", len(res.Channels))
 	}
 	good, bad := res.Channels[0], res.Channels[1]
-	if good.NormalizedID != "dtv_EPGACE_TV" || good.Number != 1005 || good.Excluded {
+	if good.NormalizedID != "dtv_EPGACE_TV" || good.Number != 5 || good.OffsetNumber != 1005 || good.Excluded {
 		t.Fatalf("good: %+v", good)
 	}
 	if !bad.Excluded {

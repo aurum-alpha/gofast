@@ -46,6 +46,7 @@ func main() {
 		Addr: cfg.Listen,
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(cfg))
+			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(store))
 			mux.HandleFunc("GET /{file}", server.PlaylistFile(store))
 			mux.Handle("/", ui.Handler())
 		},

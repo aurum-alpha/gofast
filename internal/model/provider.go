@@ -20,10 +20,10 @@ type Provider struct {
 
 	Enabled *bool `yaml:"enabled" json:"-"` // see MarshalJSON; omitted enabled = true
 
-	Label          string `yaml:"label" json:"label"`
-	ChnoOffset     int    `yaml:"chno_offset" json:"chno_offset"`
-	SynthesizeChno int    `yaml:"synthesize_chno" json:"synthesize_chno"`
-	MinChannels    int    `yaml:"min_channels" json:"min_channels"`
+	Label                    string `yaml:"label" json:"label"`
+	ChannelNumberOffset      int    `yaml:"channel_number_offset" json:"channel_number_offset"`
+	SynthesizeChannelNumbers int    `yaml:"synthesize_channel_numbers" json:"synthesize_channel_numbers"`
+	MinChannels              int    `yaml:"min_channels" json:"min_channels"`
 
 	RefreshInterval time.Duration `yaml:"refresh_interval" json:"-"`
 
@@ -52,41 +52,49 @@ type Provider struct {
 
 // providerJSON is the explicit JSON wire shape for Provider.
 type providerJSON struct {
-	ID              string            `json:"id"`
-	Enabled         bool              `json:"enabled"`
-	Label           string            `json:"label"`
-	ChnoOffset      int               `json:"chno_offset"`
-	SynthesizeChno  int               `json:"synthesize_chno"`
-	MinChannels     int               `json:"min_channels"`
-	RefreshInterval string            `json:"refresh_interval"`
-	Exclusions      []string          `json:"exclusions,omitempty"`
-	SlugTemplate    string            `json:"slug_template,omitempty"`
-	Region          string            `json:"region,omitempty"`
-	ChannelsURL     string            `json:"channels_url,omitempty"`
-	EPGURL          string            `json:"epg_url,omitempty"`
-	M3UURL          string            `json:"m3u_url,omitempty"`
-	UserAgent       string            `json:"user_agent,omitempty"`
-	Headers         map[string]string `json:"headers,omitempty"`
+	ID                       string            `json:"id"`
+	Enabled                  bool              `json:"enabled"`
+	Label                    string            `json:"label"`
+	ChannelNumberOffset      int               `json:"channel_number_offset"`
+	SynthesizeChannelNumbers int               `json:"synthesize_channel_numbers"`
+	MinChannels              int               `json:"min_channels"`
+	RefreshInterval          string            `json:"refresh_interval"`
+	Exclusions               []string          `json:"exclusions,omitempty"`
+	SlugTemplate             string            `json:"slug_template,omitempty"`
+	Region                   string            `json:"region,omitempty"`
+	ChannelsURL              string            `json:"channels_url,omitempty"`
+	EPGURL                   string            `json:"epg_url,omitempty"`
+	M3UURL                   string            `json:"m3u_url,omitempty"`
+	UserAgent                string            `json:"user_agent,omitempty"`
+	Headers                  map[string]string `json:"headers,omitempty"`
+}
+
+// IsEnabled reports whether the provider should run. Omitted enabled defaults to true.
+func (p Provider) IsEnabled() bool {
+	if p.Enabled == nil {
+		return true
+	}
+	return *p.Enabled
 }
 
 // MarshalJSON encodes refresh_interval as a Go duration string and enabled as IsEnabled().
 func (p Provider) MarshalJSON() ([]byte, error) {
 	return json.Marshal(providerJSON{
-		ID:              p.ID,
-		Enabled:         p.IsEnabled(),
-		Label:           p.Label,
-		ChnoOffset:      p.ChnoOffset,
-		SynthesizeChno:  p.SynthesizeChno,
-		MinChannels:     p.MinChannels,
-		RefreshInterval: p.RefreshInterval.String(),
-		Exclusions:      p.Exclusions,
-		SlugTemplate:    p.SlugTemplate,
-		Region:          p.Region,
-		ChannelsURL:     p.ChannelsURL,
-		EPGURL:          p.EPGURL,
-		M3UURL:          p.M3UURL,
-		UserAgent:       p.UserAgent,
-		Headers:         p.Headers,
+		ID:                       p.ID,
+		Enabled:                  p.IsEnabled(),
+		Label:                    p.Label,
+		ChannelNumberOffset:      p.ChannelNumberOffset,
+		SynthesizeChannelNumbers: p.SynthesizeChannelNumbers,
+		MinChannels:              p.MinChannels,
+		RefreshInterval:          p.RefreshInterval.String(),
+		Exclusions:               p.Exclusions,
+		SlugTemplate:             p.SlugTemplate,
+		Region:                   p.Region,
+		ChannelsURL:              p.ChannelsURL,
+		EPGURL:                   p.EPGURL,
+		M3UURL:                   p.M3UURL,
+		UserAgent:                p.UserAgent,
+		Headers:                  p.Headers,
 	})
 }
 
@@ -106,31 +114,23 @@ func (p *Provider) UnmarshalJSON(data []byte) error {
 	}
 	enabled := j.Enabled
 	*p = Provider{
-		ID:              j.ID,
-		Enabled:         &enabled,
-		Label:           j.Label,
-		ChnoOffset:      j.ChnoOffset,
-		SynthesizeChno:  j.SynthesizeChno,
-		MinChannels:     j.MinChannels,
-		RefreshInterval: d,
-		Exclusions:      j.Exclusions,
-		SlugTemplate:    j.SlugTemplate,
-		Region:          j.Region,
-		ChannelsURL:     j.ChannelsURL,
-		EPGURL:          j.EPGURL,
-		M3UURL:          j.M3UURL,
-		UserAgent:       j.UserAgent,
-		Headers:         j.Headers,
+		ID:                       j.ID,
+		Enabled:                  &enabled,
+		Label:                    j.Label,
+		ChannelNumberOffset:      j.ChannelNumberOffset,
+		SynthesizeChannelNumbers: j.SynthesizeChannelNumbers,
+		MinChannels:              j.MinChannels,
+		RefreshInterval:          d,
+		Exclusions:               j.Exclusions,
+		SlugTemplate:             j.SlugTemplate,
+		Region:                   j.Region,
+		ChannelsURL:              j.ChannelsURL,
+		EPGURL:                   j.EPGURL,
+		M3UURL:                   j.M3UURL,
+		UserAgent:                j.UserAgent,
+		Headers:                  j.Headers,
 	}
 	return nil
-}
-
-// IsEnabled reports whether the provider should run. Omitted enabled defaults to true.
-func (p Provider) IsEnabled() bool {
-	if p.Enabled == nil {
-		return true
-	}
-	return *p.Enabled
 }
 
 // DefaultProvider returns per-field defaults applied at config load.

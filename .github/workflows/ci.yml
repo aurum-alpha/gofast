@@ -13,9 +13,9 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
-  # Versions align with Dockerfile pins (node:22-bookworm, golang:1.23-bookworm).
+  # Versions align with Dockerfile pins (node:22-bookworm, golang:1.26.5-bookworm).
   NODE_VERSION: "22"
-  GO_VERSION: "1.23.x"
+  GO_VERSION: "1.26.5"
 
 jobs:
   compile:
@@ -84,6 +84,15 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
 
       - name: Test
         run: go test ./...

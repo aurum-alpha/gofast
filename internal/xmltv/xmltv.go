@@ -1,4 +1,5 @@
-package emit
+// Package xmltv writes XMLTV documents from normalized channels and programmes.
+package xmltv
 
 import (
 	"bytes"
@@ -8,16 +9,17 @@ import (
 	"sort"
 	"time"
 
+	"github.com/j27-aurum/gofast/internal/format"
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
-// XMLTV writes an XMLTV document using encoding/xml, then re-parses it before
+// Write writes an XMLTV document using encoding/xml, then re-parses it before
 // returning success (invalid output must not be published).
-func XMLTV(w io.Writer, channels []model.Channel, programmes []model.Programme, label string) error {
-	chs := exportable(channels)
+func Write(w io.Writer, channels []model.Channel, programmes []model.Programme, label string) error {
+	chs := model.ForExport(channels)
 	sort.SliceStable(chs, func(i, j int) bool {
-		if chs[i].Number != chs[j].Number {
-			return chs[i].Number < chs[j].Number
+		if chs[i].OffsetNumber != chs[j].OffsetNumber {
+			return chs[i].OffsetNumber < chs[j].OffsetNumber
 		}
 		return chs[i].NormalizedID < chs[j].NormalizedID
 	})
@@ -31,11 +33,11 @@ func XMLTV(w io.Writer, channels []model.Channel, programmes []model.Programme, 
 	}
 	for _, ch := range chs {
 		c := xmlChannel{ID: ch.NormalizedID}
-		c.DisplayNames = append(c.DisplayNames, xmlDisplayName{Value: model.DisplayName(ch.Name, label)})
-		if ch.Number > 0 {
-			c.LCN = append(c.LCN, xmlLCN{Value: fmt.Sprintf("%d", ch.Number)})
+		c.DisplayNames = append(c.DisplayNames, xmlDisplayName{Value: format.FormatDisplayName(ch.Name, label)})
+		if ch.OffsetNumber > 0 {
+			c.LCN = append(c.LCN, xmlLCN{Value: fmt.Sprintf("%d", ch.OffsetNumber)})
 		}
-		if logo := model.StripQuotes(ch.LogoURL); logo != "" {
+		if logo := format.StripQuotes(ch.LogoURL); logo != "" {
 			c.Icons = append(c.Icons, xmlIcon{Src: logo})
 		}
 		doc.Channels = append(doc.Channels, c)
@@ -44,17 +46,17 @@ func XMLTV(w io.Writer, channels []model.Channel, programmes []model.Programme, 
 		if _, ok := keep[p.ChannelID]; !ok {
 			continue
 		}
-		title := model.StripQuotes(p.Title)
+		title := format.StripQuotes(p.Title)
 		if title == "" || p.Stop.Before(p.Start) || p.Stop.Equal(p.Start) {
 			continue
 		}
 		prog := xmlProgramme{
 			Channel: p.ChannelID,
-			Start:   formatXMLTVTime(p.Start),
-			Stop:    formatXMLTVTime(p.Stop),
+			Start:   formatTime(p.Start),
+			Stop:    formatTime(p.Stop),
 			Title:   []xmlTitle{{Value: title}},
 		}
-		if desc := model.StripQuotes(p.Desc); desc != "" {
+		if desc := format.StripQuotes(p.Desc); desc != "" {
 			prog.Desc = []xmlDesc{{Value: desc}}
 		}
 		doc.Programmes = append(doc.Programmes, prog)
@@ -79,7 +81,7 @@ func XMLTV(w io.Writer, channels []model.Channel, programmes []model.Programme, 
 	return err
 }
 
-func formatXMLTVTime(t time.Time) string {
+func formatTime(t time.Time) string {
 	return t.UTC().Format("20060102150405 +0000")
 }
 

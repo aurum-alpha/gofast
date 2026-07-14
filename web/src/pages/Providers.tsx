@@ -4,22 +4,31 @@ type ProviderRow = {
   id: string
   enabled: boolean
   label: string
-  chno_offset: number
-  synthesize_chno: number
+  channel_number_offset: number
+  synthesize_channel_numbers: number
   min_channels: number
   refresh_interval: string
-  exclusions: number
+  exclusions?: string[]
   slug_template?: string
   region?: string
 }
 
 type ProvidersResponse = {
-  path: string
-  from_file: boolean
-  listen: string
-  base_url: string
-  data_dir: string
   providers: ProviderRow[]
+}
+
+function notesFor(p: ProviderRow): string {
+  const parts: string[] = []
+  if (p.region) {
+    parts.push(`region ${p.region}`)
+  }
+  if (p.slug_template) {
+    parts.push(p.slug_template)
+  }
+  if (p.synthesize_channel_numbers > 0) {
+    parts.push(`synthesize from ${p.synthesize_channel_numbers}`)
+  }
+  return parts.join(' · ') || '—'
 }
 
 export function ProvidersPage() {
@@ -55,8 +64,8 @@ export function ProvidersPage() {
     <>
       <h1>Providers</h1>
       <p className="lead">
-        Loaded from runtime config. Adapters and refresh status land later; this
-        page confirms what fastgen parsed from your YAML / env.
+        Configured lineup sources. Only providers with a registered adapter
+        (currently LG) refresh into playlists and the channel table.
       </p>
 
       {error && (
@@ -72,66 +81,49 @@ export function ProvidersPage() {
       )}
 
       {data && (
-        <>
-          <p className="meta">
-            Config path <code>{data.path}</code>
-            {data.from_file ? '' : ' (file missing — defaults + env only)'}
-            {data.base_url ? (
-              <>
-                {' '}
-                · base_url <code>{data.base_url}</code>
-              </>
-            ) : null}
-          </p>
-
-          <div className="table-wrap">
-            <table className="channels">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Enabled</th>
-                  <th>Label</th>
-                  <th>Refresh</th>
-                  <th>Chno</th>
-                  <th>Exclusions</th>
-                  <th>Notes</th>
+        <div className="table-wrap">
+          <table className="channels">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Enabled</th>
+                <th>Label</th>
+                <th>Refresh</th>
+                <th>Offset</th>
+                <th>Exclusions</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.providers.length === 0 ? (
+                <tr className="empty">
+                  <td colSpan={7}>
+                    No providers in config. Copy config.example.yaml to
+                    /data/config.yaml and restart.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {data.providers.length === 0 ? (
-                  <tr className="empty">
-                    <td colSpan={7}>
-                      No providers in config. Copy config.example.yaml to
-                      /data/config.yaml and restart.
+              ) : (
+                data.providers.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <code>{p.id}</code>
                     </td>
+                    <td>{p.enabled ? 'yes' : 'no'}</td>
+                    <td>{p.label || '—'}</td>
+                    <td>{p.refresh_interval}</td>
+                    <td>
+                      {p.channel_number_offset > 0
+                        ? p.channel_number_offset
+                        : '—'}
+                    </td>
+                    <td>{p.exclusions?.length ?? 0}</td>
+                    <td>{notesFor(p)}</td>
                   </tr>
-                ) : (
-                  data.providers.map((p) => (
-                    <tr key={p.id}>
-                      <td>
-                        <code>{p.id}</code>
-                      </td>
-                      <td>{p.enabled ? 'yes' : 'no'}</td>
-                      <td>{p.label || '—'}</td>
-                      <td>{p.refresh_interval}</td>
-                      <td>
-                        {p.synthesize_chno > 0
-                          ? `synth ${p.synthesize_chno}`
-                          : `offset ${p.chno_offset}`}
-                      </td>
-                      <td>{p.exclusions}</td>
-                      <td>
-                        {[p.region && `region ${p.region}`, p.slug_template]
-                          .filter(Boolean)
-                          .join(' · ') || '—'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   )

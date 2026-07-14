@@ -1,4 +1,4 @@
-// Package refresh runs provider FetchAll, emits playlists, and updates snapshots.
+// Package refresh runs provider FetchAll, writes M3U/XMLTV playlists, and updates snapshots.
 package refresh
 
 import (
@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/config"
-	"github.com/j27-aurum/gofast/internal/emit"
+	"github.com/j27-aurum/gofast/internal/m3u"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/snapshot"
+	"github.com/j27-aurum/gofast/internal/xmltv"
 )
 
 // Once fetches all registered providers and publishes gated snapshots.
@@ -96,20 +97,21 @@ func publish(cfg *config.Config, store *snapshot.Store, res provider.Result) {
 		return
 	}
 
-	var m3u, xmltv bytes.Buffer
-	if err := emit.M3U(&m3u, res.Channels, label); err != nil {
-		slog.Warn("m3u emit failed; keeping last-good", "provider", res.ID, "err", err)
+	var m3uBuf, xmltvBuf bytes.Buffer
+	if err := m3u.Write(&m3uBuf, res.Channels, label); err != nil {
+		slog.Warn("m3u write failed; keeping last-good", "provider", res.ID, "err", err)
 		return
 	}
-	if err := emit.XMLTV(&xmltv, res.Channels, res.Programmes, label); err != nil {
-		slog.Warn("xmltv emit failed; keeping last-good", "provider", res.ID, "err", err)
+	if err := xmltv.Write(&xmltvBuf, res.Channels, res.Programmes, label); err != nil {
+		slog.Warn("xmltv write failed; keeping last-good", "provider", res.ID, "err", err)
 		return
 	}
 
 	store.Put(snapshot.Snapshot{
 		ProviderID:     res.ID,
-		M3U:            m3u.Bytes(),
-		XML:            xmltv.Bytes(),
+		M3U:            m3uBuf.Bytes(),
+		XML:            xmltvBuf.Bytes(),
+		Channels:       res.Channels,
 		ChannelCount:   exported,
 		ProgrammeCount: progN,
 	})
@@ -117,7 +119,7 @@ func publish(cfg *config.Config, store *snapshot.Store, res provider.Result) {
 		"provider", res.ID,
 		"channels", exported,
 		"programmes", progN,
-		"m3u_bytes", m3u.Len(),
-		"xml_bytes", xmltv.Len(),
+		"m3u_bytes", m3uBuf.Len(),
+		"xml_bytes", xmltvBuf.Len(),
 	)
 }

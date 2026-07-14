@@ -160,10 +160,10 @@ streams).
   embedded spaces (`dtv_EPGACE TV`), which breaks guide matching in Jellyfin.
   Normalization must be stable run-to-run (same input -> same id, always) or
   players treat every refresh as a new channel lineup.
-- **Channel numbers:** per-provider integer `chno_offset` added to the native
+- **Channel numbers:** per-provider integer `channel_number_offset` added to the native
   number when the upstream provides one. Emit as `tvg-chno` in M3U and
   `<lcn>` in XMLTV. Sort each playlist by final number. For providers with no
-  upstream numbering (Xumo, DistroTV): `synthesize_chno: <base>` assigns
+  upstream numbering (Xumo, DistroTV): `synthesize_channel_numbers: <base>` assigns
   sequential numbers -- but implement it properly with a PERSISTED id->number
   map (first-seen assignment, reused forever, stored in /data) so numbers
   survive upstream reordering; playlist-order assignment drifts.
@@ -304,7 +304,7 @@ without proxy, min_channels gate), per-channel force-enable/disable override.
 Provider rollups mirroring /healthz: last refresh, channel/programme counts,
 staleness, drop counts by reason.
 
-Config editing for the iterated-on settings (exclusion regexes, chno offsets,
+Config editing for the iterated-on settings (exclusion regexes, channel number offsets,
 labels, proxy settings, per-channel overrides), persisted to the YAML config.
 
 Acceptance test for the UI: a user wondering why a specific LG channel is

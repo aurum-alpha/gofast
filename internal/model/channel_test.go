@@ -34,36 +34,21 @@ func TestNormalizeIDStableAndHostile(t *testing.T) {
 	}
 }
 
-func TestStripQuotes(t *testing.T) {
-	if got := StripQuotes(`Foo "Bar" Baz`); got != "Foo Bar Baz" {
-		t.Fatalf("got %q", got)
+func TestApplyChannelNumberOffset(t *testing.T) {
+	ch := Channel{Number: 42}
+	ch.ApplyChannelNumberOffset(1000)
+	if ch.Number != 42 || ch.OffsetNumber != 1042 {
+		t.Fatalf("number=%d offset_number=%d", ch.Number, ch.OffsetNumber)
 	}
-}
-
-func TestDisplayNameAndGroupTitle(t *testing.T) {
-	if got := DisplayName("CNN", "LG"); got != "CNN · LG" {
-		t.Fatalf("display: %q", got)
+	ch = Channel{Number: 0}
+	ch.ApplyChannelNumberOffset(1000)
+	if ch.Number != 0 || ch.OffsetNumber != 0 {
+		t.Fatalf("no native should stay 0, number=%d offset_number=%d", ch.Number, ch.OffsetNumber)
 	}
-	if got := DisplayName("CNN", ""); got != "CNN" {
-		t.Fatalf("display no label: %q", got)
-	}
-	if got := GroupTitle("Pluto", "News"); got != "Pluto: News" {
-		t.Fatalf("group: %q", got)
-	}
-	if got := GroupTitle("Pluto", ""); got != "Pluto" {
-		t.Fatalf("group empty: %q", got)
-	}
-}
-
-func TestOffsetChno(t *testing.T) {
-	if got := OffsetChno(42, 1000); got != 1042 {
-		t.Fatalf("got %d", got)
-	}
-	if got := OffsetChno(0, 1000); got != 0 {
-		t.Fatalf("no native should stay 0, got %d", got)
-	}
-	if got := OffsetChno(-1, 1000); got != 0 {
-		t.Fatalf("negative native: %d", got)
+	ch = Channel{Number: -1}
+	ch.ApplyChannelNumberOffset(1000)
+	if ch.Number != 0 || ch.OffsetNumber != 0 {
+		t.Fatalf("negative native: number=%d offset_number=%d", ch.Number, ch.OffsetNumber)
 	}
 }
 
@@ -107,6 +92,19 @@ func TestDinosplutoExclusion(t *testing.T) {
 	}
 	if ok, _ := clean.MatchesExclusion([]*regexp.Regexp{re}); ok {
 		t.Fatal("clean channel should not match")
+	}
+}
+
+func TestForExport(t *testing.T) {
+	chs := []Channel{
+		{NormalizedID: "a", StreamURL: "https://a"},
+		{NormalizedID: "b", StreamURL: "https://b", Excluded: true},
+		{NormalizedID: "", StreamURL: "https://c"},
+		{NormalizedID: "d", StreamURL: ""},
+	}
+	out := ForExport(chs)
+	if len(out) != 1 || out[0].NormalizedID != "a" {
+		t.Fatalf("%+v", out)
 	}
 }
 

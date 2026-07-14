@@ -22,8 +22,9 @@ Implement **one Linear issue at a time**. Do not invent parallel workstreams fro
 ## Quality gates (before commit and before push)
 
 1. **Automated tests must pass** before commit:
-   - `go test ./...`
-   - Any issue-specific checks called out in the Linear acceptance criteria
+ - `test -z "$(gofmt -l .)"` (or the CI gofmt step)
+ - `go test ./...`
+ - Any issue-specific checks called out in the Linear acceptance criteria
 2. **Agent smoke checks** (optional, on the branch): run quick local verification to catch obvious breakage before handing off.
 3. Do not commit or push with failing tests.
 4. Do not use `--no-verify` to skip hooks.
@@ -79,6 +80,7 @@ Write Go the way Go is written — not enterprise-layer theater.
 **Behavior lives with the type**
 - Self-contained business logic that validates or mutates a domain value belongs as **methods on that type** (e.g. `Channel.Normalize`, `MatchesExclusion`), or as package funcs in the same domain package when they are pure helpers over those types.
 - Do **not** invent parallel utility packages (`normalize`, `helpers`, `utils`) whose only job is to operate on `model` types. If the code needs only the model, it belongs in `model`.
+- **Exception — presentation formatting:** playlist/guide string shaping (M3U attrs, display names, group titles) lives in `internal/format` (`StripQuotes`, `FormatDisplayName`, `FormatGroupTitle`). That package takes plain strings, not domain methods; domain mutation stays on `model`.
 - If a function’s first argument is `*T` / `T` and it only operates on that value, make it a **method** (`(c *Config) merge(o *Config)`), not `merge(cfg, o *Config)`.
 - Constructors are `New` / `NewXxx` returning `(*T, error)` when they load or assemble state (e.g. `config.New(path)`: start from defaults, merge a YAML overlay, merge an env overlay). Keep overlay helpers unexported when only `New` uses them.
 
@@ -86,14 +88,25 @@ Write Go the way Go is written — not enterprise-layer theater.
 - Use stdlib types when they already satisfy the need (e.g. `time.Duration` with yaml.v3 duration strings). Do not wrap them for “fancy” YAML/input shapes we do not need.
 
 **Serialization belongs on the domain**
-- Put `json` / `yaml` tags on domain types in `internal/model`. Those tags *are* the wire shape (what NestJS would call a DTO) — do not invent parallel `FooView` / DTO structs that mirror the model.
+- Put `json` / `yaml` tags on domain types in `internal/model`. Those tags *are* the wire shape (what NestJS would call a DTO) — do not invent parallel `FooView` / DTO structs that mirror the model. This means **our** config/API surface, not every external file format.
+- Spell out Go identifiers (`ChannelNumberOffset`, `SynthesizeChannelNumbers`). Config/API tags use the same clear snake_case (`channel_number_offset`, `synthesize_channel_numbers`) unless an **external** format requires a specific name (e.g. M3U `tvg-chno`, XMLTV `<lcn>`). Do not keep abbreviated `chno_*` keys in *our* YAML/JSON just because M3U uses `tvg-chno`.
 - Use `MarshalJSON` / `UnmarshalJSON` on the domain type only when the stdlib codec cannot express the field (e.g. `time.Duration` as a Go duration string in JSON).
 - Keep API payloads single-purpose. Do not stuff unrelated server/runtime config (`listen`, `path`, `data_dir`) into a providers response — separate endpoints or log-only fields.
+- **External playlists:** M3U and XMLTV live in `internal/m3u` and `internal/xmltv` with private wire types — not `MarshalXML` on `model.Channel` / `model.Programme`, and not a grab-bag `emit` package.
 
 **Packages and files**
 - Prefer extending shared `internal/` packages over duplicating logic.
 - Concrete adapters (`internal/provider/lg`) expose idiomatic constructors (`New` → `*Client`) that implement the port interface.
 - Prefer **many small files** over large grab-bags. One concern per file when practical (e.g. `healthz.go` for the health handler, `providers.go` for provider API routes). Same package, split by responsibility — not one god file.
+
+**Type and methods share one file**
+- **Never** define methods on a type in a different file from the type’s definition. The struct/type and all of its methods live together (e.g. `Channel` + methods in `channel.go`, not a grab-bag `model.go` plus `channel.go` methods).
+- Within that file, order methods: **value receivers first** (alphabetical by method name), then **pointer receivers** (alphabetical). Package-level helpers for that type follow after the methods.
+- Apply this everywhere, especially `internal/model`.
+
+**gofmt**
+- When editing Go, **write/save the full file** (not a tiny patch hunk) so the editor/`gofmt` runs on the whole file and keeps alignment (struct tags, etc.).
+- CI fails if any `.go` file is not `gofmt`-clean (`gofmt -l .` must be empty). Locally: `gofmt -w .` or rely on format-on-save.
 
 ## Config (Twelve-Factor)
 

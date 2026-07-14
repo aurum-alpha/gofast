@@ -3,7 +3,7 @@
 # LOCAL / DEV — build UI + Go from source (docker compose build).
 # Production/GHCR uses Dockerfile.prod (CI binaries only). Keep image pins in sync:
 #   node:22-bookworm
-#   golang:1.23-bookworm
+#   golang:1.26.5-bookworm
 #   gcr.io/distroless/static-debian12:nonroot
 #   busybox:1.36.1-musl
 
@@ -14,7 +14,7 @@ RUN npm ci
 COPY web/ ./
 RUN mkdir -p /src/internal/ui && npm run build
 
-FROM golang:1.23-bookworm AS build
+FROM golang:1.26.5-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

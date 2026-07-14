@@ -74,15 +74,6 @@ func NewRegistry(cfg *config.Config, factories map[string]Factory) (*Registry, e
 	return r, nil
 }
 
-// IDs returns enabled, registered provider ids in sorted order.
-func (r *Registry) IDs() []string {
-	out := make([]string, len(r.items))
-	for i, e := range r.items {
-		out[i] = e.id
-	}
-	return out
-}
-
 // FetchAll runs Fetch on each registered reader and applies Channel.Normalize + exclusions.
 // A single provider error does not abort the others; it is recorded on Result.Err.
 func (r *Registry) FetchAll(ctx context.Context) []Result {
@@ -98,7 +89,7 @@ func (r *Registry) FetchAll(ctx context.Context) []Result {
 		for i := range chs {
 			chs[i].Provider = e.id
 			chs[i].Normalize()
-			chs[i].ApplyChnoOffset(e.cfg.ChnoOffset)
+			chs[i].ApplyChannelNumberOffset(e.cfg.ChannelNumberOffset)
 		}
 		chs = model.MarkExclusions(chs, e.cfg.ExclusionRegexes)
 		normByRaw := make(map[string]string, len(chs))
@@ -116,6 +107,15 @@ func (r *Registry) FetchAll(ctx context.Context) []Result {
 		res.Channels = chs
 		res.Programmes = progs
 		out = append(out, res)
+	}
+	return out
+}
+
+// IDs returns enabled, registered provider ids in sorted order.
+func (r *Registry) IDs() []string {
+	out := make([]string, len(r.items))
+	for i, e := range r.items {
+		out[i] = e.id
 	}
 	return out
 }

@@ -26,7 +26,7 @@ logging:
 providers:
   lg:
     label: LG
-    chno_offset: 1000
+    channel_number_offset: 1000
     min_channels: 50
     refresh_interval: 6h
     exclusions:
@@ -36,7 +36,7 @@ providers:
   pluto:
     label: Pluto
     region: us
-    chno_offset: 2000
+    channel_number_offset: 2000
     min_channels: 50
     refresh_interval: 6h
     # Pluto mjh metadata has no slug field — required override.
@@ -45,7 +45,7 @@ providers:
   samsung:
     label: Samsung
     region: us
-    chno_offset: 3000
+    channel_number_offset: 3000
     min_channels: 50
     refresh_interval: 6h
     # DRM channels (license_url) are dropped by the adapter/classifier.
@@ -54,14 +54,14 @@ providers:
     label: Roku
     # Regionless mjh shape; slug has no metadata field.
     slug_template: "rok-{id}.m3u8"
-    chno_offset: 4000
+    channel_number_offset: 4000
     min_channels: 50
     refresh_interval: 6h
 
   xumo:
     label: Xumo
     # No upstream tvg-chno — persisted id→number map starts at this base.
-    synthesize_chno: 5000
+    synthesize_channel_numbers: 5000
     min_channels: 100
     refresh_interval: 6h
     # URLs default in the adapter; override only if upstream moves:
@@ -70,13 +70,13 @@ providers:
 
   distrotv:
     label: DistroTV
-    synthesize_chno: 6000
+    synthesize_channel_numbers: 6000
     min_channels: 50
     refresh_interval: 6h
 
   localnow:
     label: LocalNow
-    synthesize_chno: 7000
+    synthesize_channel_numbers: 7000
     min_channels: 10
     refresh_interval: 6h
     # apsattv may 403 datacenter IPs / non-browser UAs.
