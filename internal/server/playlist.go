@@ -9,7 +9,10 @@ import (
 
 // PlaylistFile serves GET /{provider}.m3u and GET /{provider}.xml from the snapshot store.
 // Go's ServeMux wildcards must end at '}' so we match /{file} and strip the suffix.
-func PlaylistFile(store *snapshot.Store) http.HandlerFunc {
+// This single-segment pattern also catches SPA routes (e.g. /guide) on a hard
+// reload, so non-playlist paths are delegated to fallback (the embedded UI),
+// which serves index.html for client-side routing. A nil fallback yields 404.
+func PlaylistFile(store *snapshot.Store, fallback http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		file := r.PathValue("file")
 		switch {
@@ -17,6 +20,8 @@ func PlaylistFile(store *snapshot.Store) http.HandlerFunc {
 			writeM3U(w, store, strings.TrimSuffix(file, ".m3u"))
 		case strings.HasSuffix(file, ".xml"):
 			writeXML(w, store, strings.TrimSuffix(file, ".xml"))
+		case fallback != nil:
+			fallback.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}

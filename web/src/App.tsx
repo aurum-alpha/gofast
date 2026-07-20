@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { ChannelsPage } from './pages/Channels'
 import { ConfigPage } from './pages/Config'
+import { GuidePage } from './pages/Guide'
 import { ProvidersPage } from './pages/Providers'
 import './App.css'
 
@@ -15,6 +16,7 @@ export default function App() {
           <NavLink to="/" end>
             Channels
           </NavLink>
+          <NavLink to="/guide">Guide</NavLink>
           <NavLink to="/providers">Providers</NavLink>
           <NavLink to="/config">Config</NavLink>
         </nav>
@@ -23,6 +25,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ChannelsPage />} />
           <Route path="/channels" element={<ChannelsPage />} />
+          <Route path="/guide" element={<GuidePage />} />
           <Route path="/providers" element={<ProvidersPage />} />
           <Route path="/config" element={<ConfigPage />} />
         </Routes>

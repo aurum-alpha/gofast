@@ -8,12 +8,14 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
-// Snapshot is one provider's published M3U/XMLTV bytes plus channel rows for the API/UI.
+// Snapshot is one provider's published M3U/XMLTV bytes plus channel/programme
+// rows for the API/UI.
 type Snapshot struct {
 	ProviderID     string
 	M3U            []byte
 	XML            []byte
 	Channels       []model.Channel
+	Programmes     []model.Programme
 	ChannelCount   int
 	ProgrammeCount int
 }
@@ -57,23 +59,72 @@ func (s *Store) ListChannels() ChannelList {
 		out = append(out, snap.Channels...)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Provider != out[j].Provider {
-			return out[i].Provider < out[j].Provider
-		}
-		ni, nj := out[i].OffsetNumber, out[j].OffsetNumber
-		// Unnumbered channels sort after numbered ones.
-		if ni == 0 {
-			ni = 1 << 30
-		}
-		if nj == 0 {
-			nj = 1 << 30
-		}
-		if ni != nj {
-			return ni < nj
-		}
-		return out[i].NormalizedID < out[j].NormalizedID
+		return lineupLess(out[i].Provider, out[j].Provider, out[i].OffsetNumber, out[j].OffsetNumber, out[i].NormalizedID, out[j].NormalizedID)
 	})
 	return ChannelList{Channels: out}
+}
+
+// ListGuide returns each channel with its programmes (sorted by start), across
+// all snapshots, ordered like ListChannels. It joins programmes to channels on
+// the normalized channel id within each provider.
+func (s *Store) ListGuide() GuideList {
+	if s == nil {
+		return GuideList{Channels: []GuideChannel{}}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]GuideChannel, 0)
+	for _, snap := range s.byID {
+		byChannel := make(map[string][]model.Programme, len(snap.Channels))
+		for _, p := range snap.Programmes {
+			byChannel[p.ChannelID] = append(byChannel[p.ChannelID], p)
+		}
+		for _, ch := range snap.Channels {
+			progs := byChannel[ch.NormalizedID]
+			if progs == nil {
+				progs = []model.Programme{}
+			}
+			sort.SliceStable(progs, func(i, j int) bool {
+				return progs[i].Start.Before(progs[j].Start)
+			})
+			out = append(out, GuideChannel{
+				Provider:     ch.Provider,
+				ID:           ch.ID,
+				NormalizedID: ch.NormalizedID,
+				Name:         ch.Name,
+				Group:        ch.Group,
+				Number:       ch.Number,
+				OffsetNumber: ch.OffsetNumber,
+				LogoURL:      ch.LogoURL,
+				Excluded:     ch.Excluded,
+				Programmes:   progs,
+			})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return lineupLess(out[i].Provider, out[j].Provider, out[i].OffsetNumber, out[j].OffsetNumber, out[i].NormalizedID, out[j].NormalizedID)
+	})
+	return GuideList{Channels: out}
+}
+
+// lineupLess orders lineup rows by provider, then export channel number
+// (unnumbered last), then normalized id.
+func lineupLess(provI, provJ string, numI, numJ int, idI, idJ string) bool {
+	if provI != provJ {
+		return provI < provJ
+	}
+	// Unnumbered channels sort after numbered ones.
+	if numI == 0 {
+		numI = 1 << 30
+	}
+	if numJ == 0 {
+		numJ = 1 << 30
+	}
+	if numI != numJ {
+		return numI < numJ
+	}
+	return idI < idJ
 }
 
 // Put replaces the snapshot for a provider id.
@@ -89,4 +140,23 @@ func (s *Store) Put(snap Snapshot) {
 // ChannelList is the GET /api/channels JSON envelope.
 type ChannelList struct {
 	Channels []model.Channel `json:"channels"`
+}
+
+// GuideChannel is one channel plus its programmes for the GET /api/guide view.
+type GuideChannel struct {
+	Provider     string            `json:"provider"`
+	ID           string            `json:"id"`
+	NormalizedID string            `json:"normalized_id"`
+	Name         string            `json:"name"`
+	Group        string            `json:"group"`
+	Number       int               `json:"number"`
+	OffsetNumber int               `json:"offset_number"`
+	LogoURL      string            `json:"logo_url,omitempty"`
+	Excluded     bool              `json:"excluded"`
+	Programmes   []model.Programme `json:"programmes"`
+}
+
+// GuideList is the GET /api/guide JSON envelope.
+type GuideList struct {
+	Channels []GuideChannel `json:"channels"`
 }

@@ -26,18 +26,6 @@
   line-height: 1;
 }
 
-.brand::after {
-  content: '';
-  display: inline-block;
-  width: 0.55rem;
-  height: 0.55rem;
-  margin-left: 0.35rem;
-  border-radius: 1px;
-  background: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-ink);
-  vertical-align: 0.35rem;
-}
-
 .nav {
   display: flex;
   gap: 0.35rem 1.25rem;
@@ -167,7 +155,7 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-  background: #e8f0e3;
+  background: var(--header);
 }
 
 .channels tbody tr.excluded td {
@@ -181,8 +169,8 @@
   letter-spacing: 0.04em;
   padding: 0.2rem 0.45rem;
   border: 1px solid var(--line);
-  background: #e8f0e3;
-  color: var(--ink);
+  background: #dfe3e8;
+  color: #111111; /* colored pills keep dark text regardless of theme */
 }
 
 .badge-native {
@@ -201,6 +189,7 @@
 }
 
 .badge-none {
+  background: transparent;
   color: var(--muted);
   font-weight: 600;
   border-style: dashed;
@@ -219,6 +208,152 @@
   border: 1px dashed var(--line);
   padding: 2rem 1.25rem;
   color: var(--muted);
+}
+
+/* EPG grid: channels down the left, time across the top, horizontal scroll. */
+.epg {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  overflow: auto;
+  max-height: calc(100vh - 220px);
+}
+
+.epg-inner {
+  position: relative;
+}
+
+.epg-timebar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  background: var(--header);
+  border-bottom: 1px solid var(--line);
+}
+
+.epg-corner {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  background: var(--header);
+  border-right: 1px solid var(--line);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.epg-ticks {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.epg-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--line);
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.epg-tick.day {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.epg-row {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+
+.epg-row.excluded {
+  opacity: 0.55;
+}
+
+.epg-label {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.epg-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 2.5rem;
+}
+
+.epg-logo {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  object-fit: contain;
+}
+
+.epg-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epg-track {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.epg-prog {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+  margin-right: 2px;
+  background: #262a33;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  overflow: hidden;
+}
+
+.epg-prog.now {
+  background: #143a49;
+  border-color: var(--accent);
+}
+
+.epg-prog-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.epg-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  z-index: 2;
+  pointer-events: none;
 }
 
 @media (max-width: 640px) {

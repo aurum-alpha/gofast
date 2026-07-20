@@ -19,7 +19,7 @@ func TestPlaylistHandlers(t *testing.T) {
 	})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{file}", server.PlaylistFile(store))
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(store, nil))
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/lg.m3u", nil))
@@ -42,6 +42,32 @@ func TestPlaylistHandlers(t *testing.T) {
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nope.txt", nil))
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("want 404 for unknown suffix, got %d", rec.Code)
+		t.Fatalf("want 404 for unknown suffix without fallback, got %d", rec.Code)
+	}
+}
+
+func TestPlaylistFallsBackToSPA(t *testing.T) {
+	store := snapshot.NewStore()
+	spa := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("INDEX"))
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(store, spa))
+
+	// A single-segment SPA route (e.g. hard reload of /guide) must serve the app,
+	// not 404 — while real playlists still resolve.
+	for _, path := range []string{"/guide", "/providers", "/config"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK || rec.Body.String() != "INDEX" {
+			t.Fatalf("%s: want SPA fallback, got %d %q", path, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing.m3u", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("playlist should not fall through: got %d", rec.Code)
 	}
 }

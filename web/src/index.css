@@ -1,14 +1,16 @@
 :root {
-  --ink: #14221a;
-  --paper: #eef3ec;
-  --panel: #f7faf5;
-  --accent: #b6e84a;
-  --accent-ink: #1a2e14;
-  --muted: #5a6b60;
-  --line: #c9d4c8;
-  --shadow: 0 18px 40px rgba(20, 34, 26, 0.08);
-  --font-display: 'Avenir Next Condensed', 'Avenir Next', 'Segoe UI', sans-serif;
-  --font-body: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  color-scheme: dark;
+  --ink: #e8ebef;
+  --paper: #101014;
+  --panel: #1a1c22;
+  --header: #232631;
+  --accent: #00a4dc;
+  --accent-ink: #00a4dc;
+  --muted: #9aa0ac;
+  --line: #33363f;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --font-display: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-body: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
 }
 
 * {
@@ -25,7 +27,6 @@ body,
 body {
   color: var(--ink);
   font-family: var(--font-body);
-  background:
-    radial-gradient(1200px 500px at 10% -10%, #d9f59a55, transparent 55%),
-    linear-gradient(165deg, #e8efe4 0%, var(--paper) 45%, #e3ebe0 100%);
+  background: linear-gradient(180deg, #101014 0%, #16181f 100%);
+  background-attachment: fixed;
 }

@@ -120,6 +120,7 @@ func publish(ctx context.Context, reg *provider.Registry, store *snapshot.Store,
 		M3U:            m3uBuf.Bytes(),
 		XML:            xmltvBuf.Bytes(),
 		Channels:       channels,
+		Programmes:     res.Programmes,
 		ChannelCount:   exported,
 		ProgrammeCount: progN,
 	})

@@ -59,13 +59,15 @@ func main() {
 	refresh.Once(ctx, reg, store, clf)
 	go refresh.Loop(ctx, reg, store, clf)
 
+	uiHandler := ui.Handler()
 	srv := &server.Server{
 		Addr: cfg.Listen,
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(settings))
 			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(store))
-			mux.HandleFunc("GET /{file}", server.PlaylistFile(store))
-			mux.Handle("/", ui.Handler())
+			mux.HandleFunc("GET /api/guide", server.GuideHandler(store))
+			mux.HandleFunc("GET /{file}", server.PlaylistFile(store, uiHandler))
+			mux.Handle("/", uiHandler)
 		},
 	}
 	if err := srv.Run(ctx); err != nil {
