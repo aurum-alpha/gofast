@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="dtv_EPGACE TV"/>
+  <channel id="DUMMYother"/>
+  <programme channel="dtv_EPGACE TV" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>Rock & Roll &amp; More</title>
+    <desc>Hits &#38; favorites</desc>
+  </programme>
+  <programme channel="DUMMYother" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>Other Show</title>
+  </programme>
+</tv>

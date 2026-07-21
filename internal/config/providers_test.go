@@ -135,7 +135,14 @@ func TestNewExampleConfig(t *testing.T) {
 			t.Fatalf("example missing %q", id)
 		}
 	}
-	for _, id := range []model.ProviderID{model.ProviderPluto, model.ProviderSamsung, model.ProviderRoku} {
+	for _, id := range []model.ProviderID{
+		model.ProviderDistroTV,
+		model.ProviderLocalNow,
+		model.ProviderPluto,
+		model.ProviderRoku,
+		model.ProviderSamsung,
+		model.ProviderXumo,
+	} {
 		if !cfg.Providers[id].IsEnabled() {
 			t.Fatalf("example %q should be enabled", id)
 		}

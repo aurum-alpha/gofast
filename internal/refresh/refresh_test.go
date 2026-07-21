@@ -1,12 +1,15 @@
 package refresh
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/provider/lg"
+	"github.com/j27-aurum/gofast/internal/provider/published"
 )
 
 type failingReader struct {
@@ -103,6 +107,129 @@ func TestProviderRefresherPublishesAndArchives(t *testing.T) {
 	}
 	if raw, err := cc.ReadRaw(model.ProviderLG); err != nil || len(raw["schedule.json"]) == 0 {
 		t.Fatalf("raw not archived: %d bytes, %v", len(raw), err)
+	}
+}
+
+func TestPublishedProviderRefreshAndRestore(t *testing.T) {
+	playlist, err := os.ReadFile(filepath.Join("..", "provider", "published", "testdata", "distrotv.m3u"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	guide, err := os.ReadFile(filepath.Join("..", "provider", "published", "testdata", "distrotv.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compressed bytes.Buffer
+	gzipWriter := gzip.NewWriter(&compressed)
+	if _, err := gzipWriter.Write(guide); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/playlist":
+			_, _ = w.Write(playlist)
+		case "/guide":
+			_, _ = w.Write(compressed.Bytes())
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	settings := model.ProviderSettings{
+		ID:          model.ProviderDistroTV,
+		Label:       "DistroTV",
+		MinChannels: 1,
+		M3UURL:      server.URL + "/playlist",
+		EPGURL:      server.URL + "/guide",
+	}
+	source := published.Source{ID: model.ProviderDistroTV, EPGGzip: true}
+	reader := published.New(source, settings, httpx.NewClient(5*time.Second, 1))
+	registry := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: reader},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
+	)
+	feed, _ := registry.Feed(model.ProviderDistroTV)
+	cc := cache.New(t.TempDir())
+	refresher := &providerRefresher{feed: feed, cache: cc}
+	if err := refresher.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if channels := feed.Channels(); len(channels) != 2 || channels[0].NormalizedID != "dtv_EPGACE_TV" {
+		t.Fatalf("channels: %+v", channels)
+	}
+	raw, err := cc.ReadRaw(model.ProviderDistroTV)
+	if err != nil || len(raw[published.RawPlaylist]) == 0 || len(raw[published.RawGuideGzip]) == 0 {
+		t.Fatalf("raw=%v err=%v", raw, err)
+	}
+	m3uData, _ := cc.ReadM3U(model.ProviderDistroTV)
+	xmlData, _ := cc.ReadXMLTV(model.ProviderDistroTV)
+	if !strings.Contains(string(m3uData), `tvg-id="dtv_EPGACE_TV"`) ||
+		!strings.Contains(string(xmlData), `channel="dtv_EPGACE_TV"`) {
+		t.Fatalf("m3u=%s xml=%s", m3uData, xmlData)
+	}
+
+	restoredReader := published.New(source, settings, nil)
+	restoredRegistry := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: restoredReader},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
+	)
+	Restore(restoredRegistry, cc)
+	restoredFeed, _ := restoredRegistry.Feed(model.ProviderDistroTV)
+	if channels := restoredFeed.Channels(); len(channels) != 2 || channels[0].NormalizedID != "dtv_EPGACE_TV" {
+		t.Fatalf("restored channels: %+v", channels)
+	}
+}
+
+func TestPublishedGuideFetchFailureKeepsLastGoodGeneration(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/playlist" {
+			_, _ = w.Write([]byte("#EXTM3U\n"))
+			return
+		}
+		http.Error(w, "guide unavailable", http.StatusBadGateway)
+	}))
+	t.Cleanup(server.Close)
+	settings := model.ProviderSettings{
+		ID:          model.ProviderDistroTV,
+		MinChannels: 1,
+		M3UURL:      server.URL + "/playlist",
+		EPGURL:      server.URL + "/guide",
+	}
+	reader := published.New(published.Source{ID: model.ProviderDistroTV, EPGGzip: true}, settings, httpx.NewClient(time.Second, 1))
+	registry := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: reader},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
+	)
+	feed, _ := registry.Feed(model.ProviderDistroTV)
+	old := provider.Lineup{
+		Channels:     []model.Channel{{NormalizedID: "old"}},
+		ChannelCount: 1,
+		FetchedAt:    time.Now().Add(-time.Hour),
+	}
+	feed.Set(old)
+	cc := cache.New(t.TempDir())
+	oldRaw := provider.Raw{
+		published.RawPlaylist:  []byte("OLD-PLAYLIST"),
+		published.RawGuideGzip: []byte("OLD-GUIDE"),
+	}
+	if err := cc.CommitProvider(model.ProviderDistroTV, oldRaw, cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML"), provider.Meta{}); err != nil {
+		t.Fatal(err)
+	}
+
+	refresher := &providerRefresher{feed: feed, cache: cc}
+	if err := refresher.Refresh(context.Background()); err == nil {
+		t.Fatal("guide fetch failure should fail refresh")
+	}
+	if got := feed.Lineup(); len(got.Channels) != 1 || got.Channels[0].NormalizedID != "old" {
+		t.Fatalf("last-good feed changed: %+v", got)
+	}
+	raw, err := cc.ReadRaw(model.ProviderDistroTV)
+	if err != nil || string(raw[published.RawPlaylist]) != "OLD-PLAYLIST" || string(raw[published.RawGuideGzip]) != "OLD-GUIDE" {
+		t.Fatalf("last-good generation changed: raw=%q err=%v", raw, err)
 	}
 }
 

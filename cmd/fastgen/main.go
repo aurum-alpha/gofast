@@ -15,10 +15,13 @@ import (
 	"github.com/j27-aurum/gofast/internal/httpx"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
+	"github.com/j27-aurum/gofast/internal/provider/distrotv"
 	"github.com/j27-aurum/gofast/internal/provider/lg"
+	"github.com/j27-aurum/gofast/internal/provider/localnow"
 	"github.com/j27-aurum/gofast/internal/provider/pluto"
 	"github.com/j27-aurum/gofast/internal/provider/roku"
 	"github.com/j27-aurum/gofast/internal/provider/samsung"
+	"github.com/j27-aurum/gofast/internal/provider/xumo"
 	"github.com/j27-aurum/gofast/internal/refresh"
 	"github.com/j27-aurum/gofast/internal/run"
 	"github.com/j27-aurum/gofast/internal/server"
@@ -89,10 +92,20 @@ func main() {
 
 func knownProviderReaders(settings map[model.ProviderID]model.ProviderSettings, client *httpx.Client) map[model.ProviderID]provider.Reader {
 	readers := map[model.ProviderID]provider.Reader{}
+	if s := settings[model.ProviderDistroTV]; s.IsEnabled() {
+		readers[model.ProviderDistroTV] = distrotv.New(s, client)
+	} else {
+		slog.Info("provider disabled", "id", model.ProviderDistroTV)
+	}
 	if s := settings[model.ProviderLG]; s.IsEnabled() {
 		readers[model.ProviderLG] = lg.New(s, client)
 	} else {
 		slog.Info("provider disabled", "id", model.ProviderLG)
+	}
+	if s := settings[model.ProviderLocalNow]; s.IsEnabled() {
+		readers[model.ProviderLocalNow] = localnow.New(s, client)
+	} else {
+		slog.Info("provider disabled", "id", model.ProviderLocalNow)
 	}
 	if s := settings[model.ProviderPluto]; s.IsEnabled() {
 		readers[model.ProviderPluto] = pluto.New(s, client)
@@ -109,18 +122,29 @@ func knownProviderReaders(settings map[model.ProviderID]model.ProviderSettings, 
 	} else {
 		slog.Info("provider disabled", "id", model.ProviderSamsung)
 	}
+	if s := settings[model.ProviderXumo]; s.IsEnabled() {
+		readers[model.ProviderXumo] = xumo.New(s, client)
+	} else {
+		slog.Info("provider disabled", "id", model.ProviderXumo)
+	}
 	return readers
 }
 
 func knownProviderSettings(overlays map[model.ProviderID]model.ProviderSettings) map[model.ProviderID]model.ProviderSettings {
+	distroTVOverlay, distroTVConfigured := overlays[model.ProviderDistroTV]
+	localNowOverlay, localNowConfigured := overlays[model.ProviderLocalNow]
 	plutoOverlay, plutoConfigured := overlays[model.ProviderPluto]
 	rokuOverlay, rokuConfigured := overlays[model.ProviderRoku]
 	samsungOverlay, samsungConfigured := overlays[model.ProviderSamsung]
+	xumoOverlay, xumoConfigured := overlays[model.ProviderXumo]
 	return map[model.ProviderID]model.ProviderSettings{
-		model.ProviderLG:      lg.DefaultSettings().Merge(overlays[model.ProviderLG]),
-		model.ProviderPluto:   pluto.DefaultSettings().MergeConfigured(plutoOverlay, plutoConfigured),
-		model.ProviderRoku:    roku.DefaultSettings().MergeConfigured(rokuOverlay, rokuConfigured),
-		model.ProviderSamsung: samsung.DefaultSettings().MergeConfigured(samsungOverlay, samsungConfigured),
+		model.ProviderDistroTV: distrotv.DefaultSettings().MergeConfigured(distroTVOverlay, distroTVConfigured),
+		model.ProviderLG:       lg.DefaultSettings().Merge(overlays[model.ProviderLG]),
+		model.ProviderLocalNow: localnow.DefaultSettings().MergeConfigured(localNowOverlay, localNowConfigured),
+		model.ProviderPluto:    pluto.DefaultSettings().MergeConfigured(plutoOverlay, plutoConfigured),
+		model.ProviderRoku:     roku.DefaultSettings().MergeConfigured(rokuOverlay, rokuConfigured),
+		model.ProviderSamsung:  samsung.DefaultSettings().MergeConfigured(samsungOverlay, samsungConfigured),
+		model.ProviderXumo:     xumo.DefaultSettings().MergeConfigured(xumoOverlay, xumoConfigured),
 	}
 }
 

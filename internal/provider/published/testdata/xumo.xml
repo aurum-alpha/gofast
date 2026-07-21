@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="99991247"/>
+  <channel id="99951517"/>
+  <programme channel="99991247" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>NBC News</title>
+  </programme>
+  <programme channel="99951517" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>ABC News</title>
+  </programme>
+</tv>

@@ -1,0 +1,5 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="LN_NEWS" tvg-name="Local News" tvg-logo="https://image.example/local.png" group-title="LocalNow🇺🇸: My City",Local News
+https://stream.example/local-news/master.m3u8
+#EXTINF:-1 tvg-id="LN_WEATHER" tvg-name="Local Weather" group-title="Weather",Local Weather
+https://stream.example/local-weather/master.m3u8

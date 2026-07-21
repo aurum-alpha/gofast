@@ -28,8 +28,8 @@ logging:
 # customizes the settings of a known provider — offsets, exclusions, enabled,
 # URL overrides, etc. It cannot add a provider without shipping Go: ids with no
 # implementation are ignored at startup (a warning is logged). Pluto, Samsung,
-# and Roku are implemented through the shared i.mjh.nz adapter and run only
-# when their provider block is present.
+# and Roku use i.mjh.nz; Xumo, DistroTV, and LocalNow consume published
+# M3U/XMLTV pairs. These providers run only when their block is present.
 #
 # Copy this file to /data/config.yaml (or your bind mount). Keys are stable provider ids.
 # Set enabled: false to disable. Omitted "enabled" = true. Any setting you omit
@@ -74,8 +74,10 @@ providers:
     refresh_interval: 6h
 
   xumo:
+    enabled: true
     label: Xumo
-    # No upstream tvg-chno — persisted id→number map starts at this base.
+    # No upstream tvg-chno. J27-19 will persist first-seen id→number assignments
+    # from this base; this adapter intentionally does not assign drifting numbers.
     synthesize_channel_numbers: 5000
     min_channels: 100
     refresh_interval: 6h
@@ -84,18 +86,25 @@ providers:
     # epg_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_epg.xml.gz
 
   distrotv:
+    enabled: true
     label: DistroTV
     synthesize_channel_numbers: 6000
     min_channels: 50
     refresh_interval: 6h
+    # URLs default in the adapter; override only if upstream moves:
+    # m3u_url: https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.m3u
+    # epg_url: https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.xml.gz
 
   localnow:
+    enabled: true
     label: LocalNow
     synthesize_channel_numbers: 7000
     min_channels: 10
     refresh_interval: 6h
     # apsattv may 403 datacenter IPs / non-browser UAs.
     user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    # m3u_url: https://www.apsattv.com/localnow.m3u
+    # epg_url: https://raw.githubusercontent.com/BuddyChewChew/localnow-playlist-generator/refs/heads/main/epg.xml
 
 # proxy_base_url / proxy_all, logo TLS, and health knobs are added in the
 # same PRs that implement those features — not ahead of time.
