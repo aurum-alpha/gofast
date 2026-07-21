@@ -11,13 +11,13 @@ import (
 
 // Channel is a lineup entry after provider fetch (+ optional classify).
 type Channel struct {
-	Provider  string `json:"provider"`
-	ID        string `json:"id"` // upstream id before Normalize
-	Name      string `json:"name"`
-	Group     string `json:"group"`
-	Number    int    `json:"number"` // provider's upstream channel number
-	StreamURL string `json:"stream_url"`
-	LogoURL   string `json:"logo_url,omitempty"`
+	Provider  ProviderID `json:"provider"`
+	ID        string     `json:"id"` // upstream id before Normalize
+	Name      string     `json:"name"`
+	Group     string     `json:"group"`
+	Number    int        `json:"number"` // provider's upstream channel number
+	StreamURL string     `json:"stream_url"`
+	LogoURL   string     `json:"logo_url,omitempty"`
 
 	// OffsetNumber is Number + provider channel_number_offset (export / tvg-chno / lcn).
 	// Zero when the upstream had no number (synthesize path handles it later).
@@ -36,7 +36,7 @@ type Channel struct {
 // MatchesExclusion reports whether any compiled regex matches stream URL, provider id, or name.
 // Patterns are expected already compiled with (?i) as config does at load.
 func (c Channel) MatchesExclusion(regexes []*regexp.Regexp) (matched bool, reason string) {
-	haystacks := []string{c.StreamURL, c.Provider, c.ID, c.Name, c.NormalizedID}
+	haystacks := []string{c.StreamURL, string(c.Provider), c.ID, c.Name, c.NormalizedID}
 	for _, re := range regexes {
 		if re == nil {
 			continue

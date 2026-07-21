@@ -11,6 +11,11 @@
 
 listen: ":8180"
 # base_url: "http://192.168.1.50:8180"
+# data_dir holds runtime data. fastgen generates its served artifacts under
+# {data_dir}/cache (per-provider raw + playlist.m3u/guide.xml/meta.json, plus the
+# combined playlist.m3u/epg.xml). Put it on a persistent volume/bind mount so the
+# last-known-good survives restarts and a fresh boot decides whether to refresh
+# from each provider's cached timestamp.
 data_dir: /data
 
 timeouts:

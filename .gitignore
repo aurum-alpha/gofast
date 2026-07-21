@@ -1,2 +1,4 @@
 /bin/
 web/node_modules/
+# Generated runtime artifacts (docker-compose bind mount for local viewing).
+/cache/

@@ -126,7 +126,7 @@ func TestNewExampleConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"lg", "pluto", "samsung", "roku", "xumo", "distrotv", "localnow"}
+	want := []model.ProviderID{"lg", "pluto", "samsung", "roku", "xumo", "distrotv", "localnow"}
 	if len(cfg.Providers) != len(want) {
 		t.Fatalf("example providers: got %d want %d", len(cfg.Providers), len(want))
 	}

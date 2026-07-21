@@ -32,7 +32,7 @@ func TestProviderJSONRoundTrip(t *testing.T) {
 }
 
 func TestListProvidersSetsID(t *testing.T) {
-	list := ListProviders(map[string]ProviderSettings{
+	list := ListProviders(map[ProviderID]ProviderSettings{
 		"b": {Label: "B"},
 		"a": {Label: "A"},
 	})

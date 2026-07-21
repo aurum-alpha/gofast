@@ -2,10 +2,12 @@
 package lg
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -29,6 +31,7 @@ type Client struct {
 	settings model.ProviderSettings
 	client   *httpx.Client
 	url      string
+	raw      provider.RawWriter // optional debug archive of the raw upstream body
 }
 
 // DefaultSettings returns LG's built-in defaults. A YAML providers.lg block is
@@ -45,8 +48,10 @@ func DefaultSettings() model.ProviderSettings {
 	return s
 }
 
-// New constructs an LG client from its effective settings.
-func New(settings model.ProviderSettings, client *httpx.Client) *Client {
+// New constructs an LG client from its effective settings. raw is optional: when
+// set, each successful fetch archives the raw upstream body via raw.WriteRaw
+// (a debug backup); the in-memory pipeline is unchanged.
+func New(settings model.ProviderSettings, client *httpx.Client, raw provider.RawWriter) *Client {
 	if client == nil {
 		client = httpx.NewClient(0, 0)
 	}
@@ -54,7 +59,7 @@ func New(settings model.ProviderSettings, client *httpx.Client) *Client {
 	if u == "" {
 		u = defaultURL
 	}
-	return &Client{settings: settings, client: client, url: u}
+	return &Client{settings: settings, client: client, url: u, raw: raw}
 }
 
 func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error) {
@@ -81,14 +86,26 @@ func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme,
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return nil, nil, fmt.Errorf("lg: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
-	return ParseSchedule(resp.Body)
+
+	// Read the body once so we can archive the raw bytes (the canonical upstream
+	// snapshot, re-parsed on boot) and still parse from them. The cache owns the
+	// write; this adapter just hands it over.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	if c.raw != nil {
+		if err := c.raw.WriteRaw(c.settings.ID, body); err != nil {
+			slog.Warn("lg: raw archive failed", "err", err)
+		}
+	}
+	return c.Parse(body)
 }
 
-func (c *Client) ID() string {
-	if c.settings.ID != "" {
-		return c.settings.ID
-	}
-	return "lg"
+// Parse decodes raw schedulelist bytes into channels/programmes (no network),
+// so a cached raw response can be re-loaded on boot like a fresh fetch.
+func (c *Client) Parse(raw []byte) ([]model.Channel, []model.Programme, error) {
+	return ParseSchedule(bytes.NewReader(raw))
 }
 
 // ParseSchedule decodes an LG schedulelist JSON document.

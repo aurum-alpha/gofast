@@ -6,24 +6,13 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
-// fakeReader is a test double with fixed channels/programmes.
-type fakeReader struct {
-	id         string
-	Channels   []model.Channel
-	Programmes []model.Programme
-	Err        error
+// fakeReader is a minimal Reader used to create enabled feeds in tests.
+type fakeReader struct{}
+
+func (fakeReader) Fetch(context.Context) ([]model.Channel, []model.Programme, error) {
+	return nil, nil, nil
 }
 
-func (f *fakeReader) ID() string { return f.id }
-
-func (f *fakeReader) Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	if f.Err != nil {
-		return nil, nil, f.Err
-	}
-	chs := append([]model.Channel(nil), f.Channels...)
-	progs := append([]model.Programme(nil), f.Programmes...)
-	return chs, progs, nil
+func (fakeReader) Parse([]byte) ([]model.Channel, []model.Programme, error) {
+	return nil, nil, nil
 }

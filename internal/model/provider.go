@@ -18,7 +18,7 @@ import (
 // refresh_interval as a Go duration string and enabled as a resolved bool.
 type ProviderSettings struct {
 	// ID is the map key (providers.<id>). Not present inside the YAML block.
-	ID string `yaml:"-" json:"id"`
+	ID ProviderID `yaml:"-" json:"id"`
 
 	Enabled *bool `yaml:"enabled" json:"-"` // see MarshalJSON; omitted enabled = true
 
@@ -54,7 +54,7 @@ type ProviderSettings struct {
 
 // providerSettingsJSON is the explicit JSON wire shape for ProviderSettings.
 type providerSettingsJSON struct {
-	ID                       string            `json:"id"`
+	ID                       ProviderID        `json:"id"`
 	Enabled                  bool              `json:"enabled"`
 	Label                    string            `json:"label"`
 	ChannelNumberOffset      int               `json:"channel_number_offset"`
@@ -214,12 +214,12 @@ type ProviderList struct {
 }
 
 // ListProviders returns providers sorted by id, with ID set from each map key.
-func ListProviders(byID map[string]ProviderSettings) ProviderList {
-	ids := make([]string, 0, len(byID))
+func ListProviders(byID map[ProviderID]ProviderSettings) ProviderList {
+	ids := make([]ProviderID, 0, len(byID))
 	for id := range byID {
 		ids = append(ids, id)
 	}
-	sort.Strings(ids)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	out := make([]ProviderSettings, 0, len(ids))
 	for _, id := range ids {
 		p := byID[id]

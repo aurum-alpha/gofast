@@ -26,12 +26,12 @@ const (
 
 // Config is the configuration surface for fastgen.
 type Config struct {
-	Listen    string                            `yaml:"listen"`
-	BaseURL   string                            `yaml:"base_url"`
-	DataDir   string                            `yaml:"data_dir"`
-	Timeouts  Timeouts                          `yaml:"timeouts"`
-	Logging   Logging                           `yaml:"logging"`
-	Providers map[string]model.ProviderSettings `yaml:"providers"`
+	Listen    string                                      `yaml:"listen"`
+	BaseURL   string                                      `yaml:"base_url"`
+	DataDir   string                                      `yaml:"data_dir"`
+	Timeouts  Timeouts                                    `yaml:"timeouts"`
+	Logging   Logging                                     `yaml:"logging"`
+	Providers map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
 }
 
 // Timeouts holds outbound and request-bound durations.

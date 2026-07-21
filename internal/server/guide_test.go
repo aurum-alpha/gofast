@@ -8,31 +8,31 @@ import (
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/model"
+	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/server"
-	"github.com/j27-aurum/gofast/internal/snapshot"
 )
 
-func guideStore(t *testing.T) *snapshot.Store {
-	t.Helper()
-	store := snapshot.NewStore()
+func guideReg() *provider.Registry {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	store.Put(snapshot.Snapshot{
-		ProviderID: "lg",
-		Label:      "LG",
-		Channels: []model.Channel{
-			{Provider: "lg", ID: "news", NormalizedID: "news", Name: "News", OffsetNumber: 1005, StreamURL: "https://s"},
-			{Provider: "lg", ID: "drop", NormalizedID: "drop", Name: "Bad", StreamURL: "https://x", Excluded: true},
+	return regWith(
+		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG"}},
+		map[model.ProviderID]provider.Lineup{
+			"lg": {
+				Channels: []model.Channel{
+					{Provider: "lg", ID: "news", NormalizedID: "news", Name: "News", OffsetNumber: 1005, StreamURL: "https://s"},
+					{Provider: "lg", ID: "drop", NormalizedID: "drop", Name: "Bad", StreamURL: "https://x", Excluded: true},
+				},
+				Programmes: []model.Programme{
+					{ChannelID: "news", Title: "Morning", Start: start, Stop: start.Add(time.Hour)},
+					{ChannelID: "drop", Title: "Hidden", Start: start, Stop: start.Add(time.Hour)},
+				},
+			},
 		},
-		Programmes: []model.Programme{
-			{ChannelID: "news", Title: "Morning", Start: start, Stop: start.Add(time.Hour)},
-			{ChannelID: "drop", Title: "Hidden", Start: start, Stop: start.Add(time.Hour)},
-		},
-	})
-	return store
+	)
 }
 
 func TestGuideXMLAggregate(t *testing.T) {
-	h := server.GuideXML(guideStore(t))
+	h := server.GuideXML(guideReg())
 
 	// Default: export-only, provider-namespaced ids.
 	rec := httptest.NewRecorder()
@@ -67,19 +67,18 @@ func TestGuideXMLAggregate(t *testing.T) {
 }
 
 func TestGuideProviderXML(t *testing.T) {
-	store := guideStore(t)
-	h := server.GuideProviderXML(store)
+	h := server.GuideProviderXML(guideReg())
 
-	serve := func(target string) *httptest.ResponseRecorder {
+	serve := func(file string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, target, nil)
-		req.SetPathValue("file", strings.TrimPrefix(target, "/api/guide/"))
+		req := httptest.NewRequest(http.MethodGet, "/api/guide/"+file, nil)
+		req.SetPathValue("file", file)
 		h.ServeHTTP(rec, req)
 		return rec
 	}
 
 	// Known provider: bare ids (no provider prefix).
-	rec := serve("/api/guide/lg.xml")
+	rec := serve("lg.xml")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
@@ -89,16 +88,10 @@ func TestGuideProviderXML(t *testing.T) {
 	}
 
 	// Unknown provider and non-.xml suffix are both 404.
-	if rec := serve("/api/guide/nope.xml"); rec.Code != http.StatusNotFound {
+	if rec := serve("nope.xml"); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown provider: want 404, got %d", rec.Code)
 	}
-	{
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/guide/lg", nil)
-		req.SetPathValue("file", "lg")
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf("non-.xml: want 404, got %d", rec.Code)
-		}
+	if rec := serve("lg"); rec.Code != http.StatusNotFound {
+		t.Fatalf("non-.xml: want 404, got %d", rec.Code)
 	}
 }

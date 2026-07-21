@@ -1,96 +1,63 @@
 package provider
 
 import (
-	"context"
-	"errors"
-	"regexp"
 	"testing"
 
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
 func TestRegistryOnlyWiredReadersAreEnabled(t *testing.T) {
-	// settings covers all known ids (enabled + disabled); readers holds only the
-	// enabled ones — enable/disable is decided in the bootstrap, not the registry.
-	settings := map[string]model.ProviderSettings{
-		"lg":    {Label: "LG"},
-		"pluto": {Label: "Pluto"},
+	// settings covers all known ids; readers holds only the enabled ones.
+	settings := map[model.ProviderID]model.ProviderSettings{
+		"lg":    {ID: "lg", Label: "LG"},
+		"pluto": {ID: "pluto", Label: "Pluto"},
 	}
-	readers := map[string]Reader{
-		"lg": &fakeReader{id: "lg", Channels: []model.Channel{{ID: "1", Name: "One", StreamURL: "https://x"}}},
-	}
-	reg := NewRegistry(readers, settings)
+	reg := NewRegistry(map[model.ProviderID]Reader{"lg": fakeReader{}}, settings)
+
 	ids := reg.IDs()
 	if len(ids) != 1 || ids[0] != "lg" {
-		t.Fatalf("ids: %v", ids)
+		t.Fatalf("enabled ids: %v", ids)
+	}
+	// Disabled/unwired provider still has settings and appears in the API list.
+	if reg.Settings("pluto").Label != "Pluto" {
+		t.Fatalf("settings should be retained: %+v", reg.Settings("pluto"))
+	}
+	if len(reg.Providers().Providers) != 2 {
+		t.Fatalf("all known providers should be listed: %+v", reg.Providers())
+	}
+	if _, ok := reg.Feed("pluto"); ok {
+		t.Fatal("disabled provider should have no feed")
 	}
 }
 
-func TestRegistryOmitsProvidersWithoutReader(t *testing.T) {
-	settings := map[string]model.ProviderSettings{"lg": {Label: "LG"}}
-	reg := NewRegistry(map[string]Reader{}, settings)
-	if len(reg.IDs()) != 0 {
-		t.Fatalf("expected no enabled readers, got %v", reg.IDs())
-	}
-	// Settings are still available for the API/logs even without a reader.
-	if reg.Settings("lg").Label != "LG" {
-		t.Fatalf("settings should be retained: %+v", reg.Settings("lg"))
+func TestRegistryChannelsMergeAndSort(t *testing.T) {
+	settings := map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg"}}
+	reg := NewRegistry(map[model.ProviderID]Reader{"lg": fakeReader{}}, settings)
+	f, _ := reg.Feed("lg")
+	f.Set(Lineup{Channels: []model.Channel{
+		{Provider: "lg", NormalizedID: "b", OffsetNumber: 2},
+		{Provider: "lg", NormalizedID: "a", OffsetNumber: 1},
+	}})
+
+	chs := reg.Channels()
+	if len(chs) != 2 || chs[0].NormalizedID != "a" || chs[1].NormalizedID != "b" {
+		t.Fatalf("merged+sorted channels: %+v", chs)
 	}
 }
 
-func TestFakeRoundTripFetchAll(t *testing.T) {
-	re := regexp.MustCompile("(?i)dinospluto-lgus")
-	settings := map[string]model.ProviderSettings{
-		"lg": {
-			Label:               "LG",
-			ChannelNumberOffset: 1000,
-			Exclusions:          []string{"dinospluto-lgus"},
-			ExclusionRegexes:    []*regexp.Regexp{re},
-		},
-	}
-	fake := &fakeReader{
-		id: "lg",
-		Channels: []model.Channel{
-			{ID: "dtv_EPGACE TV", Name: "Good", Number: 5, StreamURL: "https://ok/stream"},
-			{ID: "junk", Name: "Bad", StreamURL: "https://cdn/dinospluto-lgus/x"},
-		},
-		Programmes: []model.Programme{
-			{ChannelID: "dtv_EPGACE_TV", Title: "Show"},
-		},
-	}
-	reg := NewRegistry(map[string]Reader{"lg": fake}, settings)
-	results := reg.FetchAll(context.Background())
-	if len(results) != 1 {
-		t.Fatalf("results: %d", len(results))
-	}
-	res := results[0]
-	if res.Err != nil {
-		t.Fatal(res.Err)
-	}
-	if len(res.Channels) != 2 {
-		t.Fatalf("channels: %d", len(res.Channels))
-	}
-	good, bad := res.Channels[0], res.Channels[1]
-	if good.NormalizedID != "dtv_EPGACE_TV" || good.Number != 5 || good.OffsetNumber != 1005 || good.Excluded {
-		t.Fatalf("good: %+v", good)
-	}
-	if !bad.Excluded {
-		t.Fatalf("bad should be excluded: %+v", bad)
-	}
-	if len(res.Programmes) != 1 {
-		t.Fatalf("programmes: %d", len(res.Programmes))
-	}
-}
+func TestFeedAccessorsReturnCopies(t *testing.T) {
+	settings := map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG"}}
+	reg := NewRegistry(map[model.ProviderID]Reader{"lg": fakeReader{}}, settings)
+	f, _ := reg.Feed("lg")
+	f.Set(Lineup{Channels: []model.Channel{{NormalizedID: "a"}}})
 
-func TestFetchAllRecordsProviderError(t *testing.T) {
-	settings := map[string]model.ProviderSettings{"lg": {Label: "LG"}}
-	readers := map[string]Reader{
-		"lg": &fakeReader{id: "lg", Err: errors.New("upstream down")},
+	got := f.Channels()
+	got[0].NormalizedID = "mutated"
+	if f.Channels()[0].NormalizedID != "a" {
+		t.Fatal("Channels() must return a copy")
 	}
-	reg := NewRegistry(readers, settings)
-	res := reg.FetchAll(context.Background())
-	if len(res) != 1 || res[0].Err == nil {
-		t.Fatalf("%+v", res)
+	if f.ID() != "lg" || f.Label() != "LG" {
+		t.Fatalf("meta: id=%q label=%q", f.ID(), f.Label())
 	}
 }
 

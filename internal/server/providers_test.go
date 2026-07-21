@@ -1,4 +1,4 @@
-package server
+package server_test
 
 import (
 	"encoding/json"
@@ -7,13 +7,16 @@ import (
 	"testing"
 
 	"github.com/j27-aurum/gofast/internal/model"
+	"github.com/j27-aurum/gofast/internal/provider"
+	"github.com/j27-aurum/gofast/internal/server"
 )
 
 func TestProvidersAPI(t *testing.T) {
-	settings := map[string]model.ProviderSettings{
-		"lg": {Label: "LG", MinChannels: 50},
-	}
-	h := ProvidersHandler(settings)
+	reg := regWith(
+		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG", MinChannels: 50}},
+		map[model.ProviderID]provider.Lineup{},
+	)
+	h := server.ProvidersHandler(reg)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
 	rec := httptest.NewRecorder()

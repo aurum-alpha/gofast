@@ -1,25 +1,35 @@
 package server
 
 import (
+	"errors"
+	"io/fs"
 	"net/http"
 	"strings"
 
-	"github.com/j27-aurum/gofast/internal/snapshot"
+	"github.com/j27-aurum/gofast/internal/cache"
+	"github.com/j27-aurum/gofast/internal/model"
 )
 
-// PlaylistFile serves GET /{provider}.m3u and GET /{provider}.xml from the snapshot store.
-// Go's ServeMux wildcards must end at '}' so we match /{file} and strip the suffix.
-// This single-segment pattern also catches SPA routes (e.g. /guide) on a hard
-// reload, so non-playlist paths are delegated to fallback (the embedded UI),
-// which serves index.html for client-side routing. A nil fallback yields 404.
-func PlaylistFile(store *snapshot.Store, fallback http.Handler) http.HandlerFunc {
+const (
+	mimeM3U = "application/vnd.apple.mpegurl"
+	mimeXML = "application/xml; charset=utf-8"
+)
+
+// PlaylistFile serves GET /{provider}.m3u and GET /{provider}.xml by reading the
+// cache. Go's ServeMux wildcards must end at '}' so we match /{file} and strip
+// the suffix. This single-segment pattern also catches SPA routes (e.g. /guide)
+// on a hard reload, so non-playlist paths are delegated to fallback (the embedded
+// UI). A nil fallback yields 404.
+func PlaylistFile(cc *cache.Cache, fallback http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		file := r.PathValue("file")
 		switch {
 		case strings.HasSuffix(file, ".m3u"):
-			writeM3U(w, store, strings.TrimSuffix(file, ".m3u"))
+			data, err := cc.ReadM3U(model.ProviderID(strings.TrimSuffix(file, ".m3u")))
+			serveCache(w, data, err, mimeM3U)
 		case strings.HasSuffix(file, ".xml"):
-			writeXML(w, store, strings.TrimSuffix(file, ".xml"))
+			data, err := cc.ReadXMLTV(model.ProviderID(strings.TrimSuffix(file, ".xml")))
+			serveCache(w, data, err, mimeXML)
 		case fallback != nil:
 			fallback.ServeHTTP(w, r)
 		default:
@@ -28,30 +38,31 @@ func PlaylistFile(store *snapshot.Store, fallback http.Handler) http.HandlerFunc
 	}
 }
 
-func writeM3U(w http.ResponseWriter, store *snapshot.Store, id string) {
-	if id == "" {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
+// AggregatePlaylist serves GET /playlist.m3u (all providers, namespaced ids).
+func AggregatePlaylist(cc *cache.Cache) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := cc.ReadAggregateM3U()
+		serveCache(w, data, err, mimeM3U)
 	}
-	snap, ok := store.Get(id)
-	if !ok || len(snap.M3U) == 0 {
-		http.Error(w, "playlist not ready", http.StatusServiceUnavailable)
-		return
-	}
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	_, _ = w.Write(snap.M3U)
 }
 
-func writeXML(w http.ResponseWriter, store *snapshot.Store, id string) {
-	if id == "" {
-		http.Error(w, "not found", http.StatusNotFound)
+// AggregateGuide serves GET /epg.xml (all providers, namespaced ids).
+func AggregateGuide(cc *cache.Cache) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := cc.ReadAggregateXMLTV()
+		serveCache(w, data, err, mimeXML)
+	}
+}
+
+func serveCache[T ~[]byte](w http.ResponseWriter, data T, err error, contentType string) {
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		http.Error(w, "read error", http.StatusInternalServerError)
 		return
 	}
-	snap, ok := store.Get(id)
-	if !ok || len(snap.XML) == 0 {
-		http.Error(w, "guide not ready", http.StatusServiceUnavailable)
-		return
-	}
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	_, _ = w.Write(snap.XML)
+	w.Header().Set("Content-Type", contentType)
+	_, _ = w.Write([]byte(data))
 }

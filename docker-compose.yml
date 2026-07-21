@@ -8,7 +8,8 @@ services:
     ports:
       - "8180:8180"
     volumes:
-      - fastgen-data:/data
+      # Local bind mount so generated artifacts are viewable in the repo (./cache).
+      - ./cache:/data/cache
       # Seed providers for local smoke; override by replacing the file on the volume.
       - ./config.example.yaml:/data/config.yaml:ro
     environment:
@@ -26,6 +27,3 @@ services:
       - "8181:8181"
     environment:
       PORT: "8181"
-
-volumes:
-  fastgen-data:

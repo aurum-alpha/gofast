@@ -37,3 +37,27 @@ func TestWrite(t *testing.T) {
 		t.Fatalf("sort: %s", out)
 	}
 }
+
+func TestWriteAllNamespacesIDs(t *testing.T) {
+	sources := []m3u.Source{
+		{Provider: "lg", Label: "LG", Channels: []model.Channel{
+			{NormalizedID: "news", Name: "News", OffsetNumber: 1005, StreamURL: "https://s"},
+		}},
+	}
+
+	var bare bytes.Buffer
+	if err := m3u.WriteAll(&bare, sources, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(bare.String(), `tvg-id="news"`) || strings.Contains(bare.String(), "lg.news") {
+		t.Fatalf("bare: %s", bare.String())
+	}
+
+	var ns bytes.Buffer
+	if err := m3u.WriteAll(&ns, sources, true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ns.String(), `tvg-id="lg.news"`) {
+		t.Fatalf("namespaced: %s", ns.String())
+	}
+}

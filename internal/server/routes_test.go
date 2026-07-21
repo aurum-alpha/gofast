@@ -5,20 +5,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/server"
-	"github.com/j27-aurum/gofast/internal/snapshot"
 )
 
 // Ensures production route registration does not panic on ServeMux conflicts
 // (method-specific wildcards vs unscoped /healthz).
 func TestHandlerRouteRegistration(t *testing.T) {
-	store := snapshot.NewStore()
+	cc := cache.New(t.TempDir())
 	s := &server.Server{
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
-			mux.HandleFunc("GET /{file}", server.PlaylistFile(store, nil))
+			mux.HandleFunc("GET /{file}", server.PlaylistFile(cc, nil))
 			mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}))

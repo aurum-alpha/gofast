@@ -192,7 +192,7 @@ func TestMergeOverlaysSetFieldsOnly(t *testing.T) {
 
 func TestMergeProviders(t *testing.T) {
 	cfg := defaults()
-	cfg.Providers = map[string]model.ProviderSettings{"keep": {Label: "Keep"}}
+	cfg.Providers = map[model.ProviderID]model.ProviderSettings{"keep": {Label: "Keep"}}
 
 	cfg.merge(&Config{}) // Providers nil → keep base
 	if _, ok := cfg.Providers["keep"]; !ok {
@@ -200,7 +200,7 @@ func TestMergeProviders(t *testing.T) {
 	}
 
 	cfg.merge(&Config{
-		Providers: map[string]model.ProviderSettings{"lg": {Label: "LG"}},
+		Providers: map[model.ProviderID]model.ProviderSettings{"lg": {Label: "LG"}},
 	})
 	if len(cfg.Providers) != 1 || cfg.Providers["lg"].Label != "LG" {
 		t.Fatalf("non-nil Providers must replace: %+v", cfg.Providers)
@@ -209,7 +209,7 @@ func TestMergeProviders(t *testing.T) {
 		t.Fatal("replaced map must not keep old keys")
 	}
 
-	cfg.merge(&Config{Providers: map[string]model.ProviderSettings{}})
+	cfg.merge(&Config{Providers: map[model.ProviderID]model.ProviderSettings{}})
 	if cfg.Providers == nil || len(cfg.Providers) != 0 {
 		t.Fatalf("empty Providers map must replace with empty: %+v", cfg.Providers)
 	}
