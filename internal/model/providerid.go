@@ -10,4 +10,10 @@ type ProviderID string
 const (
 	// ProviderLG is the LG Channels US provider.
 	ProviderLG ProviderID = "lg"
+	// ProviderPluto is the Pluto TV US provider.
+	ProviderPluto ProviderID = "pluto"
+	// ProviderRoku is the Roku Channel provider.
+	ProviderRoku ProviderID = "roku"
+	// ProviderSamsung is the Samsung TV Plus US provider.
+	ProviderSamsung ProviderID = "samsung"
 )

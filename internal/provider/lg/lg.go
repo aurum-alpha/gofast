@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	defaultURL = "https://api.lgchannels.com/api/v1.0/schedulelist"
-	chromeUA   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	defaultURL  = "https://api.lgchannels.com/api/v1.0/schedulelist"
+	chromeUA    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	rawSchedule = "schedule.json"
 )
 
 var _ provider.Reader = (*Client)(nil)
@@ -59,7 +60,7 @@ func New(settings model.ProviderSettings, client *httpx.Client) *Client {
 }
 
 // Fetch returns the exact provider-native response body.
-func (c *Client) Fetch(ctx context.Context) ([]byte, error) {
+func (c *Client) Fetch(ctx context.Context) (provider.Raw, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
 		return nil, err
@@ -88,13 +89,20 @@ func (c *Client) Fetch(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return body, nil
+	return provider.Raw{rawSchedule: body}, nil
 }
 
 // Parse decodes raw schedulelist bytes into channels/programmes (no network),
 // so a cached raw response can be re-loaded on boot like a fresh fetch.
-func (c *Client) Parse(raw []byte) ([]model.Channel, []model.Programme, error) {
-	return ParseSchedule(bytes.NewReader(raw))
+func (c *Client) Parse(raw provider.Raw) ([]model.Channel, []model.Programme, error) {
+	body, ok := raw[rawSchedule]
+	if !ok {
+		body, ok = raw[provider.LegacyRaw]
+	}
+	if !ok {
+		return nil, nil, fmt.Errorf("lg: missing %s", rawSchedule)
+	}
+	return ParseSchedule(bytes.NewReader(body))
 }
 
 // ParseSchedule decodes an LG schedulelist JSON document.

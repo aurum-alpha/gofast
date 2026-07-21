@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <programme channel="samsung-news" start="20260721010000 +0000" stop="20260721013000 +0000">
+    <title>Samsung Headlines</title>
+  </programme>
+  <programme channel="samsung-drm" start="20260721010000 +0000" stop="20260721020000 +0000">
+    <title>Encrypted Movie</title>
+  </programme>
+</tv>

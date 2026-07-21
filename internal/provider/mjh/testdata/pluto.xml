@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv>
+<tv>
+  <channel id="pluto-news"><display-name>Pluto News</display-name></channel>
+  <programme channel="pluto-news" start="20260721010000 +0000" stop="20260721020000 +0000">
+    <title>Pluto Headlines</title>
+    <desc>Top stories</desc>
+    <icon src="https://img.example/programme.jpg"/>
+  </programme>
+</tv>

@@ -100,8 +100,8 @@ Follow [12factor.net/config](https://12factor.net/config) (see `AGENTS.md`):
 
 - **Deploy-varying values** → environment. Shared: **`PORT`** (listen) for both gen and proxy. Gen-only: `FASTGEN_BASE_URL`, `FASTGEN_DATA_DIR`. Env always wins.
 - **`FASTGEN_BASE_URL` / `base_url`:** public origin for logos and absolute links as seen by Jellyfin/browsers. Include the port unless on 80/443 (`http://host:8180`); omit port behind TLS reverse proxy (`https://gofast.example.com`). No trailing slash.
-- **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings. Provider *implementations* are code (packages under `internal/provider/<id>` exposing `New` + `DefaultSettings`, wired into a `map[id]provider.Reader`); the `providers` block only *overlays settings* for a known provider and cannot add one without shipping Go (unknown ids are ignored/warned). Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.
-- **Generated artifacts** live under `{data_dir}/cache/`, owned entirely by `internal/cache` (the only package that touches disk): per-provider `raw`, `playlist.m3u`, `guide.xml`, `meta.json`, plus the combined `playlist.m3u` + `epg.xml`. fastgen regenerates these only when upstream data changes (a per-provider `refresh.Refresher` on a jittered schedule, plus a single `aggregate.Aggregator` for the combined files) and serves them from disk. On boot it restores each `provider.Feed` from `meta.json` and schedules the next refresh from the persisted timestamp, so a restart resumes rather than restarting the interval. Keep the cache on a persistent volume/bind mount.
+- **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings. Provider *implementations* are code (packages under `internal/provider/<id>` exposing `New` + `DefaultSettings`, wired into a `map[id]provider.Reader`); the `providers` block only *overlays settings* for a known provider and cannot add one without shipping Go (unknown ids are ignored/warned). LG preserves its existing default; MJH providers (Pluto, Samsung, Roku) require their YAML block and may be disabled explicitly. Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.
+- **Generated artifacts** live under `{data_dir}/cache/`, owned entirely by `internal/cache` (the only package that touches disk). Each provider uses immutable generations selected by an atomic `current` pointer. A generation contains `playlist.m3u`, `guide.xml`, lean `meta.json`, and exact upstream payloads under `raw/` (`schedule.json` for LG; `channels.json.gz` + `guide.xml.gz` for MJH). `status.json` remains outside the generation. The combined `playlist.m3u` + `epg.xml` live at the cache root. On boot fastgen reparses the selected raw files, restores classifications/fetch time from metadata, and resumes the refresh interval without a network call. Keep the cache on a persistent volume/bind mount.
 - **Precedence:** code defaults → YAML (if present) → **env**.
 - **Grow config with features:** add proxy / logo TLS / health keys only in the PRs that implement those features; extend `config.example.yaml` there. No standalone ahead-of-time config-layer issues.
 
@@ -129,7 +129,7 @@ cmd/fastgen/
 cmd/fastproxy/
 internal/
   config/ model/ httpx/
-  provider/   # lg first (E2E), then mjh, published-pair
+  provider/   # lg; shared mjh + pluto/samsung/roku; then published-pair
   m3u/ xmltv/ # playlist writers (external formats)
   classifier/
   health/     # M3+

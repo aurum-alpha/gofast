@@ -21,17 +21,19 @@ type failingReader struct {
 	err error
 }
 
-func (r failingReader) Fetch(context.Context) ([]byte, error) { return nil, r.err }
+func (r failingReader) Fetch(context.Context) (provider.Raw, error) { return nil, r.err }
 
-func (failingReader) Parse([]byte) ([]model.Channel, []model.Programme, error) {
+func (failingReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
 	return nil, nil, nil
 }
 
 type staticReader struct{}
 
-func (staticReader) Fetch(context.Context) ([]byte, error) { return []byte("RAW"), nil }
+func (staticReader) Fetch(context.Context) (provider.Raw, error) {
+	return provider.Raw{"fixture": []byte("RAW")}, nil
+}
 
-func (staticReader) Parse([]byte) ([]model.Channel, []model.Programme, error) {
+func (staticReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
 	start := time.Now().UTC()
 	return []model.Channel{{
 			ID:        "news",
@@ -43,6 +45,19 @@ func (staticReader) Parse([]byte) ([]model.Channel, []model.Programme, error) {
 			Start:     start,
 			Stop:      start.Add(time.Hour),
 		}}, nil
+}
+
+func TestApplyClassificationExportDropsDRM(t *testing.T) {
+	got := applyClassificationExport([]model.Channel{
+		{ID: "native", Classification: model.ClassNative},
+		{ID: "drm", Classification: model.ClassDRM, LicenseURL: "https://license.example"},
+	})
+	if got[0].Excluded {
+		t.Fatalf("native channel excluded: %+v", got[0])
+	}
+	if !got[1].Excluded || got[1].FilterReason != "DRM" {
+		t.Fatalf("DRM channel not excluded: %+v", got[1])
+	}
 }
 
 func TestProviderRefresherPublishesAndArchives(t *testing.T) {
@@ -86,19 +101,19 @@ func TestProviderRefresherPublishesAndArchives(t *testing.T) {
 	if status := f.Status(); status.LastError != "" || status.LastAttemptAt.IsZero() {
 		t.Fatalf("successful refresh status: %+v", status)
 	}
-	if raw, err := cc.ReadRaw(model.ProviderLG); err != nil || len(raw) == 0 {
+	if raw, err := cc.ReadRaw(model.ProviderLG); err != nil || len(raw["schedule.json"]) == 0 {
 		t.Fatalf("raw not archived: %d bytes, %v", len(raw), err)
 	}
 }
 
 func TestRefreshFailureKeepsLastGoodAndPersistsStatus(t *testing.T) {
 	fetchErr := errors.New("upstream unavailable")
-	settings := model.ProviderSettings{ID: model.ProviderLG, MinChannels: 1}
+	settings := model.ProviderSettings{ID: model.ProviderPluto, MinChannels: 1}
 	reg := provider.NewRegistry(
-		map[model.ProviderID]provider.Reader{model.ProviderLG: failingReader{err: fetchErr}},
-		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+		map[model.ProviderID]provider.Reader{model.ProviderPluto: failingReader{err: fetchErr}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderPluto: settings},
 	)
-	feed, _ := reg.Feed(model.ProviderLG)
+	feed, _ := reg.Feed(model.ProviderPluto)
 	old := provider.Lineup{
 		Channels:     []model.Channel{{NormalizedID: "old"}},
 		ChannelCount: 1,
@@ -106,6 +121,13 @@ func TestRefreshFailureKeepsLastGoodAndPersistsStatus(t *testing.T) {
 	}
 	feed.Set(old)
 	cc := cache.New(t.TempDir())
+	oldRaw := provider.Raw{
+		"channels.json.gz": []byte("OLD-CHANNELS"),
+		"guide.xml.gz":     []byte("OLD-GUIDE"),
+	}
+	if err := cc.CommitProvider(model.ProviderPluto, oldRaw, cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML"), provider.Meta{}); err != nil {
+		t.Fatal(err)
+	}
 	notified := 0
 	pr := &providerRefresher{feed: feed, cache: cc, notify: func() { notified++ }}
 
@@ -118,11 +140,15 @@ func TestRefreshFailureKeepsLastGoodAndPersistsStatus(t *testing.T) {
 	if notified != 0 {
 		t.Fatalf("notified %d times after failure", notified)
 	}
+	raw, err := cc.ReadRaw(model.ProviderPluto)
+	if err != nil || string(raw["channels.json.gz"]) != "OLD-CHANNELS" || string(raw["guide.xml.gz"]) != "OLD-GUIDE" {
+		t.Fatalf("last-good generation changed: raw=%q err=%v", raw, err)
+	}
 	status := feed.Status()
 	if status.LastAttemptAt.IsZero() || status.LastError != fetchErr.Error() || status.LastErrorAt.IsZero() {
 		t.Fatalf("feed status: %+v", status)
 	}
-	persisted, ok := cc.LoadStatus(model.ProviderLG)
+	persisted, ok := cc.LoadStatus(model.ProviderPluto)
 	if !ok || persisted.LastError != fetchErr.Error() {
 		t.Fatalf("persisted status: %+v ok=%v", persisted, ok)
 	}
@@ -168,7 +194,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 		Classifications: map[string]model.Classification{"ch-news": model.ClassBeacon},
 	}
 	// Channels/programmes are not persisted; Restore re-parses raw.
-	if err := cc.CommitProvider(model.ProviderLG, fixture, nil, nil, meta); err != nil {
+	if err := cc.CommitProvider(model.ProviderLG, provider.Raw{"schedule.json": fixture}, nil, nil, meta); err != nil {
 		t.Fatal(err)
 	}
 	status := provider.Status{

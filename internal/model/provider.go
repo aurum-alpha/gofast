@@ -150,6 +150,16 @@ func (p ProviderSettings) Merge(o ProviderSettings) ProviderSettings {
 	return p
 }
 
+// MergeConfigured applies an optional provider block and resolves enablement.
+// An absent block is disabled; a present block defaults enabled unless it
+// explicitly sets enabled: false.
+func (p ProviderSettings) MergeConfigured(o ProviderSettings, configured bool) ProviderSettings {
+	p = p.Merge(o)
+	enabled := configured && o.IsEnabled()
+	p.Enabled = &enabled
+	return p
+}
+
 // CompileExclusions compiles Exclusions into ExclusionRegexes (case-insensitive).
 func (p *ProviderSettings) CompileExclusions() error {
 	compiled := make([]*regexp.Regexp, 0, len(p.Exclusions))

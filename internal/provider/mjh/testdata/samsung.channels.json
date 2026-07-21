@@ -1,0 +1,22 @@
+{
+  "slug": "stvp-{id}",
+  "headers": {"user-agent": "okhttp/4.12.0"},
+  "regions": {
+    "us": {
+      "channels": {
+        "samsung-news": {
+          "chno": 1110,
+          "name": "Samsung News",
+          "group": "News & Opinion",
+          "logo": "https://img.example/samsung.png"
+        },
+        "samsung-drm": {
+          "chno": "1111",
+          "name": "Samsung DRM",
+          "group": "Movies",
+          "license_url": "https://license.example/widevine"
+        }
+      }
+    }
+  }
+}

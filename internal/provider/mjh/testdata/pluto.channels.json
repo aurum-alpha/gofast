@@ -1,0 +1,17 @@
+{
+  "headers": {"user-agent": "okhttp/4.9.0"},
+  "regions": {
+    "us": {
+      "headers": {"x-region": "us"},
+      "channels": {
+        "pluto-news": {
+          "chno": 5,
+          "name": "Pluto News",
+          "description": "News around the clock",
+          "group": "News",
+          "logo": "https://img.example/pluto.png"
+        }
+      }
+    }
+  }
+}

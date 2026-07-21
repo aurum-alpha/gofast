@@ -12,10 +12,10 @@
 listen: ":8180"
 # base_url: "http://192.168.1.50:8180"
 # data_dir holds runtime data. fastgen generates its served artifacts under
-# {data_dir}/cache (per-provider raw + playlist.m3u/guide.xml/meta.json, plus the
-# combined playlist.m3u/epg.xml). Put it on a persistent volume/bind mount so the
-# last-known-good survives restarts and a fresh boot decides whether to refresh
-# from each provider's cached timestamp.
+# {data_dir}/cache (per-provider atomic generations containing raw/ plus
+# playlist.m3u/guide.xml/meta.json, and combined playlist.m3u/epg.xml at the
+# cache root). Put it on a persistent volume/bind mount so the last-known-good
+# survives restarts and a fresh boot can restore without fetching upstream.
 data_dir: /data
 
 timeouts:
@@ -27,9 +27,9 @@ logging:
 # Provider implementations are code (compiled into the binary). This block only
 # customizes the settings of a known provider — offsets, exclusions, enabled,
 # URL overrides, etc. It cannot add a provider without shipping Go: ids with no
-# implementation are ignored at startup (a warning is logged). Today only "lg"
-# is implemented; the other blocks below are intended overlays kept as
-# documentation for the adapters that land next.
+# implementation are ignored at startup (a warning is logged). Pluto, Samsung,
+# and Roku are implemented through the shared i.mjh.nz adapter and run only
+# when their provider block is present.
 #
 # Copy this file to /data/config.yaml (or your bind mount). Keys are stable provider ids.
 # Set enabled: false to disable. Omitted "enabled" = true. Any setting you omit
@@ -46,6 +46,7 @@ providers:
       - dinospluto-lgus
 
   pluto:
+    enabled: true
     label: Pluto
     region: us
     channel_number_offset: 2000
@@ -55,6 +56,7 @@ providers:
     slug_template: "plu-{id}.m3u8"
 
   samsung:
+    enabled: true
     label: Samsung
     region: us
     channel_number_offset: 3000
@@ -63,6 +65,7 @@ providers:
     # DRM channels (license_url) are dropped by the adapter/classifier.
 
   roku:
+    enabled: true
     label: Roku
     # Regionless mjh shape; slug has no metadata field.
     slug_template: "rok-{id}.m3u8"

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"path"
 	"strings"
@@ -42,10 +43,14 @@ func New(httpClient *httpx.Client, workers int) *Client {
 // Fetch errors classify as NATIVE (never drop on transient failure).
 // Channels already marked DRM are left as DRM without probing.
 func (c *Client) Classify(ctx context.Context, streamURL string) model.Classification {
+	return c.classify(ctx, streamURL, nil)
+}
+
+func (c *Client) classify(ctx context.Context, streamURL string, headers map[string]string) model.Classification {
 	if c == nil {
 		return model.ClassNative
 	}
-	class, err := c.probe(ctx, streamURL)
+	class, err := c.probe(ctx, streamURL, headers)
 	if err != nil {
 		return model.ClassNative
 	}
@@ -79,7 +84,7 @@ func (c *Client) ClassifyChannels(ctx context.Context, channels []model.Channel)
 		go func(i int) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			out[i].Classification = c.Classify(ctx, out[i].StreamURL)
+			out[i].Classification = c.classify(ctx, out[i].StreamURL, out[i].RequestHeaders)
 			logClassified(&out[i], "probed")
 		}(i)
 	}
@@ -99,8 +104,8 @@ func logClassified(ch *model.Channel, via string) {
 	)
 }
 
-func (c *Client) probe(ctx context.Context, streamURL string) (model.Classification, error) {
-	body, finalURL, err := c.fetchPlaylist(ctx, streamURL)
+func (c *Client) probe(ctx context.Context, streamURL string, headers map[string]string) (model.Classification, error) {
+	body, finalURL, err := c.fetchPlaylist(ctx, streamURL, headers)
 	if err != nil {
 		return model.ClassNative, err
 	}
@@ -111,7 +116,7 @@ func (c *Client) probe(ctx context.Context, streamURL string) (model.Classificat
 		if err != nil {
 			return model.ClassNative, err
 		}
-		body, mediaURL, err = c.fetchPlaylist(ctx, resolved)
+		body, mediaURL, err = c.fetchPlaylist(ctx, resolved, headers)
 		if err != nil {
 			return model.ClassNative, err
 		}
@@ -137,8 +142,16 @@ func (c *Client) probe(ctx context.Context, streamURL string) (model.Classificat
 	return model.ClassNative, nil
 }
 
-func (c *Client) fetchPlaylist(ctx context.Context, rawURL string) (body []byte, finalURL string, err error) {
-	resp, err := c.http.RangedGet(ctx, rawURL, 0, playlistRangeEnd)
+func (c *Client) fetchPlaylist(ctx context.Context, rawURL string, headers map[string]string) (body []byte, finalURL string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, rawURL, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", playlistRangeEnd))
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	resp, err := c.http.Do(ctx, req)
 	if err != nil {
 		return nil, rawURL, err
 	}

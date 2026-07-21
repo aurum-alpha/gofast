@@ -135,6 +135,11 @@ func TestNewExampleConfig(t *testing.T) {
 			t.Fatalf("example missing %q", id)
 		}
 	}
+	for _, id := range []model.ProviderID{model.ProviderPluto, model.ProviderSamsung, model.ProviderRoku} {
+		if !cfg.Providers[id].IsEnabled() {
+			t.Fatalf("example %q should be enabled", id)
+		}
+	}
 	if !cfg.Providers["lg"].ExclusionRegexes[0].MatchString("dinospluto-lgus") {
 		t.Fatal("example lg exclusion did not compile")
 	}

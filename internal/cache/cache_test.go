@@ -19,7 +19,7 @@ func TestProviderRoundTrip(t *testing.T) {
 		FetchedAt:       time.Now().UTC().Truncate(time.Second),
 		Classifications: map[string]model.Classification{"a": model.ClassNative, "b": model.ClassDRM},
 	}
-	if err := cc.CommitProvider("lg", []byte("RAW"), cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), meta); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), meta); err != nil {
 		t.Fatal(err)
 	}
 
@@ -29,7 +29,7 @@ func TestProviderRoundTrip(t *testing.T) {
 	if x, err := cc.ReadXMLTV("lg"); err != nil || string(x) != "<tv></tv>" {
 		t.Fatalf("ReadXMLTV: %q %v", x, err)
 	}
-	if raw, err := cc.ReadRaw("lg"); err != nil || string(raw) != "RAW" {
+	if raw, err := cc.ReadRaw("lg"); err != nil || string(raw["schedule.json"]) != "RAW" {
 		t.Fatalf("ReadRaw: %q %v", raw, err)
 	}
 	got, ok := cc.LoadMeta("lg")
@@ -43,12 +43,32 @@ func TestRawRoundTrip(t *testing.T) {
 	if _, err := cc.ReadRaw("lg"); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("missing raw want fs.ErrNotExist, got %v", err)
 	}
-	if err := cc.CommitProvider("lg", []byte("RAW-BYTES"), nil, nil, provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW-BYTES")}, nil, nil, provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := cc.ReadRaw("lg")
-	if err != nil || string(got) != "RAW-BYTES" {
+	if err != nil || string(got["schedule.json"]) != "RAW-BYTES" {
 		t.Fatalf("ReadRaw: %q %v", got, err)
+	}
+}
+
+func TestMultipartRawRoundTrip(t *testing.T) {
+	cc := cache.New(t.TempDir())
+	want := provider.Raw{
+		"channels.json.gz": []byte("CHANNELS"),
+		"guide.xml.gz":     []byte("GUIDE"),
+	}
+	if err := cc.CommitProvider(model.ProviderPluto, want, nil, nil, provider.Meta{}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := cc.ReadRaw(model.ProviderPluto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range want {
+		if string(got[name]) != string(data) {
+			t.Errorf("%s: got %q want %q", name, got[name], data)
+		}
 	}
 }
 
@@ -64,7 +84,7 @@ func TestReadMissingIsNotExist(t *testing.T) {
 
 func TestRawAndAggregateRoundTrip(t *testing.T) {
 	cc := cache.New(t.TempDir())
-	if err := cc.CommitProvider("lg", []byte("RAW"), nil, nil, provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, nil, nil, provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cc.WriteAggregate(cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv/>")); err != nil {
@@ -108,8 +128,42 @@ func TestLegacyFlatLayoutFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _, legacy, err := cache.New(root).LoadProvider("lg")
-	if err != nil || !legacy || string(raw) != "LEGACY" {
+	if err != nil || !legacy || string(raw[provider.LegacyRaw]) != "LEGACY" {
 		t.Fatalf("LoadProvider: raw=%q legacy=%v err=%v", raw, legacy, err)
+	}
+}
+
+func TestSingleRawGenerationLoadsAndNextCommitMigrates(t *testing.T) {
+	root := t.TempDir()
+	generation := filepath.Join(root, "lg", "generations", "old")
+	if err := os.MkdirAll(generation, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		"raw":       "LEGACY",
+		"meta.json": `{}`,
+	} {
+		if err := os.WriteFile(filepath.Join(generation, name), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "lg", "current"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cc := cache.New(root)
+	raw, _, legacyLayout, err := cc.LoadProvider("lg")
+	if err != nil || legacyLayout || string(raw[provider.LegacyRaw]) != "LEGACY" {
+		t.Fatalf("load old generation: raw=%q legacy=%v err=%v", raw, legacyLayout, err)
+	}
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("NEW")}, nil, nil, provider.Meta{}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err = cc.ReadRaw("lg")
+	if err != nil || string(raw["schedule.json"]) != "NEW" {
+		t.Fatalf("migrated raw: %q %v", raw, err)
+	}
+	if _, exists := raw[provider.LegacyRaw]; exists {
+		t.Fatalf("legacy raw remained after commit: %q", raw)
 	}
 }
 
@@ -133,7 +187,7 @@ func TestMalformedCurrentDoesNotFallBackToLegacy(t *testing.T) {
 func TestUnselectedGenerationIsNeverVisible(t *testing.T) {
 	root := t.TempDir()
 	cc := cache.New(root)
-	if err := cc.CommitProvider("lg", []byte("OLD"), cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("OLD")}, cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -153,7 +207,7 @@ func TestUnselectedGenerationIsNeverVisible(t *testing.T) {
 	}
 
 	raw, err := cc.ReadRaw("lg")
-	if err != nil || string(raw) != "OLD" {
+	if err != nil || string(raw["schedule.json"]) != "OLD" {
 		t.Fatalf("uncommitted generation became visible: %q %v", raw, err)
 	}
 	m3u, _ := cc.ReadM3U("lg")
@@ -167,5 +221,13 @@ func TestTraversalRejected(t *testing.T) {
 	cc := cache.New(t.TempDir())
 	if _, err := cc.ReadM3U("../evil"); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("traversal should be rejected as not-exist, got %v", err)
+	}
+	for _, name := range []string{"", "../evil", "dir/file", `dir\file`, ".", ".."} {
+		if err := cc.CommitProvider("lg", provider.Raw{name: []byte("RAW")}, nil, nil, provider.Meta{}); err == nil {
+			t.Errorf("raw filename %q should be rejected", name)
+		}
+	}
+	if err := cc.CommitProvider("lg", nil, nil, nil, provider.Meta{}); err == nil {
+		t.Error("empty raw snapshot should be rejected")
 	}
 }
