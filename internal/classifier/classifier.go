@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"path"
 	"strings"
@@ -65,10 +66,12 @@ func (c *Client) ClassifyChannels(ctx context.Context, channels []model.Channel)
 	var wg sync.WaitGroup
 	for i := range out {
 		if out[i].Classification == model.ClassDRM {
+			logClassified(&out[i], "pre-marked")
 			continue
 		}
 		if out[i].StreamURL == "" {
 			out[i].Classification = model.ClassNative
+			logClassified(&out[i], "no stream")
 			continue
 		}
 		wg.Add(1)
@@ -77,10 +80,23 @@ func (c *Client) ClassifyChannels(ctx context.Context, channels []model.Channel)
 			defer wg.Done()
 			defer func() { <-sem }()
 			out[i].Classification = c.Classify(ctx, out[i].StreamURL)
+			logClassified(&out[i], "probed")
 		}(i)
 	}
 	wg.Wait()
 	return out
+}
+
+// logClassified emits one line per channel showing the probed stream and result.
+func logClassified(ch *model.Channel, via string) {
+	slog.Info("classified",
+		"provider", ch.Provider,
+		"id", ch.NormalizedID,
+		"name", ch.Name,
+		"class", ch.Classification,
+		"via", via,
+		"stream_url", ch.StreamURL,
+	)
 }
 
 func (c *Client) probe(ctx context.Context, streamURL string) (model.Classification, error) {
