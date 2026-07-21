@@ -193,6 +193,7 @@ export function ProviderDetailPage() {
         <dl className="settings-grid">
           <div><dt>Refresh interval</dt><dd>{settings.refresh_interval}</dd></div>
           <div><dt>Channel offset</dt><dd>{settings.channel_number_offset || '—'}</dd></div>
+          <div><dt>Synthetic number base</dt><dd>{settings.synthesize_channel_numbers || '—'}</dd></div>
           <div><dt>Minimum channels</dt><dd>{settings.min_channels}</dd></div>
           <div><dt>Region</dt><dd>{settings.region || '—'}</dd></div>
           <div><dt>Slug template</dt><dd>{settings.slug_template || '—'}</dd></div>

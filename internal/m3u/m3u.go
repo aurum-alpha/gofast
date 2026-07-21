@@ -59,7 +59,7 @@ func WriteAll(w io.Writer, sources []Source, namespaceIDs bool) error {
 			if group != "" {
 				line += fmt.Sprintf(` group-title="%s"`, group)
 			}
-			line += fmt.Sprintf(",%s\n%s\n", display, ch.StreamURL)
+			line += fmt.Sprintf(",%s\n%s\n", display, ch.OutputURL())
 			if _, err := io.WriteString(w, line); err != nil {
 				return err
 			}

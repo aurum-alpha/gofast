@@ -7,17 +7,21 @@ import (
 )
 
 // Meta is the small, persisted per-provider record (cache meta.json). It holds
-// only what cannot be cheaply reproduced by re-parsing the raw upstream snapshot
-// with the current settings: the fetch time (for scheduling) and the expensive,
-// network-derived classifications keyed by normalized channel id.
+// only what cannot be reproduced by re-parsing the current raw snapshot: fetch
+// time, network-derived classifications, and historical synthetic channel
+// numbers (including IDs no longer present).
 type Meta struct {
-	FetchedAt       time.Time                       `json:"fetched_at"`
-	Classifications map[string]model.Classification `json:"classifications,omitempty"`
+	FetchedAt               time.Time                       `json:"fetched_at"`
+	Classifications         map[string]model.Classification `json:"classifications,omitempty"`
+	SyntheticChannelNumbers ChannelNumberAssignments        `json:"synthetic_channel_numbers,omitempty"`
 }
 
 // MetaOf extracts the persistable Meta from a runtime Lineup.
 func MetaOf(l Lineup) Meta {
-	m := Meta{FetchedAt: l.FetchedAt}
+	m := Meta{
+		FetchedAt:               l.FetchedAt,
+		SyntheticChannelNumbers: l.SyntheticChannelNumbers.Clone(),
+	}
 	for _, ch := range l.Channels {
 		if ch.Classification == "" {
 			continue

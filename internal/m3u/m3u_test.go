@@ -11,7 +11,7 @@ import (
 
 func TestWrite(t *testing.T) {
 	chs := []model.Channel{
-		{NormalizedID: "b", Name: `News "One"`, Number: 2, OffsetNumber: 1002, StreamURL: "https://b", Group: "News", LogoURL: "https://logo/b"},
+		{NormalizedID: "b", Name: `News "One"`, Number: 2, OffsetNumber: 1002, StreamURL: "https://upstream-b", EmittedURL: "https://proxy/b", Group: "News", LogoURL: "https://logo/b"},
 		{NormalizedID: "a", Name: "Alpha", Number: 1, OffsetNumber: 1001, StreamURL: "https://a", Group: "News"},
 		{NormalizedID: "x", Name: "Excluded", Number: 1, OffsetNumber: 1, StreamURL: "https://x", Excluded: true},
 	}
@@ -33,8 +33,11 @@ func TestWrite(t *testing.T) {
 		t.Fatalf("attrs: %s", out)
 	}
 	// Sorted by channel number: a before b
-	if iA, iB := strings.Index(out, "https://a"), strings.Index(out, "https://b"); iA < 0 || iB < 0 || iA > iB {
+	if iA, iB := strings.Index(out, "https://a"), strings.Index(out, "https://proxy/b"); iA < 0 || iB < 0 || iA > iB {
 		t.Fatalf("sort: %s", out)
+	}
+	if strings.Contains(out, "https://upstream-b") {
+		t.Fatalf("upstream URL leaked instead of emitted URL: %s", out)
 	}
 }
 

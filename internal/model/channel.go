@@ -9,6 +9,11 @@ import (
 	"github.com/j27-aurum/gofast/internal/format"
 )
 
+const (
+	FilterReasonDRM            = "DRM"
+	FilterReasonNeedsFASTProxy = "needs FASTProxy (proxy_base_url not configured)"
+)
+
 // Channel is a lineup entry after provider fetch (+ optional classify).
 type Channel struct {
 	Provider    ProviderID `json:"provider"`
@@ -16,8 +21,9 @@ type Channel struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description,omitempty"`
 	Group       string     `json:"group"`
-	Number      int        `json:"number"` // provider's upstream channel number
-	StreamURL   string     `json:"stream_url"`
+	Number      int        `json:"number"`                // provider's upstream channel number
+	StreamURL   string     `json:"stream_url"`            // provider's upstream URL
+	EmittedURL  string     `json:"emitted_url,omitempty"` // selected direct/proxy playback URL
 	LogoURL     string     `json:"logo_url,omitempty"`
 
 	// OffsetNumber is Number + provider channel_number_offset (export / tvg-chno / lcn).
@@ -56,6 +62,15 @@ func (c Channel) MatchesExclusion(regexes []*regexp.Regexp) (matched bool, reaso
 	return false, ""
 }
 
+// OutputURL returns the URL written to playlists while StreamURL remains the
+// provider's upstream URL for diagnostics and future FASTProxy lookup.
+func (c Channel) OutputURL() string {
+	if c.EmittedURL != "" {
+		return c.EmittedURL
+	}
+	return c.StreamURL
+}
+
 // ApplyChannelNumberOffset sets OffsetNumber to Number+offset for export.
 // Number is left as the provider's upstream value. Number <= 0 means "no upstream
 // number" — Number and OffsetNumber are forced to 0 (synthesize path handles it).
@@ -87,7 +102,7 @@ func (c *Channel) Normalize() {
 func ForExport(channels []Channel) []Channel {
 	out := make([]Channel, 0, len(channels))
 	for _, ch := range channels {
-		if ch.Excluded || ch.NormalizedID == "" || ch.StreamURL == "" {
+		if ch.Excluded || ch.NormalizedID == "" || ch.OutputURL() == "" {
 			continue
 		}
 		out = append(out, ch)

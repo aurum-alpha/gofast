@@ -16,7 +16,7 @@ func TestChannelsAPI(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG"}},
 		map[model.ProviderID]provider.Lineup{
 			"lg": {Channels: []model.Channel{
-				{Provider: "lg", ID: "a", NormalizedID: "a", Name: "Alpha", Number: 1, OffsetNumber: 1001, StreamURL: "https://a"},
+				{Provider: "lg", ID: "a", NormalizedID: "a", Name: "Alpha", Number: 1, OffsetNumber: 1001, StreamURL: "https://upstream/a", EmittedURL: "https://proxy/stream/lg/a.m3u8", Classification: model.ClassBeacon},
 				{Provider: "lg", ID: "b", NormalizedID: "b", Name: "Bad", Excluded: true, FilterReason: "exclusion", StreamURL: "https://b"},
 			}},
 		},
@@ -36,5 +36,8 @@ func TestChannelsAPI(t *testing.T) {
 	}
 	if len(list.Channels) != 2 || list.Channels[0].Name != "Alpha" {
 		t.Fatalf("%+v", list.Channels)
+	}
+	if list.Channels[0].StreamURL != "https://upstream/a" || list.Channels[0].EmittedURL != "https://proxy/stream/lg/a.m3u8" {
+		t.Fatalf("upstream/emitted URLs lost: %+v", list.Channels[0])
 	}
 }

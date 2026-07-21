@@ -2,7 +2,8 @@
 # Copy to the data volume as /data/config.yaml (never commit a filled production copy).
 #
 # Deploy-varying values prefer env (see AGENTS.md / 12factor):
-#   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG
+#   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG,
+#   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL
 # Env always wins over this file for overlapping keys.
 #
 # base_url: public origin Jellyfin/browsers use for logos and absolute links.
@@ -17,6 +18,13 @@ listen: ":8180"
 # cache root). Put it on a persistent volume/bind mount so the last-known-good
 # survives restarts and a fresh boot can restore without fetching upstream.
 data_dir: /data
+
+# Public FASTProxy origin as reached by Jellyfin/ffmpeg, not an internal-only
+# container address. BEACON channels are filtered when this is unset. Set
+# proxy_all to route every playable channel through the stable proxy URL;
+# NATIVE remains direct by default.
+# proxy_base_url: "http://192.168.1.50:8181"
+proxy_all: false
 
 timeouts:
   http_client: 60s
@@ -76,8 +84,8 @@ providers:
   xumo:
     enabled: true
     label: Xumo
-    # No upstream tvg-chno. J27-19 will persist first-seen id→number assignments
-    # from this base; this adapter intentionally does not assign drifting numbers.
+    # No upstream tvg-chno. First-seen id→number assignments from this base are
+    # persisted in atomic provider metadata and never recycled.
     synthesize_channel_numbers: 5000
     min_channels: 100
     refresh_interval: 6h
@@ -106,5 +114,5 @@ providers:
     # m3u_url: https://www.apsattv.com/localnow.m3u
     # epg_url: https://raw.githubusercontent.com/BuddyChewChew/localnow-playlist-generator/refs/heads/main/epg.xml
 
-# proxy_base_url / proxy_all, logo TLS, and health knobs are added in the
-# same PRs that implement those features — not ahead of time.
+# Logo TLS and health knobs are added in the same PRs that implement those
+# features — not ahead of time.

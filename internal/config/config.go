@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -26,12 +27,14 @@ const (
 
 // Config is the configuration surface for fastgen.
 type Config struct {
-	Listen    string                                      `yaml:"listen"`
-	BaseURL   string                                      `yaml:"base_url"`
-	DataDir   string                                      `yaml:"data_dir"`
-	Timeouts  Timeouts                                    `yaml:"timeouts"`
-	Logging   Logging                                     `yaml:"logging"`
-	Providers map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
+	Listen       string                                      `yaml:"listen"`
+	BaseURL      string                                      `yaml:"base_url"`
+	DataDir      string                                      `yaml:"data_dir"`
+	ProxyBaseURL string                                      `yaml:"proxy_base_url"`
+	ProxyAll     *bool                                       `yaml:"proxy_all"`
+	Timeouts     Timeouts                                    `yaml:"timeouts"`
+	Logging      Logging                                     `yaml:"logging"`
+	Providers    map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
 }
 
 // Timeouts holds outbound and request-bound durations.
@@ -62,7 +65,19 @@ func New(path string) (*Config, error) {
 		}
 		cfg.merge(file)
 	}
-	cfg.merge(envOverlay())
+	env, err := envOverlay()
+	if err != nil {
+		return nil, err
+	}
+	cfg.merge(env)
+
+	cfg.ProxyBaseURL, err = NormalizeProxyBaseURL(cfg.ProxyBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("config: proxy_base_url: %w", err)
+	}
+	if cfg.ProxyAllEnabled() && cfg.ProxyBaseURL == "" {
+		return nil, fmt.Errorf("config: proxy_all requires proxy_base_url")
+	}
 
 	providers, err := compileProviders(cfg.Providers)
 	if err != nil {
@@ -73,10 +88,12 @@ func New(path string) (*Config, error) {
 }
 
 func defaults() *Config {
+	proxyAll := false
 	return &Config{
-		Listen:  DefaultListen,
-		BaseURL: "",
-		DataDir: DefaultDataDir,
+		Listen:   DefaultListen,
+		BaseURL:  "",
+		DataDir:  DefaultDataDir,
+		ProxyAll: &proxyAll,
 		Timeouts: Timeouts{
 			HTTPClient: 60 * time.Second,
 		},
@@ -87,7 +104,7 @@ func defaults() *Config {
 }
 
 // envOverlay builds a Config containing only values set in the environment.
-func envOverlay() *Config {
+func envOverlay() (*Config, error) {
 	o := &Config{}
 	if v := os.Getenv("PORT"); v != "" {
 		o.Listen = NormalizeListen(v)
@@ -98,7 +115,17 @@ func envOverlay() *Config {
 	if v := os.Getenv("FASTGEN_DATA_DIR"); v != "" {
 		o.DataDir = v
 	}
-	return o
+	if v := os.Getenv("FASTGEN_PROXY_BASE_URL"); v != "" {
+		o.ProxyBaseURL = v
+	}
+	if v := os.Getenv("FASTGEN_PROXY_ALL"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_PROXY_ALL: %w", err)
+		}
+		o.ProxyAll = &parsed
+	}
+	return o, nil
 }
 
 // LogLoaded writes structured startup lines for the deploy/server config.
@@ -113,6 +140,8 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"from_file", fromFile,
 		"listen", c.Listen,
 		"base_url", c.BaseURL,
+		"proxy_base_url", c.ProxyBaseURL,
+		"proxy_all", c.ProxyAllEnabled(),
 		"data_dir", c.DataDir,
 		"provider_overlays", len(c.Providers),
 	)
@@ -133,6 +162,13 @@ func (c *Config) merge(o *Config) {
 	if o.DataDir != "" {
 		c.DataDir = o.DataDir
 	}
+	if o.ProxyBaseURL != "" {
+		c.ProxyBaseURL = o.ProxyBaseURL
+	}
+	if o.ProxyAll != nil {
+		value := *o.ProxyAll
+		c.ProxyAll = &value
+	}
 	if o.Timeouts.HTTPClient != 0 {
 		c.Timeouts.HTTPClient = o.Timeouts.HTTPClient
 	}
@@ -142,6 +178,11 @@ func (c *Config) merge(o *Config) {
 	if o.Providers != nil {
 		c.Providers = maps.Clone(o.Providers)
 	}
+}
+
+// ProxyAllEnabled reports whether all exported streams should use FASTProxy.
+func (c *Config) ProxyAllEnabled() bool {
+	return c != nil && c.ProxyAll != nil && *c.ProxyAll
 }
 
 // ListenFromEnv returns the shared PORT listen address, or fallback if unset.
@@ -167,4 +208,23 @@ func NormalizeListen(v string) string {
 		return v
 	}
 	return ":" + v
+}
+
+// NormalizeProxyBaseURL validates and canonicalizes the public FASTProxy origin.
+func NormalizeProxyBaseURL(value string) (string, error) {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	if value == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", err
+	}
+	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return "", fmt.Errorf("must be an absolute http or https URL")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("must not contain a query or fragment")
+	}
+	return value, nil
 }

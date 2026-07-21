@@ -26,6 +26,9 @@ services:
       PORT: "8180"
       # Public origin for logos/links (include :port unless 80/443). Example:
       # FASTGEN_BASE_URL: "http://192.168.1.50:8180"
+      # Public FASTProxy origin as reached by Jellyfin/ffmpeg.
+      FASTGEN_PROXY_BASE_URL: "${FASTGEN_PROXY_BASE_URL:-}"
+      FASTGEN_PROXY_ALL: "${FASTGEN_PROXY_ALL:-false}"
     restart: unless-stopped
     networks:
       - gofast
