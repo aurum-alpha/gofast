@@ -162,7 +162,10 @@ streams).
   players treat every refresh as a new channel lineup.
 - **Channel numbers:** per-provider integer `channel_number_offset` added to the native
   number when the upstream provides one. Emit as `tvg-chno` in M3U and
-  `<lcn>` in XMLTV. Sort each playlist by final number. For providers with no
+  `<lcn>` in XMLTV. `<lcn>` is a deliberate compatibility extension rather
+  than part of the XMLTV DTD; Jellyfin gets tuner numbering from M3U
+  `tvg-chno`. Sort each playlist globally by positive final number, then put
+  unnumbered channels last with provider/id tie-breakers. For providers with no
   upstream numbering (Xumo, DistroTV, LocalNow):
   `synthesize_channel_numbers: <base>` assigns sequential numbers through a
   persisted per-provider id->number map. First-seen assignments are reused
@@ -189,9 +192,15 @@ streams).
 - **XML generation:** MUST use `encoding/xml` marshaling. Never build XML via
   string concatenation or templates — an upstream generator we replaced shipped
   unescaped `&` in `<display-name>` and it killed Jellyfin's entire guide parse.
+  Preserve legitimate punctuation, including quotes and apostrophes.
   Structurally invalid output must be unrepresentable. Validate by re-parsing
-  the serialized bytes before publishing to the cache.
-- **M3U attribute values:** strip/replace double quotes.
+  the serialized bytes and checking unique channel ids/programme references
+  before publishing to the cache. This validates GoFAST's XMLTV profile and
+  well-formedness, not DTD conformance because of the `<lcn>` extension.
+- **M3U values:** strip/replace double quotes in quoted attributes and collapse
+  controls/newlines in presentation text so one channel cannot inject another
+  record. Playback URLs are never rewritten: reject any URL containing a
+  control/newline and retain last-known-good.
 
 ## Logo caching (required, not optional)
 

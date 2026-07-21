@@ -1,0 +1,7 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="fixture_b.shared" tvg-name="Fixture B Shared" tvg-chno="1001" group-title="FIXTURE_B",Fixture B Shared · FIXTURE_B
+https://stream.test/fixture-b.m3u8
+#EXTINF:-1 tvg-id="fixture_a.shared" tvg-name="Fixture A Shared" tvg-chno="2002" group-title="FIXTURE_A",Fixture A Shared · FIXTURE_A
+https://stream.test/fixture-a.m3u8
+#EXTINF:-1 tvg-id="fixture_a.late" tvg-name="Fixture A Unnumbered" group-title="FIXTURE_A",Fixture A Unnumbered · FIXTURE_A
+https://stream.test/late.m3u8

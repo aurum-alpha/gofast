@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv generator-info-name="gofast">
+  <channel id="alpha">
+    <display-name>Fixture &amp; Channel &lt;One&gt; · TEST_PROVIDER</display-name>
+    <lcn>1001</lcn>
+  </channel>
+  <channel id="beta">
+    <display-name>Apostrophe&#39;s &#34;Channel&#34; · TEST_PROVIDER</display-name>
+    <lcn>1002</lcn>
+    <icon src="https://logo.test/beta?a=1&amp;title=&#34;live&#34;"></icon>
+  </channel>
+  <channel id="none">
+    <display-name>Unnumbered · TEST_PROVIDER</display-name>
+  </channel>
+  <programme channel="alpha" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>Fixture &amp; &#34;Programme&#34;</title>
+    <desc>Apostrophe&#39;s &lt;description&gt;</desc>
+  </programme>
+  <programme channel="beta" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>First</title>
+  </programme>
+  <programme channel="beta" start="20260721140000 +0000" stop="20260721150000 +0000">
+    <title>Second</title>
+  </programme>
+  <programme channel="none" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>No Number</title>
+  </programme>
+</tv>

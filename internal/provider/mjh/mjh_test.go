@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/httpx"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
+	"github.com/j27-aurum/gofast/internal/xmltv"
 )
 
 func TestPlutoMissingMetadataSlugUsesDefault(t *testing.T) {
@@ -35,6 +37,45 @@ func TestPlutoMissingMetadataSlugUsesDefault(t *testing.T) {
 	}
 	if len(programmes) != 1 || programmes[0].Title != "Pluto Headlines" {
 		t.Fatalf("programmes: %+v", programmes)
+	}
+}
+
+func TestPlutoProgrammeIconsAreStrippedOnReEmission(t *testing.T) {
+	client := New(Source{
+		ID:          model.ProviderPluto,
+		Directory:   "PlutoTV",
+		DefaultSlug: "plu-{id}.m3u8",
+	}, model.ProviderSettings{ID: model.ProviderPluto, Region: "us"}, nil)
+	channels, programmes, err := client.Parse(fixtureRaw(t, "pluto"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range channels {
+		channels[index].Normalize()
+	}
+
+	data, err := xmltv.Marshal(channels, programmes, "Pluto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Channels []struct {
+			Icons []struct{} `xml:"icon"`
+		} `xml:"channel"`
+		Programmes []struct {
+			Icons []struct{} `xml:"icon"`
+		} `xml:"programme"`
+	}
+	if err := xml.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Channels) != 1 || len(document.Channels[0].Icons) != 1 {
+		t.Fatalf("channel icon was not retained: %s", data)
+	}
+	for _, programme := range document.Programmes {
+		if len(programme.Icons) != 0 {
+			t.Fatalf("programme icon leaked into output: %s", data)
+		}
 	}
 }
 

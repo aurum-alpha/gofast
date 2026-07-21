@@ -1,6 +1,7 @@
 package aggregate_test
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -8,8 +9,10 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/aggregate"
 	"github.com/j27-aurum/gofast/internal/cache"
+	"github.com/j27-aurum/gofast/internal/m3u"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
+	"github.com/j27-aurum/gofast/internal/xmltv"
 )
 
 type stubReader struct{}
@@ -45,6 +48,27 @@ func TestRebuildWritesNamespacedAggregate(t *testing.T) {
 	x, err := cc.ReadAggregateXMLTV()
 	if err != nil || !strings.Contains(string(x), `id="lg.news"`) || !strings.Contains(string(x), `channel="lg.news"`) {
 		t.Fatalf("aggregate xml (namespaced): %q %v", x, err)
+	}
+
+	playlist, err := m3u.Parse(bytes.NewReader(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	guide, err := xmltv.Parse(bytes.NewReader(x))
+	if err != nil {
+		t.Fatal(err)
+	}
+	playlistIDs := make(map[string]struct{}, len(playlist))
+	for _, channel := range playlist {
+		playlistIDs[channel.ID] = struct{}{}
+	}
+	if len(playlistIDs) != len(guide.ChannelIDs) {
+		t.Fatalf("playlist ids=%v guide ids=%v", playlistIDs, guide.ChannelIDs)
+	}
+	for _, id := range guide.ChannelIDs {
+		if _, ok := playlistIDs[id]; !ok {
+			t.Fatalf("guide channel %q missing from playlist", id)
+		}
 	}
 }
 

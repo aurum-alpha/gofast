@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv generator-info-name="gofast">
+  <channel id="fixture_b.shared">
+    <display-name>Fixture B Shared · FIXTURE_B</display-name>
+    <lcn>1001</lcn>
+  </channel>
+  <channel id="fixture_a.shared">
+    <display-name>Fixture A Shared · FIXTURE_A</display-name>
+    <lcn>2002</lcn>
+  </channel>
+  <channel id="fixture_a.late">
+    <display-name>Fixture A Unnumbered · FIXTURE_A</display-name>
+  </channel>
+  <programme channel="fixture_b.shared" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>Fixture B Programme</title>
+  </programme>
+  <programme channel="fixture_a.shared" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>Fixture A Programme</title>
+  </programme>
+  <programme channel="fixture_a.late" start="20260721130000 +0000" stop="20260721140000 +0000">
+    <title>Later</title>
+  </programme>
+</tv>

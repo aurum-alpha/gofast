@@ -5,7 +5,6 @@
 package aggregate
 
 import (
-	"bytes"
 	"context"
 	"log/slog"
 
@@ -44,19 +43,20 @@ func (a *Aggregator) Rebuild() error {
 	xsrcs := make([]xmltv.Source, 0, len(feeds))
 	for _, f := range feeds {
 		lin := f.Lineup()
-		id := string(f.ID())
+		id := f.ID()
 		msrcs = append(msrcs, m3u.Source{Provider: id, Label: f.Label(), Channels: lin.Channels})
 		xsrcs = append(xsrcs, xmltv.Source{Provider: id, Label: f.Label(), Channels: lin.Channels, Programmes: lin.Programmes})
 	}
 
-	var m3uBuf, xmltvBuf bytes.Buffer
-	if err := m3u.WriteAll(&m3uBuf, msrcs, true); err != nil {
+	m3uData, err := m3u.MarshalAll(msrcs, m3u.Options{NamespaceIDs: true})
+	if err != nil {
 		return err
 	}
-	if err := xmltv.WriteAll(&xmltvBuf, xsrcs, false, true); err != nil {
+	xmlData, err := xmltv.MarshalAll(xsrcs, xmltv.Options{NamespaceIDs: true})
+	if err != nil {
 		return err
 	}
-	return a.cache.WriteAggregate(cache.M3U(m3uBuf.Bytes()), cache.XMLTV(xmltvBuf.Bytes()))
+	return a.cache.WriteAggregate(cache.M3U(m3uData), cache.XMLTV(xmlData))
 }
 
 // Run rebuilds on each coalesced signal until ctx is cancelled.

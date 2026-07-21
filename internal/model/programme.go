@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Programme is a guide entry keyed by NormalizedID of its channel.
 type Programme struct {
@@ -9,4 +12,12 @@ type Programme struct {
 	Desc      string    `json:"desc,omitempty"`
 	Start     time.Time `json:"start"`
 	Stop      time.Time `json:"stop"`
+}
+
+// IsValid reports whether a programme is eligible for guide emission.
+func (p Programme) IsValid() bool {
+	return strings.TrimSpace(p.Title) != "" &&
+		!p.Start.IsZero() &&
+		!p.Stop.IsZero() &&
+		p.Stop.After(p.Start)
 }
