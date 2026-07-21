@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
@@ -48,5 +49,70 @@ func TestProvidersAPI(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("want 405, got %d", rec.Code)
+	}
+}
+
+func TestProviderDetailAPI(t *testing.T) {
+	fetchedAt := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	reg := regWith(
+		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG", MinChannels: 1}},
+		map[model.ProviderID]provider.Lineup{"lg": {
+			Channels:     []model.Channel{{NormalizedID: "news", StreamURL: "https://news"}},
+			ChannelCount: 1,
+			FetchedAt:    fetchedAt,
+		}},
+	)
+	h := server.ProviderDetailHandler(reg)
+	request := func(method, id string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/providers/"+id, nil)
+		req.SetPathValue("id", id)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := request(http.MethodGet, "lg")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	var detail struct {
+		Settings model.ProviderSettings `json:"settings"`
+		Stats    provider.Stats         `json:"stats"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Settings.ID != "lg" || detail.Stats.TotalChannels != 1 || !detail.Stats.FetchedAt.Equal(fetchedAt) {
+		t.Fatalf("detail: %+v", detail)
+	}
+	if rec := request(http.MethodGet, "unknown"); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown want 404, got %d", rec.Code)
+	}
+	if rec := request(http.MethodPost, "lg"); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST want 405, got %d", rec.Code)
+	}
+}
+
+func TestProviderDetailDisabledProvider(t *testing.T) {
+	disabled := false
+	reg := provider.NewRegistry(nil, map[model.ProviderID]model.ProviderSettings{
+		"lg": {ID: "lg", Label: "LG", Enabled: &disabled},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/providers/lg", nil)
+	req.SetPathValue("id", "lg")
+	rec := httptest.NewRecorder()
+	server.ProviderDetailHandler(reg).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	var detail struct {
+		Settings model.ProviderSettings `json:"settings"`
+		Stats    provider.Stats         `json:"stats"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Settings.Enabled == nil || *detail.Settings.Enabled || detail.Stats.TotalChannels != 0 {
+		t.Fatalf("disabled detail: %+v", detail)
 	}
 }

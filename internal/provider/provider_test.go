@@ -2,6 +2,7 @@ package provider
 
 import (
 	"testing"
+	"time"
 
 	"github.com/j27-aurum/gofast/internal/model"
 )
@@ -27,6 +28,51 @@ func TestRegistryOnlyWiredReadersAreEnabled(t *testing.T) {
 	}
 	if _, ok := reg.Feed("pluto"); ok {
 		t.Fatal("disabled provider should have no feed")
+	}
+	if got, ok := reg.Provider("pluto"); !ok || got.Label != "Pluto" {
+		t.Fatalf("Provider lookup: %+v ok=%v", got, ok)
+	}
+}
+
+func TestFeedStats(t *testing.T) {
+	reg := NewRegistry(
+		map[model.ProviderID]Reader{"lg": fakeReader{}},
+		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg"}},
+	)
+	feed, _ := reg.Feed("lg")
+	start := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	feed.Set(Lineup{
+		Channels: []model.Channel{
+			{NormalizedID: "news", StreamURL: "https://news", Group: "News", Classification: model.ClassNative},
+			{NormalizedID: "drm", StreamURL: "https://drm", Group: "Movies", Classification: model.ClassDRM, Excluded: true, FilterReason: "DRM"},
+			{NormalizedID: "other", StreamURL: "https://other"},
+		},
+		Programmes: []model.Programme{
+			{ChannelID: "news", Title: "News", Start: start, Stop: start.Add(time.Hour)},
+			{ChannelID: "drm", Title: "Movie", Start: start.Add(-time.Hour), Stop: start.Add(2 * time.Hour)},
+			{ChannelID: "other", Title: "", Start: start, Stop: start.Add(time.Hour)},
+		},
+		ChannelCount:   2,
+		ProgrammeCount: 1,
+		FetchedAt:      start,
+	})
+	feed.SetStatus(Status{LastAttemptAt: start.Add(time.Hour), LastError: "failed", LastErrorAt: start.Add(time.Hour)})
+
+	stats := feed.Stats()
+	if stats.TotalChannels != 3 || stats.ExportedChannels != 2 || stats.ExcludedChannels != 1 {
+		t.Fatalf("channel stats: %+v", stats)
+	}
+	if stats.TotalProgrammes != 3 || stats.ExportedProgrammes != 1 {
+		t.Fatalf("programme stats: %+v", stats)
+	}
+	if stats.ByClassification["NATIVE"] != 1 || stats.ByClassification["DRM"] != 1 || stats.ByClassification["UNCLASSIFIED"] != 1 {
+		t.Fatalf("classifications: %+v", stats.ByClassification)
+	}
+	if stats.ByGroup["(none)"] != 1 || stats.FilterReasons["DRM"] != 1 {
+		t.Fatalf("rollups: groups=%+v reasons=%+v", stats.ByGroup, stats.FilterReasons)
+	}
+	if !stats.GuideStart.Equal(start) || !stats.GuideEnd.Equal(start.Add(time.Hour)) || stats.LastError != "failed" {
+		t.Fatalf("times/status: %+v", stats)
 	}
 }
 

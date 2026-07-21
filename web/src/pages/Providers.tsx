@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 type ProviderRow = {
   id: string
@@ -106,7 +107,9 @@ export function ProvidersPage() {
                 data.providers.map((p) => (
                   <tr key={p.id}>
                     <td>
-                      <code>{p.id}</code>
+                      <Link to={`/providers/${encodeURIComponent(p.id)}`}>
+                        <code>{p.id}</code>
+                      </Link>
                     </td>
                     <td>{p.enabled ? 'yes' : 'no'}</td>
                     <td>{p.label || '—'}</td>

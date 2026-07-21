@@ -14,9 +14,7 @@ import (
 
 type stubReader struct{}
 
-func (stubReader) Fetch(context.Context) ([]model.Channel, []model.Programme, error) {
-	return nil, nil, nil
-}
+func (stubReader) Fetch(context.Context) ([]byte, error) { return nil, nil }
 
 func (stubReader) Parse([]byte) ([]model.Channel, []model.Programme, error) {
 	return nil, nil, nil

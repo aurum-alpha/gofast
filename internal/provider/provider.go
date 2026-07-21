@@ -12,20 +12,12 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
-// Reader fetches and decodes one provider's lineup. Fetch is the transport
-// (GET the upstream, archive the raw bytes, then Parse them); Parse decodes raw
-// bytes with no network, so the same bytes can be re-loaded from the cache on
-// boot exactly as if freshly fetched.
+// Reader fetches and decodes one provider's lineup. Fetch performs transport
+// only and returns the exact provider-native response. Parse decodes those bytes
+// without network access, so refresh and cache restore share one decoder.
 type Reader interface {
-	Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error)
+	Fetch(ctx context.Context) ([]byte, error)
 	Parse(raw []byte) ([]model.Channel, []model.Programme, error)
-}
-
-// RawWriter archives a provider's raw upstream response (a debug backup). It is
-// satisfied by *cache.Cache; adapters call it without importing the cache, so
-// the cache stays the sole owner of disk.
-type RawWriter interface {
-	WriteRaw(id model.ProviderID, raw []byte) error
 }
 
 // SkipMalformed increments a skip counter for a bad upstream record.

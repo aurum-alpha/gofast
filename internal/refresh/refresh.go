@@ -6,6 +6,7 @@ package refresh
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"time"
@@ -50,13 +51,19 @@ func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, notify
 // fetch on boot); unreadable/unparseable entries are skipped.
 func Restore(reg *provider.Registry, cc *cache.Cache) {
 	for _, f := range reg.Feeds() {
-		raw, err := cc.ReadRaw(f.ID())
+		raw, meta, legacy, err := cc.LoadProvider(f.ID())
 		if err != nil {
 			continue // no cached snapshot; will fetch on boot
 		}
-		meta, _ := cc.LoadMeta(f.ID())
+		if status, ok := cc.LoadStatus(f.ID()); ok {
+			if !status.LastErrorAt.IsZero() && !status.LastErrorAt.After(meta.FetchedAt) {
+				status.LastError = ""
+				status.LastErrorAt = time.Time{}
+			}
+			f.SetStatus(status)
+		}
 		pr := &providerRefresher{feed: f, cache: cc}
-		if err := pr.rehydrate(raw, meta); err != nil {
+		if err := pr.rehydrate(raw, meta, legacy); err != nil {
 			slog.Warn("cache restore failed", "id", f.ID(), "err", err)
 			continue
 		}
@@ -123,25 +130,48 @@ func (p *providerRefresher) ID() model.ProviderID    { return p.feed.ID() }
 func (p *providerRefresher) Interval() time.Duration { return p.feed.Interval() }
 func (p *providerRefresher) FetchedAt() time.Time    { return p.feed.FetchedAt() }
 
-// Refresh runs one full network cycle: fetch (archives raw) -> transform ->
-// classify (network) -> commit. Fetch errors are returned; gate failures keep
-// the last-good lineup and return nil.
+// Refresh runs one full network cycle and publishes only after every stage
+// succeeds. Any failure records status and leaves the last-known-good untouched.
 func (p *providerRefresher) Refresh(ctx context.Context) error {
-	chs, progs, err := p.feed.Reader().Fetch(ctx)
+	status := p.feed.Status()
+	status.LastAttemptAt = time.Now()
+	p.setStatus(status)
+
+	raw, err := p.feed.Reader().Fetch(ctx)
 	if err != nil {
-		return err
+		return p.fail(err)
+	}
+	chs, progs, err := p.feed.Reader().Parse(raw)
+	if err != nil {
+		return p.fail(err)
 	}
 	chs, progs = p.transform(chs, progs)
 	if p.clf != nil {
 		slog.Info("classifying channels", "provider", p.feed.ID(), "count", len(chs))
 		chs = p.clf.ClassifyChannels(ctx, chs)
 	}
-	return p.commit(chs, progs, time.Now(), true)
+	lineup, m3uData, xmlData, err := p.prepare(chs, progs, time.Now())
+	if err != nil {
+		return p.fail(err)
+	}
+	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
+		return p.fail(err)
+	}
+	p.feed.Set(lineup)
+	status = p.feed.Status()
+	status.LastError = ""
+	status.LastErrorAt = time.Time{}
+	p.setStatus(status)
+	if p.notify != nil {
+		p.notify()
+	}
+	p.logPublished(lineup, len(m3uData), len(xmlData))
+	return nil
 }
 
 // rehydrate rebuilds the feed from a cached raw snapshot (no network): parse ->
 // transform -> apply persisted classifications -> commit (fetch time from meta).
-func (p *providerRefresher) rehydrate(raw []byte, meta provider.Meta) error {
+func (p *providerRefresher) rehydrate(raw []byte, meta provider.Meta, legacy bool) error {
 	chs, progs, err := p.feed.Reader().Parse(raw)
 	if err != nil {
 		return err
@@ -152,7 +182,17 @@ func (p *providerRefresher) rehydrate(raw []byte, meta provider.Meta) error {
 			chs[i].Classification = c
 		}
 	}
-	return p.commit(chs, progs, meta.FetchedAt, false)
+	lineup, m3uData, xmlData, err := p.prepare(chs, progs, meta.FetchedAt)
+	if err != nil {
+		return err
+	}
+	if legacy {
+		if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
+			return err
+		}
+	}
+	p.feed.Set(lineup)
+	return nil
 }
 
 // transform is the shared decode-time pipeline (identical for the network and
@@ -182,10 +222,9 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 	return chs, progs
 }
 
-// commit is the shared tail: apply classification export rules, run gates, emit
-// per-provider files, update the feed, and persist meta. notify triggers the
-// aggregator (true for a live refresh; false at boot, where main rebuilds once).
-func (p *providerRefresher) commit(chs []model.Channel, progs []model.Programme, fetchedAt time.Time, notify bool) error {
+// prepare applies export rules, runs quality gates, and renders one immutable
+// candidate without mutating the feed or cache.
+func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
 	id := p.feed.ID()
 	s := p.feed.Settings()
 	chs = applyClassificationExport(chs)
@@ -206,29 +245,29 @@ func (p *providerRefresher) commit(chs []model.Channel, progs []model.Programme,
 		minCh = 1
 	}
 	if exported < minCh {
-		slog.Warn("below min_channels; keeping last-good", "provider", id, "channels", exported, "min_channels", minCh)
-		return nil
+		return provider.Lineup{}, nil, nil, fmt.Errorf("provider %s: %d exported channels below min_channels %d", id, exported, minCh)
 	}
 
+	exportedIDs := make(map[string]struct{}, exported)
+	for _, ch := range model.ForExport(chs) {
+		exportedIDs[ch.NormalizedID] = struct{}{}
+	}
 	progN := 0
 	for _, pr := range progs {
-		if pr.Title != "" && pr.Stop.After(pr.Start) {
+		if _, ok := exportedIDs[pr.ChannelID]; ok && pr.Title != "" && pr.Stop.After(pr.Start) {
 			progN++
 		}
 	}
 	if progN == 0 {
-		slog.Warn("no programmes; keeping last-good", "provider", id)
-		return nil
+		return provider.Lineup{}, nil, nil, fmt.Errorf("provider %s: no exportable programmes", id)
 	}
 
 	var m3uBuf, xmltvBuf bytes.Buffer
 	if err := m3u.Write(&m3uBuf, chs, label); err != nil {
-		slog.Warn("m3u write failed; keeping last-good", "provider", id, "err", err)
-		return nil
+		return provider.Lineup{}, nil, nil, err
 	}
 	if err := xmltv.Write(&xmltvBuf, chs, progs, label); err != nil {
-		slog.Warn("xmltv write failed; keeping last-good", "provider", id, "err", err)
-		return nil
+		return provider.Lineup{}, nil, nil, err
 	}
 
 	lineup := provider.Lineup{
@@ -238,21 +277,32 @@ func (p *providerRefresher) commit(chs []model.Channel, progs []model.Programme,
 		ProgrammeCount: progN,
 		FetchedAt:      fetchedAt,
 	}
-	p.feed.Set(lineup)
-	if err := p.cache.WriteProvider(id, cache.M3U(m3uBuf.Bytes()), cache.XMLTV(xmltvBuf.Bytes()), provider.MetaOf(lineup)); err != nil {
-		slog.Warn("cache write failed", "provider", id, "err", err)
-	}
-	if notify && p.notify != nil {
-		p.notify()
-	}
+	return lineup, cache.M3U(m3uBuf.Bytes()), cache.XMLTV(xmltvBuf.Bytes()), nil
+}
+
+func (p *providerRefresher) fail(err error) error {
+	status := p.feed.Status()
+	status.LastError = err.Error()
+	status.LastErrorAt = time.Now()
+	p.setStatus(status)
+	return err
+}
+
+func (p *providerRefresher) logPublished(lineup provider.Lineup, m3uBytes, xmlBytes int) {
 	slog.Info("published",
-		"provider", id,
-		"channels", exported,
-		"programmes", progN,
-		"m3u_bytes", m3uBuf.Len(),
-		"xml_bytes", xmltvBuf.Len(),
+		"provider", p.feed.ID(),
+		"channels", lineup.ChannelCount,
+		"programmes", lineup.ProgrammeCount,
+		"m3u_bytes", m3uBytes,
+		"xml_bytes", xmlBytes,
 	)
-	return nil
+}
+
+func (p *providerRefresher) setStatus(status provider.Status) {
+	p.feed.SetStatus(status)
+	if err := p.cache.WriteStatus(p.feed.ID(), status); err != nil {
+		slog.Warn("status write failed", "provider", p.feed.ID(), "err", err)
+	}
 }
 
 // applyClassificationExport drops DRM always. BEACON hard-drop when proxy is
