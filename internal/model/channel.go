@@ -11,13 +11,14 @@ import (
 
 // Channel is a lineup entry after provider fetch (+ optional classify).
 type Channel struct {
-	Provider  ProviderID `json:"provider"`
-	ID        string     `json:"id"` // upstream id before Normalize
-	Name      string     `json:"name"`
-	Group     string     `json:"group"`
-	Number    int        `json:"number"` // provider's upstream channel number
-	StreamURL string     `json:"stream_url"`
-	LogoURL   string     `json:"logo_url,omitempty"`
+	Provider    ProviderID `json:"provider"`
+	ID          string     `json:"id"` // upstream id before Normalize
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	Group       string     `json:"group"`
+	Number      int        `json:"number"` // provider's upstream channel number
+	StreamURL   string     `json:"stream_url"`
+	LogoURL     string     `json:"logo_url,omitempty"`
 
 	// OffsetNumber is Number + provider channel_number_offset (export / tvg-chno / lcn).
 	// Zero when the upstream had no number (synthesize path handles it later).
@@ -28,9 +29,14 @@ type Channel struct {
 	NormalizedID string `json:"normalized_id"`
 
 	Classification Classification `json:"classification,omitempty"`
+	LicenseURL     string         `json:"license_url,omitempty"`
 	// FilterReason is set when the channel is dropped from export (exclusion, DRM, etc.).
 	FilterReason string `json:"filter_reason,omitempty"`
 	Excluded     bool   `json:"excluded"`
+
+	// RequestHeaders are provider-supplied headers used for stream probes and,
+	// later, logo retrieval. They are operational metadata, not part of our API.
+	RequestHeaders map[string]string `json:"-"`
 }
 
 // MatchesExclusion reports whether any compiled regex matches stream URL, provider id, or name.

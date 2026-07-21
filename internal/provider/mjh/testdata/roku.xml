@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <programme channel="roku-news" start="202607210100 +0000" stop="202607210200 +0000">
+    <title>Roku Live</title>
+    <desc>Live coverage</desc>
+  </programme>
+  <programme channel="missing-channel" start="20260721010000 +0000" stop="20260721020000 +0000">
+    <title>Unknown</title>
+  </programme>
+</tv>

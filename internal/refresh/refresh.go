@@ -171,7 +171,7 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 
 // rehydrate rebuilds the feed from a cached raw snapshot (no network): parse ->
 // transform -> apply persisted classifications -> commit (fetch time from meta).
-func (p *providerRefresher) rehydrate(raw []byte, meta provider.Meta, legacy bool) error {
+func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta, legacy bool) error {
 	chs, progs, err := p.feed.Reader().Parse(raw)
 	if err != nil {
 		return err

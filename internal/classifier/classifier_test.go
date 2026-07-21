@@ -182,6 +182,26 @@ a.ts
 	}
 }
 
+func TestClassifyChannelsSendsProviderHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertRangeGET(t, r)
+		if got := r.Header.Get("user-agent"); got != "okhttp/4.12.0" {
+			t.Errorf("user-agent = %q", got)
+		}
+		_, _ = io.WriteString(w, "#EXTM3U\n#EXTINF:1.0,\na.ts\n")
+	}))
+	defer server.Close()
+
+	client := New(httpx.NewClient(0, 1), 1)
+	channels := client.ClassifyChannels(context.Background(), []model.Channel{{
+		StreamURL:      server.URL + "/master.m3u8",
+		RequestHeaders: map[string]string{"user-agent": "okhttp/4.12.0"},
+	}})
+	if channels[0].Classification != model.ClassNative {
+		t.Fatalf("classification: %+v", channels[0])
+	}
+}
+
 func TestIsBeaconURI(t *testing.T) {
 	tests := []struct {
 		in   string

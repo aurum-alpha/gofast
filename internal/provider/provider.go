@@ -12,12 +12,20 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
+// LegacyRaw is the synthetic name used when loading the pre-multipart raw file.
+const LegacyRaw = "legacy"
+
+// Raw is one provider's exact upstream payloads, keyed by descriptive filename.
+// A refresh may require multiple coordinated responses (for example MJH channel
+// metadata plus XMLTV); the cache publishes all files in one generation.
+type Raw map[string][]byte
+
 // Reader fetches and decodes one provider's lineup. Fetch performs transport
-// only and returns the exact provider-native response. Parse decodes those bytes
+// only and returns exact provider-native responses. Parse decodes those bytes
 // without network access, so refresh and cache restore share one decoder.
 type Reader interface {
-	Fetch(ctx context.Context) ([]byte, error)
-	Parse(raw []byte) ([]model.Channel, []model.Programme, error)
+	Fetch(ctx context.Context) (Raw, error)
+	Parse(raw Raw) ([]model.Channel, []model.Programme, error)
 }
 
 // SkipMalformed increments a skip counter for a bad upstream record.

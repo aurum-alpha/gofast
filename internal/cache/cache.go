@@ -6,7 +6,7 @@
 //
 //	<id>/current                         selected generation name
 //	<id>/status.json                     refresh attempt/error state
-//	<id>/generations/<generation>/raw    provider-native response
+//	<id>/generations/<generation>/raw/*  provider-native responses
 //	<id>/generations/<generation>/*.m3u  per-provider playlist
 //	<id>/generations/<generation>/*.xml  per-provider guide
 //	<id>/generations/<generation>/meta.json
@@ -32,7 +32,7 @@ const (
 	fileM3U        = "playlist.m3u"
 	fileXML        = "guide.xml"
 	fileMeta       = "meta.json"
-	fileRaw        = "raw"
+	dirRaw         = "raw"
 	fileStatus     = "status.json"
 	fileCurrent    = "current"
 	dirGenerations = "generations"
@@ -57,7 +57,15 @@ func New(root string) *Cache { return &Cache{root: root} }
 
 // CommitProvider publishes raw, playlist, guide, and meta as one immutable
 // generation. Replacing current is the sole commit point.
-func (c *Cache) CommitProvider(id model.ProviderID, raw []byte, m3u M3U, xml XMLTV, meta provider.Meta) error {
+func (c *Cache) CommitProvider(id model.ProviderID, raw provider.Raw, m3u M3U, xml XMLTV, meta provider.Meta) error {
+	if len(raw) == 0 {
+		return errors.New("cache: raw snapshot is empty")
+	}
+	for name := range raw {
+		if !validRawName(name) {
+			return fmt.Errorf("cache: invalid raw filename %q", name)
+		}
+	}
 	providerDir, err := c.providerDir(id)
 	if err != nil {
 		return err
@@ -76,11 +84,28 @@ func (c *Cache) CommitProvider(id model.ProviderID, raw []byte, m3u M3U, xml XML
 	if err != nil {
 		return fmt.Errorf("cache: marshal meta: %w", err)
 	}
+	rawDir := filepath.Join(stage, dirRaw)
+	if err := os.Mkdir(rawDir, 0o755); err != nil {
+		return fmt.Errorf("cache: mkdir raw: %w", err)
+	}
+	rawNames := make([]string, 0, len(raw))
+	for name := range raw {
+		rawNames = append(rawNames, name)
+	}
+	sort.Strings(rawNames)
+	for _, name := range rawNames {
+		if err := writeSynced(filepath.Join(rawDir, name), raw[name]); err != nil {
+			return err
+		}
+	}
+	if err := syncDir(rawDir); err != nil {
+		return err
+	}
+
 	files := []struct {
 		name string
 		data []byte
 	}{
-		{fileRaw, raw},
 		{fileM3U, m3u},
 		{fileXML, xml},
 		{fileMeta, metaBytes},
@@ -108,13 +133,13 @@ func (c *Cache) CommitProvider(id model.ProviderID, raw []byte, m3u M3U, xml XML
 	return nil
 }
 
-// ReadRaw returns a provider's last raw upstream response (fs.ErrNotExist if none).
-func (c *Cache) ReadRaw(id model.ProviderID) ([]byte, error) {
+// ReadRaw returns a provider's exact upstream responses from one generation.
+func (c *Cache) ReadRaw(id model.ProviderID) (provider.Raw, error) {
 	dir, _, err := c.selectedDir(id)
 	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(filepath.Join(dir, fileRaw))
+	return readRaw(dir)
 }
 
 // ReadM3U returns a provider's playlist (fs.ErrNotExist if not yet generated).
@@ -176,12 +201,12 @@ func (c *Cache) LoadMeta(id model.ProviderID) (provider.Meta, bool) {
 
 // LoadProvider returns matching raw and metadata from one selected generation.
 // legacy reports the pre-generation flat layout.
-func (c *Cache) LoadProvider(id model.ProviderID) ([]byte, provider.Meta, bool, error) {
+func (c *Cache) LoadProvider(id model.ProviderID) (provider.Raw, provider.Meta, bool, error) {
 	dir, legacy, err := c.selectedDir(id)
 	if err != nil {
 		return nil, provider.Meta{}, false, err
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, fileRaw))
+	raw, err := readRaw(dir)
 	if err != nil {
 		return nil, provider.Meta{}, legacy, err
 	}
@@ -292,6 +317,45 @@ func (c *Cache) cleanupGenerations(dir, current string) {
 		}
 		_ = os.RemoveAll(filepath.Join(dir, generation.name))
 	}
+}
+
+func readRaw(dir string) (provider.Raw, error) {
+	rawDir := filepath.Join(dir, dirRaw)
+	info, err := os.Stat(rawDir)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		data, err := os.ReadFile(rawDir)
+		if err != nil {
+			return nil, err
+		}
+		return provider.Raw{provider.LegacyRaw: data}, nil
+	}
+	entries, err := os.ReadDir(rawDir)
+	if err != nil {
+		return nil, err
+	}
+	raw := make(provider.Raw, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !validRawName(entry.Name()) {
+			return nil, fs.ErrNotExist
+		}
+		data, err := os.ReadFile(filepath.Join(rawDir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		raw[entry.Name()] = data
+	}
+	return raw, nil
+}
+
+func validRawName(name string) bool {
+	return name != "" &&
+		name == filepath.Base(name) &&
+		!strings.ContainsAny(name, `/\`) &&
+		name != "." &&
+		name != ".."
 }
 
 // atomicWrite writes data to path via a temp file + rename, creating parents.

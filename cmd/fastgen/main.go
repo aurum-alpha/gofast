@@ -16,6 +16,9 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/provider/lg"
+	"github.com/j27-aurum/gofast/internal/provider/pluto"
+	"github.com/j27-aurum/gofast/internal/provider/roku"
+	"github.com/j27-aurum/gofast/internal/provider/samsung"
 	"github.com/j27-aurum/gofast/internal/refresh"
 	"github.com/j27-aurum/gofast/internal/run"
 	"github.com/j27-aurum/gofast/internal/server"
@@ -39,20 +42,13 @@ func main() {
 
 	// Providers are code: each known provider's package defaults are overlaid by
 	// its YAML settings. Unknown YAML ids have no implementation (warned).
-	settings := map[model.ProviderID]model.ProviderSettings{
-		model.ProviderLG: lg.DefaultSettings().Merge(cfg.Providers[model.ProviderLG]),
-	}
+	settings := knownProviderSettings(cfg.Providers)
 	for id := range cfg.Providers {
 		if _, known := settings[id]; !known {
 			slog.Warn("provider in config has no implementation; ignoring", "id", id)
 		}
 	}
-	readers := map[model.ProviderID]provider.Reader{}
-	if s := settings[model.ProviderLG]; s.IsEnabled() {
-		readers[model.ProviderLG] = lg.New(s, client)
-	} else {
-		slog.Info("provider disabled", "id", model.ProviderLG)
-	}
+	readers := knownProviderReaders(settings, client)
 	reg := provider.NewRegistry(readers, settings)
 	reg.LogLoaded()
 
@@ -89,6 +85,43 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("shutting down")
+}
+
+func knownProviderReaders(settings map[model.ProviderID]model.ProviderSettings, client *httpx.Client) map[model.ProviderID]provider.Reader {
+	readers := map[model.ProviderID]provider.Reader{}
+	if s := settings[model.ProviderLG]; s.IsEnabled() {
+		readers[model.ProviderLG] = lg.New(s, client)
+	} else {
+		slog.Info("provider disabled", "id", model.ProviderLG)
+	}
+	if s := settings[model.ProviderPluto]; s.IsEnabled() {
+		readers[model.ProviderPluto] = pluto.New(s, client)
+	} else {
+		slog.Info("provider disabled", "id", model.ProviderPluto)
+	}
+	if s := settings[model.ProviderRoku]; s.IsEnabled() {
+		readers[model.ProviderRoku] = roku.New(s, client)
+	} else {
+		slog.Info("provider disabled", "id", model.ProviderRoku)
+	}
+	if s := settings[model.ProviderSamsung]; s.IsEnabled() {
+		readers[model.ProviderSamsung] = samsung.New(s, client)
+	} else {
+		slog.Info("provider disabled", "id", model.ProviderSamsung)
+	}
+	return readers
+}
+
+func knownProviderSettings(overlays map[model.ProviderID]model.ProviderSettings) map[model.ProviderID]model.ProviderSettings {
+	plutoOverlay, plutoConfigured := overlays[model.ProviderPluto]
+	rokuOverlay, rokuConfigured := overlays[model.ProviderRoku]
+	samsungOverlay, samsungConfigured := overlays[model.ProviderSamsung]
+	return map[model.ProviderID]model.ProviderSettings{
+		model.ProviderLG:      lg.DefaultSettings().Merge(overlays[model.ProviderLG]),
+		model.ProviderPluto:   pluto.DefaultSettings().MergeConfigured(plutoOverlay, plutoConfigured),
+		model.ProviderRoku:    roku.DefaultSettings().MergeConfigured(rokuOverlay, rokuConfigured),
+		model.ProviderSamsung: samsung.DefaultSettings().MergeConfigured(samsungOverlay, samsungConfigured),
+	}
 }
 
 func loadConfig() (cfg *config.Config, path string, fromFile bool, err error) {

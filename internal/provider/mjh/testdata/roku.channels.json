@@ -1,0 +1,12 @@
+{
+  "headers": {"user-agent": "rokuandroid"},
+  "channels": {
+    "roku-news": {
+      "chno": 120,
+      "name": "Roku News",
+      "description": "Live news",
+      "groups": ["News", "Featured"],
+      "logo": "https://img.example/roku.png"
+    }
+  }
+}

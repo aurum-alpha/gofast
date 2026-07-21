@@ -90,3 +90,17 @@ func TestMergeExclusionsReplacedWhenOverlaySet(t *testing.T) {
 		t.Fatalf("overlay regexes should replace defaults: %+v", got.ExclusionRegexes)
 	}
 }
+
+func TestMergeConfiguredResolvesPresenceAndEnabled(t *testing.T) {
+	defaults := ProviderSettings{ID: ProviderPluto, Label: "Pluto"}
+	if got := defaults.MergeConfigured(ProviderSettings{}, false); got.IsEnabled() {
+		t.Fatalf("absent provider should be disabled: %+v", got)
+	}
+	if got := defaults.MergeConfigured(ProviderSettings{}, true); !got.IsEnabled() {
+		t.Fatalf("present provider should default enabled: %+v", got)
+	}
+	disabled := false
+	if got := defaults.MergeConfigured(ProviderSettings{Enabled: &disabled}, true); got.IsEnabled() {
+		t.Fatalf("explicit false should disable: %+v", got)
+	}
+}
