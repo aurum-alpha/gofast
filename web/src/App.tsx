@@ -3,6 +3,7 @@ import { ChannelsPage } from './pages/Channels'
 import { ConfigPage } from './pages/Config'
 import { GuidePage } from './pages/Guide'
 import { ProvidersPage } from './pages/Providers'
+import { ProviderDetailPage } from './pages/ProviderDetail'
 import './App.css'
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/providers" element={<ProvidersPage />} />
+          <Route path="/providers/:id" element={<ProviderDetailPage />} />
           <Route path="/config" element={<ConfigPage />} />
         </Routes>
       </main>

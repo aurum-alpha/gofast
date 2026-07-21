@@ -93,6 +93,12 @@ func (r *Registry) LogLoaded() {
 	}
 }
 
+// Provider returns the effective settings for a known provider.
+func (r *Registry) Provider(id model.ProviderID) (model.ProviderSettings, bool) {
+	settings, ok := r.settings[id]
+	return settings, ok
+}
+
 // Providers returns all known providers (enabled + disabled) sorted by id, with
 // their effective settings — the source for GET /api/providers and startup logs.
 func (r *Registry) Providers() model.ProviderList {

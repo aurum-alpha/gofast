@@ -13,7 +13,7 @@ import (
 
 func TestPlaylistHandlers(t *testing.T) {
 	cc := cache.New(t.TempDir())
-	if err := cc.WriteProvider("lg", cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", []byte("RAW"), cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 

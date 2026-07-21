@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -31,7 +30,6 @@ type Client struct {
 	settings model.ProviderSettings
 	client   *httpx.Client
 	url      string
-	raw      provider.RawWriter // optional debug archive of the raw upstream body
 }
 
 // DefaultSettings returns LG's built-in defaults. A YAML providers.lg block is
@@ -48,10 +46,8 @@ func DefaultSettings() model.ProviderSettings {
 	return s
 }
 
-// New constructs an LG client from its effective settings. raw is optional: when
-// set, each successful fetch archives the raw upstream body via raw.WriteRaw
-// (a debug backup); the in-memory pipeline is unchanged.
-func New(settings model.ProviderSettings, client *httpx.Client, raw provider.RawWriter) *Client {
+// New constructs an LG client from its effective settings.
+func New(settings model.ProviderSettings, client *httpx.Client) *Client {
 	if client == nil {
 		client = httpx.NewClient(0, 0)
 	}
@@ -59,13 +55,14 @@ func New(settings model.ProviderSettings, client *httpx.Client, raw provider.Raw
 	if u == "" {
 		u = defaultURL
 	}
-	return &Client{settings: settings, client: client, url: u, raw: raw}
+	return &Client{settings: settings, client: client, url: u}
 }
 
-func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme, error) {
+// Fetch returns the exact provider-native response body.
+func (c *Client) Fetch(ctx context.Context) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	req.Header.Set("User-Agent", chromeUA)
 	if c.settings.UserAgent != "" {
@@ -79,27 +76,19 @@ func (c *Client) Fetch(ctx context.Context) ([]model.Channel, []model.Programme,
 
 	resp, err := c.client.Do(ctx, req)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, nil, fmt.Errorf("lg: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("lg: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 
-	// Read the body once so we can archive the raw bytes (the canonical upstream
-	// snapshot, re-parsed on boot) and still parse from them. The cache owns the
-	// write; this adapter just hands it over.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if c.raw != nil {
-		if err := c.raw.WriteRaw(c.settings.ID, body); err != nil {
-			slog.Warn("lg: raw archive failed", "err", err)
-		}
-	}
-	return c.Parse(body)
+	return body, nil
 }
 
 // Parse decodes raw schedulelist bytes into channels/programmes (no network),

@@ -18,6 +18,31 @@ type Lineup struct {
 	FetchedAt      time.Time
 }
 
+// Stats is the computed API view of one feed's last-known-good lineup.
+type Stats struct {
+	FetchedAt          time.Time      `json:"fetched_at"`
+	LastAttemptAt      time.Time      `json:"last_attempt_at,omitempty"`
+	LastError          string         `json:"last_error,omitempty"`
+	LastErrorAt        time.Time      `json:"last_error_at,omitempty"`
+	TotalChannels      int            `json:"total_channels"`
+	ExportedChannels   int            `json:"exported_channels"`
+	ExcludedChannels   int            `json:"excluded_channels"`
+	TotalProgrammes    int            `json:"total_programmes"`
+	ExportedProgrammes int            `json:"exported_programmes"`
+	ByClassification   map[string]int `json:"by_classification"`
+	ByGroup            map[string]int `json:"by_group"`
+	FilterReasons      map[string]int `json:"filter_reasons"`
+	GuideStart         time.Time      `json:"guide_start"`
+	GuideEnd           time.Time      `json:"guide_end"`
+}
+
+// Status is refresh-attempt state persisted separately from content snapshots.
+type Status struct {
+	LastAttemptAt time.Time `json:"last_attempt_at,omitempty"`
+	LastError     string    `json:"last_error,omitempty"`
+	LastErrorAt   time.Time `json:"last_error_at,omitempty"`
+}
+
 // Feed is the runtime state for one provider: its Reader + settings + last-good
 // Lineup, guarded by its own RWMutex (written by its refresh goroutine, read by
 // HTTP handlers and the aggregator).
@@ -26,6 +51,7 @@ type Feed struct {
 	settings model.ProviderSettings
 	mu       sync.RWMutex
 	lineup   Lineup
+	status   Status
 }
 
 func newFeed(reader Reader, settings model.ProviderSettings) *Feed {
@@ -85,5 +111,78 @@ func (f *Feed) Set(l Lineup) {
 	f.lineup = l
 }
 
+// SetStatus replaces refresh-attempt state.
+func (f *Feed) SetStatus(status Status) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.status = status
+}
+
 // Settings returns the effective provider settings.
 func (f *Feed) Settings() model.ProviderSettings { return f.settings }
+
+// Stats computes provider metrics from the current lineup and status.
+func (f *Feed) Stats() Stats {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	stats := Stats{
+		FetchedAt:        f.lineup.FetchedAt,
+		LastAttemptAt:    f.status.LastAttemptAt,
+		LastError:        f.status.LastError,
+		LastErrorAt:      f.status.LastErrorAt,
+		TotalChannels:    len(f.lineup.Channels),
+		ExportedChannels: f.lineup.ChannelCount,
+		TotalProgrammes:  len(f.lineup.Programmes),
+		ByClassification: make(map[string]int),
+		ByGroup:          make(map[string]int),
+		FilterReasons:    make(map[string]int),
+	}
+
+	exported := make(map[string]struct{}, f.lineup.ChannelCount)
+	for _, channel := range f.lineup.Channels {
+		classification := string(channel.Classification)
+		if classification == "" {
+			classification = "UNCLASSIFIED"
+		}
+		stats.ByClassification[classification]++
+		group := channel.Group
+		if group == "" {
+			group = "(none)"
+		}
+		stats.ByGroup[group]++
+		if channel.Excluded {
+			stats.ExcludedChannels++
+			if channel.FilterReason != "" {
+				stats.FilterReasons[channel.FilterReason]++
+			}
+		}
+		if !channel.Excluded && channel.NormalizedID != "" && channel.StreamURL != "" {
+			exported[channel.NormalizedID] = struct{}{}
+		}
+	}
+
+	for _, programme := range f.lineup.Programmes {
+		if programme.Title == "" || !programme.Stop.After(programme.Start) {
+			continue
+		}
+		if _, ok := exported[programme.ChannelID]; !ok {
+			continue
+		}
+		stats.ExportedProgrammes++
+		if stats.GuideStart.IsZero() || programme.Start.Before(stats.GuideStart) {
+			stats.GuideStart = programme.Start
+		}
+		if stats.GuideEnd.IsZero() || programme.Stop.After(stats.GuideEnd) {
+			stats.GuideEnd = programme.Stop
+		}
+	}
+	return stats
+}
+
+// Status returns the current refresh-attempt state.
+func (f *Feed) Status() Status {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.status
+}

@@ -49,7 +49,7 @@ func main() {
 	}
 	readers := map[model.ProviderID]provider.Reader{}
 	if s := settings[model.ProviderLG]; s.IsEnabled() {
-		readers[model.ProviderLG] = lg.New(s, client, cc)
+		readers[model.ProviderLG] = lg.New(s, client)
 	} else {
 		slog.Info("provider disabled", "id", model.ProviderLG)
 	}
@@ -74,6 +74,7 @@ func main() {
 		Addr: cfg.Listen,
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
+			mux.HandleFunc("GET /api/providers/{id}", server.ProviderDetailHandler(reg))
 			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(reg))
 			mux.HandleFunc("GET /api/guide.xml", server.GuideXML(reg))
 			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(reg))
