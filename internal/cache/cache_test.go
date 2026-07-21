@@ -16,8 +16,9 @@ import (
 func TestProviderRoundTrip(t *testing.T) {
 	cc := cache.New(t.TempDir())
 	meta := provider.Meta{
-		FetchedAt:       time.Now().UTC().Truncate(time.Second),
-		Classifications: map[string]model.Classification{"a": model.ClassNative, "b": model.ClassDRM},
+		FetchedAt:               time.Now().UTC().Truncate(time.Second),
+		Classifications:         map[string]model.Classification{"a": model.ClassNative, "b": model.ClassDRM},
+		SyntheticChannelNumbers: provider.ChannelNumberAssignments{"a": 5000, "gone": 5001},
 	}
 	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), meta); err != nil {
 		t.Fatal(err)
@@ -33,7 +34,8 @@ func TestProviderRoundTrip(t *testing.T) {
 		t.Fatalf("ReadRaw: %q %v", raw, err)
 	}
 	got, ok := cc.LoadMeta("lg")
-	if !ok || !got.FetchedAt.Equal(meta.FetchedAt) || got.Classifications["b"] != model.ClassDRM {
+	if !ok || !got.FetchedAt.Equal(meta.FetchedAt) || got.Classifications["b"] != model.ClassDRM ||
+		got.SyntheticChannelNumbers["gone"] != 5001 {
 		t.Fatalf("LoadMeta: %+v ok=%v", got, ok)
 	}
 }

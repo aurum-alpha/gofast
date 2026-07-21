@@ -9,6 +9,7 @@ type Channel = {
   number: number
   offset_number: number
   stream_url: string
+  emitted_url?: string
   logo_url?: string
   classification?: string
   filter_reason?: string
@@ -23,7 +24,7 @@ function exportLabel(ch: Channel): string {
   if (ch.excluded) {
     return ch.filter_reason ? `filtered · ${ch.filter_reason}` : 'filtered'
   }
-  return 'exported'
+  return ch.emitted_url && ch.emitted_url !== ch.stream_url ? 'proxied' : 'direct'
 }
 
 function displayNumber(n: number): string {
@@ -103,7 +104,8 @@ export function ChannelsPage() {
       <h1>Channels</h1>
       <p className="lead">
         Live lineup from the last successful refresh. Class is probed at
-        refresh (NATIVE / BEACON / DRM). DRM is never exported.
+        refresh (NATIVE / BEACON / DRM). DRM is never exported; BEACON uses
+        FASTProxy when configured.
       </p>
 
       {error && (
@@ -159,7 +161,7 @@ export function ChannelsPage() {
                   <th scope="col">Provider</th>
                   <th scope="col">Group</th>
                   <th scope="col">Class</th>
-                  <th scope="col">Export</th>
+                  <th scope="col">Playback</th>
                 </tr>
               </thead>
               <tbody>

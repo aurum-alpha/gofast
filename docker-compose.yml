@@ -14,6 +14,8 @@ services:
       - ./config.example.yaml:/data/config.yaml:ro
     environment:
       PORT: "8180"
+      FASTGEN_PROXY_BASE_URL: "${FASTGEN_PROXY_BASE_URL:-}"
+      FASTGEN_PROXY_ALL: "${FASTGEN_PROXY_ALL:-false}"
 
   fastproxy:
     profiles:

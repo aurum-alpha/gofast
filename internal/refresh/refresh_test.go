@@ -51,11 +51,11 @@ func (staticReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, err
 		}}, nil
 }
 
-func TestApplyClassificationExportDropsDRM(t *testing.T) {
-	got := applyClassificationExport([]model.Channel{
+func TestApplyEmissionPolicyDropsDRM(t *testing.T) {
+	got, _ := applyEmissionPolicy([]model.Channel{
 		{ID: "native", Classification: model.ClassNative},
 		{ID: "drm", Classification: model.ClassDRM, LicenseURL: "https://license.example"},
-	})
+	}, EmissionPolicy{})
 	if got[0].Excluded {
 		t.Fatalf("native channel excluded: %+v", got[0])
 	}
@@ -107,6 +107,69 @@ func TestProviderRefresherPublishesAndArchives(t *testing.T) {
 	}
 	if raw, err := cc.ReadRaw(model.ProviderLG); err != nil || len(raw["schedule.json"]) == 0 {
 		t.Fatalf("raw not archived: %d bytes, %v", len(raw), err)
+	}
+}
+
+func TestSyntheticNumberPersistsAcrossRefreshAndRestore(t *testing.T) {
+	settings := model.ProviderSettings{
+		ID:                       model.ProviderXumo,
+		Label:                    "Xumo",
+		MinChannels:              1,
+		SynthesizeChannelNumbers: 5000,
+	}
+	newRegistry := func() *provider.Registry {
+		return provider.NewRegistry(
+			map[model.ProviderID]provider.Reader{model.ProviderXumo: staticReader{}},
+			map[model.ProviderID]model.ProviderSettings{model.ProviderXumo: settings},
+		)
+	}
+	cc := cache.New(t.TempDir())
+	registry := newRegistry()
+	feed, _ := registry.Feed(model.ProviderXumo)
+	if err := (&providerRefresher{feed: feed, cache: cc}).Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := feed.Channels()[0].OffsetNumber; got != 5000 {
+		t.Fatalf("synthetic number = %d, want 5000", got)
+	}
+	meta, ok := cc.LoadMeta(model.ProviderXumo)
+	if !ok || meta.SyntheticChannelNumbers["news"] != 5000 {
+		t.Fatalf("persisted meta: %+v ok=%v", meta, ok)
+	}
+
+	restored := newRegistry()
+	Restore(restored, cc, EmissionPolicy{})
+	restoredFeed, _ := restored.Feed(model.ProviderXumo)
+	if got := restoredFeed.Channels()[0].OffsetNumber; got != 5000 {
+		t.Fatalf("restored number = %d, want 5000", got)
+	}
+}
+
+func TestFailedGateDoesNotConsumeSyntheticNumber(t *testing.T) {
+	settings := model.ProviderSettings{
+		ID:                       model.ProviderXumo,
+		MinChannels:              2,
+		SynthesizeChannelNumbers: 5000,
+	}
+	registry := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderXumo: staticReader{}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderXumo: settings},
+	)
+	feed, _ := registry.Feed(model.ProviderXumo)
+	feed.Set(provider.Lineup{
+		SyntheticChannelNumbers: provider.ChannelNumberAssignments{"gone": 5000},
+		FetchedAt:               time.Now().Add(-time.Hour),
+	})
+	cc := cache.New(t.TempDir())
+	if err := (&providerRefresher{feed: feed, cache: cc}).Refresh(context.Background()); err == nil {
+		t.Fatal("expected min_channels gate failure")
+	}
+	got := feed.Lineup().SyntheticChannelNumbers
+	if len(got) != 1 || got["gone"] != 5000 {
+		t.Fatalf("failed candidate changed assignments: %+v", got)
+	}
+	if _, ok := cc.LoadMeta(model.ProviderXumo); ok {
+		t.Fatal("failed candidate published metadata")
 	}
 }
 
@@ -177,7 +240,7 @@ func TestPublishedProviderRefreshAndRestore(t *testing.T) {
 		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: restoredReader},
 		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
 	)
-	Restore(restoredRegistry, cc)
+	Restore(restoredRegistry, cc, EmissionPolicy{})
 	restoredFeed, _ := restoredRegistry.Feed(model.ProviderDistroTV)
 	if channels := restoredFeed.Channels(); len(channels) != 2 || channels[0].NormalizedID != "dtv_EPGACE_TV" {
 		t.Fatalf("restored channels: %+v", channels)
@@ -339,7 +402,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
 	)
 
-	Restore(reg, cc)
+	Restore(reg, cc, EmissionPolicy{})
 
 	f, _ := reg.Feed(model.ProviderLG)
 	if len(f.Channels()) == 0 {

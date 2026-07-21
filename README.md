@@ -58,7 +58,8 @@ Production files (pull-only, no secrets):
 4. Gen-only by default. To also run proxy, set `COMPOSE_PROFILES=proxy` in the stack env.
 5. Optional: set `FASTGEN_DATA=/path/on/host` for a bind mount instead of the named volume.
 6. Optional: set `FASTGEN_BASE_URL` to the public origin Jellyfin uses (include `:port` unless on 80/443), e.g. `http://192.168.1.50:8180`.
-7. Smoke test: `curl http://HOST:8180/healthz` → `{"ok":true}` (container logs a `request` line; Docker/Portainer healthcheck uses the same path).
+7. When enabling the proxy profile, set `FASTGEN_PROXY_BASE_URL` to the public proxy origin Jellyfin/ffmpeg can reach, e.g. `http://192.168.1.50:8181`. Optionally set `FASTGEN_PROXY_ALL=true`.
+8. Smoke test: `curl http://HOST:8180/healthz` → `{"ok":true}` (container logs a `request` line; Docker/Portainer healthcheck uses the same path).
 
 ### Config (`/data/config.yaml`)
 
@@ -66,9 +67,9 @@ Runtime YAML on the gen data volume (not baked into the image). **Provider imple
 
 - [`config.example.yaml`](config.example.yaml) — starter template with the well-known provider overlays; copy to `/data/config.yaml`.
 
-Each enabled provider is served at `/{id}.m3u` and `/{id}.xml`; combined output is `/playlist.m3u` and `/epg.xml`. The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`; MJH providers store `channels.json.gz` + `guide.xml.gz`; published-pair providers store `playlist.m3u` plus `guide.xml.gz` (Xumo/DistroTV) or `guide.xml` (LocalNow). Published-pair refreshes log normalized playlist/guide ID match rates. Stable synthetic channel-number allocation lands with J27-19; adapters never assign order-dependent numbers.
+Each enabled provider is served at `/{id}.m3u` and `/{id}.xml`; combined output is `/playlist.m3u` and `/epg.xml`. The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`; MJH providers store `channels.json.gz` + `guide.xml.gz`; published-pair providers store `playlist.m3u` plus `guide.xml.gz` (Xumo/DistroTV) or `guide.xml` (LocalNow). Published-pair refreshes log normalized playlist/guide ID match rates. Numberless channels use stable, persisted first-seen assignments from each provider's `synthesize_channel_numbers` base; removed IDs stay reserved.
 
-Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, …) stay in env — see `AGENTS.md`. Config keys for proxy, logo TLS, and health are added later **with those features**, not as a standalone M0 layer. Adapters that fetch providers arrive in M1.
+Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, …) stay in env — see `AGENTS.md`. `proxy_base_url` is the public FASTProxy origin; BEACON channels are filtered with an explicit reason when it is absent. `proxy_all` defaults off. Logo TLS and health config land with those features.
 
 ### Local build from source
 

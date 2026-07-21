@@ -57,7 +57,11 @@ func main() {
 
 	// Warm feeds from disk, regenerate the aggregate for consistency, then start
 	// the aggregator and the per-provider refresh scheduler.
-	refresh.Restore(reg, cc)
+	emissionPolicy := refresh.EmissionPolicy{
+		ProxyBaseURL: cfg.ProxyBaseURL,
+		ProxyAll:     cfg.ProxyAllEnabled(),
+	}
+	refresh.Restore(reg, cc, emissionPolicy)
 	agg := aggregate.New(reg, cc)
 	if err := agg.Rebuild(); err != nil {
 		slog.Warn("initial aggregate rebuild failed", "err", err)
@@ -65,7 +69,7 @@ func main() {
 	go agg.Run(ctx)
 
 	clf := classifier.New(client, 0)
-	svc := refresh.New(reg, clf, cc, agg.Notify)
+	svc := refresh.New(reg, clf, cc, emissionPolicy, agg.Notify)
 	go svc.Run(ctx)
 
 	uiHandler := ui.Handler()

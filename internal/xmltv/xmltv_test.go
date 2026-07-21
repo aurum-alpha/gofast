@@ -13,7 +13,7 @@ import (
 
 func TestWrite(t *testing.T) {
 	chs := []model.Channel{
-		{NormalizedID: "ch1", Name: "One & Two", Number: 10, OffsetNumber: 10, StreamURL: "https://s", LogoURL: "https://logo"},
+		{NormalizedID: "ch1", Name: "One & Two", OffsetNumber: 5000, StreamURL: "https://s", LogoURL: "https://logo"},
 		{NormalizedID: "drop", Name: "Bad", StreamURL: "https://x", Excluded: true},
 	}
 	progs := []model.Programme{
@@ -42,6 +42,9 @@ func TestWrite(t *testing.T) {
 	}
 	if !strings.Contains(out, `start="20240601120000 +0000"`) {
 		t.Fatalf("time: %s", out)
+	}
+	if !strings.Contains(out, `<lcn>5000</lcn>`) {
+		t.Fatalf("synthetic channel number missing: %s", out)
 	}
 	var doc struct {
 		XMLName xml.Name `xml:"tv"`

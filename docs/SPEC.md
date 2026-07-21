@@ -163,10 +163,11 @@ streams).
 - **Channel numbers:** per-provider integer `channel_number_offset` added to the native
   number when the upstream provides one. Emit as `tvg-chno` in M3U and
   `<lcn>` in XMLTV. Sort each playlist by final number. For providers with no
-  upstream numbering (Xumo, DistroTV): `synthesize_channel_numbers: <base>` assigns
-  sequential numbers -- but implement it properly with a PERSISTED id->number
-  map (first-seen assignment, reused forever, stored in /data) so numbers
-  survive upstream reordering; playlist-order assignment drifts.
+  upstream numbering (Xumo, DistroTV, LocalNow):
+  `synthesize_channel_numbers: <base>` assigns sequential numbers through a
+  persisted per-provider id->number map. First-seen assignments are reused
+  forever (including after removal/reappearance), stored atomically with the
+  provider generation metadata, and never derived from mutable playlist order.
 - **Provider labels:** per-provider `label` (LG/Pluto/Samsung). Display name in
   M3U = `{name} · {label}`. `group-title` = `{label}: {group}`. Keep `tvg-name`
   as the clean unlabeled name.
@@ -237,7 +238,8 @@ clients use (logos, absolute links): include the port when not on 80/443
 (`https://gofast.example.com`); no trailing slash. Optional YAML on the data
 volume (`/data/config.yaml`) may hold structured, non-secret settings
 (including per-provider blocks). Gen-only overrides: `FASTGEN_BASE_URL`,
-`FASTGEN_DATA_DIR`. Env always wins over the file. Precedence: code defaults →
+`FASTGEN_DATA_DIR`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`. Env always
+wins over the file. Precedence: code defaults →
 YAML (if present) → env. Include a documented example (`config.example.yaml`)
 in the repo — never a filled production config. Hot-reload on SIGHUP is
 nice-to-have.

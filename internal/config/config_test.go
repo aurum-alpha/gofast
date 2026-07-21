@@ -15,6 +15,8 @@ func clearDeployEnv(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("FASTGEN_BASE_URL", "")
 	t.Setenv("FASTGEN_DATA_DIR", "")
+	t.Setenv("FASTGEN_PROXY_BASE_URL", "")
+	t.Setenv("FASTGEN_PROXY_ALL", "")
 }
 
 func writeConfig(t *testing.T, body string) string {
@@ -43,6 +45,9 @@ func TestDefaults(t *testing.T) {
 	if len(cfg.Providers) != 0 {
 		t.Fatalf("defaults must not bake in providers, got %d", len(cfg.Providers))
 	}
+	if cfg.ProxyBaseURL != "" || cfg.ProxyAllEnabled() {
+		t.Fatalf("unexpected proxy defaults: %+v", cfg)
+	}
 }
 
 func TestNewFromYAML(t *testing.T) {
@@ -51,6 +56,8 @@ func TestNewFromYAML(t *testing.T) {
 listen: ":9090"
 base_url: "http://example.local:9090"
 data_dir: "/var/gofast"
+proxy_base_url: "https://proxy.example/"
+proxy_all: true
 timeouts:
   http_client: 30s
 logging:
@@ -69,6 +76,9 @@ logging:
 	if cfg.DataDir != "/var/gofast" {
 		t.Errorf("DataDir: got %q", cfg.DataDir)
 	}
+	if cfg.ProxyBaseURL != "https://proxy.example" || !cfg.ProxyAllEnabled() {
+		t.Errorf("proxy config: base=%q all=%v", cfg.ProxyBaseURL, cfg.ProxyAllEnabled())
+	}
 	if cfg.Timeouts.HTTPClient != 30*time.Second {
 		t.Errorf("HTTPClient: got %v", cfg.Timeouts.HTTPClient)
 	}
@@ -82,10 +92,14 @@ func TestNewEnvOverridesYAML(t *testing.T) {
 listen: ":9090"
 base_url: "http://from-file"
 data_dir: "/from-file"
+proxy_base_url: "https://proxy.from-file"
+proxy_all: true
 `)
 	t.Setenv("PORT", "8180")
 	t.Setenv("FASTGEN_BASE_URL", "http://from-env")
 	t.Setenv("FASTGEN_DATA_DIR", "/from-env")
+	t.Setenv("FASTGEN_PROXY_BASE_URL", "https://proxy.from-env///")
+	t.Setenv("FASTGEN_PROXY_ALL", "false")
 
 	cfg, err := New(path)
 	if err != nil {
@@ -99,6 +113,9 @@ data_dir: "/from-file"
 	}
 	if cfg.DataDir != "/from-env" {
 		t.Errorf("DataDir: env should win, got %q", cfg.DataDir)
+	}
+	if cfg.ProxyBaseURL != "https://proxy.from-env" || cfg.ProxyAllEnabled() {
+		t.Errorf("proxy env should win: base=%q all=%v", cfg.ProxyBaseURL, cfg.ProxyAllEnabled())
 	}
 }
 
@@ -129,6 +146,28 @@ func TestNewMissingFile(t *testing.T) {
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("want os.ErrNotExist, got %v", err)
+	}
+}
+
+func TestNewRejectsInvalidProxyConfig(t *testing.T) {
+	clearDeployEnv(t)
+	tests := []string{
+		"proxy_all: true\n",
+		"proxy_base_url: proxy.internal:8181\n",
+		"proxy_base_url: https://proxy.test?token=nope\n",
+	}
+	for _, body := range tests {
+		if _, err := New(writeConfig(t, body)); err == nil {
+			t.Fatalf("expected error for %q", body)
+		}
+	}
+}
+
+func TestNewRejectsInvalidProxyAllEnv(t *testing.T) {
+	clearDeployEnv(t)
+	t.Setenv("FASTGEN_PROXY_ALL", "sometimes")
+	if _, err := New(""); err == nil {
+		t.Fatal("expected invalid FASTGEN_PROXY_ALL error")
 	}
 }
 
@@ -252,7 +291,10 @@ func TestEnvOverlay(t *testing.T) {
 	t.Setenv("PORT", "8080")
 	t.Setenv("FASTGEN_BASE_URL", "http://env")
 	t.Setenv("FASTGEN_DATA_DIR", "/env-data")
-	o := envOverlay()
+	o, err := envOverlay()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if o.Listen != ":8080" || o.BaseURL != "http://env" || o.DataDir != "/env-data" {
 		t.Fatalf("%+v", o)
 	}

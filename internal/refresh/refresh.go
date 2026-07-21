@@ -36,10 +36,10 @@ type Service struct {
 
 // New builds one Refresher per enabled feed. notify is called after each
 // successful publish (wire it to the aggregator); refresh never imports aggregate.
-func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, notify func()) *Service {
+func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, notify func()) *Service {
 	var rs []Refresher
 	for _, f := range reg.Feeds() {
-		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, notify: notify})
+		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, policy: policy, notify: notify})
 	}
 	return &Service{refreshers: rs}
 }
@@ -49,9 +49,9 @@ func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, notify
 // persisted classifications from meta.json. So the API and serving work at boot
 // exactly as after a fetch. Providers with no cached raw are left empty (they
 // fetch on boot); unreadable/unparseable entries are skipped.
-func Restore(reg *provider.Registry, cc *cache.Cache) {
+func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy) {
 	for _, f := range reg.Feeds() {
-		raw, meta, legacy, err := cc.LoadProvider(f.ID())
+		raw, meta, _, err := cc.LoadProvider(f.ID())
 		if err != nil {
 			continue // no cached snapshot; will fetch on boot
 		}
@@ -62,8 +62,8 @@ func Restore(reg *provider.Registry, cc *cache.Cache) {
 			}
 			f.SetStatus(status)
 		}
-		pr := &providerRefresher{feed: f, cache: cc}
-		if err := pr.rehydrate(raw, meta, legacy); err != nil {
+		pr := &providerRefresher{feed: f, cache: cc, policy: policy}
+		if err := pr.rehydrate(raw, meta); err != nil {
 			slog.Warn("cache restore failed", "id", f.ID(), "err", err)
 			continue
 		}
@@ -123,6 +123,7 @@ type providerRefresher struct {
 	feed   *provider.Feed
 	clf    *classifier.Client
 	cache  *cache.Cache
+	policy EmissionPolicy
 	notify func()
 }
 
@@ -145,12 +146,16 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 	if err != nil {
 		return p.fail(err)
 	}
-	chs, progs = p.transform(chs, progs)
+	previous := p.feed.Lineup().SyntheticChannelNumbers
+	chs, progs, assignments, err := p.transform(chs, progs, previous)
+	if err != nil {
+		return p.fail(err)
+	}
 	if p.clf != nil {
 		slog.Info("classifying channels", "provider", p.feed.ID(), "count", len(chs))
 		chs = p.clf.ClassifyChannels(ctx, chs)
 	}
-	lineup, m3uData, xmlData, err := p.prepare(chs, progs, time.Now())
+	lineup, m3uData, xmlData, err := p.prepare(chs, progs, assignments, time.Now())
 	if err != nil {
 		return p.fail(err)
 	}
@@ -171,25 +176,26 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 
 // rehydrate rebuilds the feed from a cached raw snapshot (no network): parse ->
 // transform -> apply persisted classifications -> commit (fetch time from meta).
-func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta, legacy bool) error {
+func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) error {
 	chs, progs, err := p.feed.Reader().Parse(raw)
 	if err != nil {
 		return err
 	}
-	chs, progs = p.transform(chs, progs)
+	chs, progs, assignments, err := p.transform(chs, progs, meta.SyntheticChannelNumbers)
+	if err != nil {
+		return err
+	}
 	for i := range chs {
 		if c, ok := meta.Classifications[chs[i].NormalizedID]; ok {
 			chs[i].Classification = c
 		}
 	}
-	lineup, m3uData, xmlData, err := p.prepare(chs, progs, meta.FetchedAt)
+	lineup, m3uData, xmlData, err := p.prepare(chs, progs, assignments, meta.FetchedAt)
 	if err != nil {
 		return err
 	}
-	if legacy {
-		if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
-			return err
-		}
+	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
+		return err
 	}
 	p.feed.Set(lineup)
 	return nil
@@ -198,7 +204,7 @@ func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta, lega
 // transform is the shared decode-time pipeline (identical for the network and
 // cache paths): stamp provider, normalize, apply the channel-number offset, mark
 // exclusions, and normalize programme channel references.
-func (p *providerRefresher) transform(chs []model.Channel, progs []model.Programme) ([]model.Channel, []model.Programme) {
+func (p *providerRefresher) transform(chs []model.Channel, progs []model.Programme, previous provider.ChannelNumberAssignments) ([]model.Channel, []model.Programme, provider.ChannelNumberAssignments, error) {
 	id := p.feed.ID()
 	s := p.feed.Settings()
 	for i := range chs {
@@ -207,6 +213,10 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 		chs[i].ApplyChannelNumberOffset(s.ChannelNumberOffset)
 	}
 	chs = model.MarkExclusions(chs, s.ExclusionRegexes)
+	assignments, err := previous.Apply(chs, s.SynthesizeChannelNumbers)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	normByRaw := make(map[string]string, len(chs))
 	for _, ch := range chs {
 		normByRaw[ch.ID] = ch.NormalizedID
@@ -219,27 +229,29 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 			progs[i].ChannelID = model.NormalizeID(raw)
 		}
 	}
-	return chs, progs
+	return chs, progs, assignments, nil
 }
 
 // prepare applies export rules, runs quality gates, and renders one immutable
 // candidate without mutating the feed or cache.
-func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
+func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme, assignments provider.ChannelNumberAssignments, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
 	id := p.feed.ID()
 	s := p.feed.Settings()
-	chs = applyClassificationExport(chs)
+	var emission emissionStats
+	chs, emission = applyEmissionPolicy(chs, p.policy)
+	if emission.NeedsProxyDropped > 0 {
+		slog.Warn("channels need FASTProxy; dropping from export",
+			"provider", id,
+			"count", emission.NeedsProxyDropped,
+		)
+	}
 
 	label := s.Label
 	if label == "" {
 		label = string(id)
 	}
 
-	exported := 0
-	for _, ch := range chs {
-		if !ch.Excluded && ch.NormalizedID != "" && ch.StreamURL != "" {
-			exported++
-		}
-	}
+	exported := len(model.ForExport(chs))
 	minCh := s.MinChannels
 	if minCh <= 0 {
 		minCh = 1
@@ -271,11 +283,12 @@ func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme
 	}
 
 	lineup := provider.Lineup{
-		Channels:       chs,
-		Programmes:     progs,
-		ChannelCount:   exported,
-		ProgrammeCount: progN,
-		FetchedAt:      fetchedAt,
+		Channels:                chs,
+		Programmes:              progs,
+		ChannelCount:            exported,
+		ProgrammeCount:          progN,
+		FetchedAt:               fetchedAt,
+		SyntheticChannelNumbers: assignments,
 	}
 	return lineup, cache.M3U(m3uBuf.Bytes()), cache.XMLTV(xmltvBuf.Bytes()), nil
 }
@@ -303,21 +316,4 @@ func (p *providerRefresher) setStatus(status provider.Status) {
 	if err := p.cache.WriteStatus(p.feed.ID(), status); err != nil {
 		slog.Warn("status write failed", "provider", p.feed.ID(), "err", err)
 	}
-}
-
-// applyClassificationExport drops DRM always. BEACON hard-drop when proxy is
-// unset lands with proxy_base_url emission (J27-19); until then badges show
-// BEACON while playlists stay exportable for the LG vertical slice.
-func applyClassificationExport(channels []model.Channel) []model.Channel {
-	out := make([]model.Channel, len(channels))
-	copy(out, channels)
-	for i := range out {
-		if out[i].Classification == model.ClassDRM {
-			out[i].Excluded = true
-			if out[i].FilterReason == "" {
-				out[i].FilterReason = "DRM"
-			}
-		}
-	}
-	return out
 }
