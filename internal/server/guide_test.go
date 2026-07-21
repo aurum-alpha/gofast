@@ -1,9 +1,9 @@
 package server_test
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,46 +12,93 @@ import (
 	"github.com/j27-aurum/gofast/internal/snapshot"
 )
 
-func TestGuideAPI(t *testing.T) {
+func guideStore(t *testing.T) *snapshot.Store {
+	t.Helper()
 	store := snapshot.NewStore()
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	store.Put(snapshot.Snapshot{
 		ProviderID: "lg",
+		Label:      "LG",
 		Channels: []model.Channel{
-			{Provider: "lg", ID: "news", NormalizedID: "news", Name: "News", Number: 5, OffsetNumber: 1005},
+			{Provider: "lg", ID: "news", NormalizedID: "news", Name: "News", OffsetNumber: 1005, StreamURL: "https://s"},
+			{Provider: "lg", ID: "drop", NormalizedID: "drop", Name: "Bad", StreamURL: "https://x", Excluded: true},
 		},
 		Programmes: []model.Programme{
-			{ChannelID: "news", Title: "Evening", Start: start.Add(time.Hour), Stop: start.Add(2 * time.Hour)},
 			{ChannelID: "news", Title: "Morning", Start: start, Stop: start.Add(time.Hour)},
+			{ChannelID: "drop", Title: "Hidden", Start: start, Stop: start.Add(time.Hour)},
 		},
 	})
+	return store
+}
 
-	h := server.GuideHandler(store)
+func TestGuideXMLAggregate(t *testing.T) {
+	h := server.GuideXML(guideStore(t))
+
+	// Default: export-only, provider-namespaced ids.
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/guide", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/guide.xml", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
-
-	var list snapshot.GuideList
-	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
-		t.Fatal(err)
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="lg.news"`) {
+		t.Fatalf("expected namespaced channel id, got %s", body)
 	}
-	if len(list.Channels) != 1 {
-		t.Fatalf("channels: %d", len(list.Channels))
+	if !strings.Contains(body, `channel="lg.news"`) {
+		t.Fatalf("expected namespaced programme ref, got %s", body)
 	}
-	ch := list.Channels[0]
-	if ch.NormalizedID != "news" || ch.OffsetNumber != 1005 || len(ch.Programmes) != 2 {
-		t.Fatalf("guide channel: %+v", ch)
-	}
-	// Programmes are sorted by start.
-	if ch.Programmes[0].Title != "Morning" || ch.Programmes[1].Title != "Evening" {
-		t.Fatalf("programme order: %+v", ch.Programmes)
+	if strings.Contains(body, "lg.drop") {
+		t.Fatalf("excluded channel leaked into default guide: %s", body)
 	}
 
+	// includeAll: excluded channel appears too.
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/guide", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/guide.xml?includeAll=true", nil))
+	if !strings.Contains(rec.Body.String(), `id="lg.drop"`) {
+		t.Fatalf("includeAll should include excluded channel: %s", rec.Body.String())
+	}
+
+	// Method guard.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/guide.xml", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("want 405, got %d", rec.Code)
+	}
+}
+
+func TestGuideProviderXML(t *testing.T) {
+	store := guideStore(t)
+	h := server.GuideProviderXML(store)
+
+	serve := func(target string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.SetPathValue("file", strings.TrimPrefix(target, "/api/guide/"))
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Known provider: bare ids (no provider prefix).
+	rec := serve("/api/guide/lg.xml")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="news"`) || strings.Contains(body, "lg.news") {
+		t.Fatalf("expected bare ids, got %s", body)
+	}
+
+	// Unknown provider and non-.xml suffix are both 404.
+	if rec := serve("/api/guide/nope.xml"); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown provider: want 404, got %d", rec.Code)
+	}
+	{
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/guide/lg", nil)
+		req.SetPathValue("file", "lg")
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("non-.xml: want 404, got %d", rec.Code)
+		}
 	}
 }

@@ -65,7 +65,8 @@ func main() {
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(settings))
 			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(store))
-			mux.HandleFunc("GET /api/guide", server.GuideHandler(store))
+			mux.HandleFunc("GET /api/guide.xml", server.GuideXML(store))
+			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(store))
 			mux.HandleFunc("GET /{file}", server.PlaylistFile(store, uiHandler))
 			mux.Handle("/", uiHandler)
 		},

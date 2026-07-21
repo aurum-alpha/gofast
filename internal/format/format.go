@@ -39,3 +39,10 @@ func FormatGroupTitle(label, group string) string {
 	}
 	return label + ": " + group
 }
+
+// CombinedID namespaces a channel id for a combined (all-provider) document,
+// where bare normalized ids from different providers could collide. The scheme
+// is "{provider}.{normalizedID}"; per-provider documents keep the bare id.
+func CombinedID(provider, normalizedID string) string {
+	return provider + "." + normalizedID
+}

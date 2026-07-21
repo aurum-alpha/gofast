@@ -117,6 +117,7 @@ func publish(ctx context.Context, reg *provider.Registry, store *snapshot.Store,
 
 	store.Put(snapshot.Snapshot{
 		ProviderID:     res.ID,
+		Label:          label,
 		M3U:            m3uBuf.Bytes(),
 		XML:            xmltvBuf.Bytes(),
 		Channels:       channels,

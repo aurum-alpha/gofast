@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  combinedId,
+  parseXMLTV,
+  type XmltvProgramme,
+  type Xmltv,
+} from '../lib/xmltv'
 
-type Programme = {
-  channel_id: string
-  title: string
-  desc?: string
-  start: string
-  stop: string
-}
-
-type GuideChannel = {
+// Channel-level meta from /api/channels used to augment the XMLTV (non-standard fields).
+type ChannelRow = {
   provider: string
   id: string
   normalized_id: string
@@ -17,12 +16,21 @@ type GuideChannel = {
   number: number
   offset_number: number
   logo_url?: string
+  classification?: string
   excluded: boolean
-  programmes: Programme[]
 }
 
-type GuideResponse = {
-  channels: GuideChannel[]
+type Row = {
+  id: string // namespaced tvg-id from the aggregate guide
+  name: string
+  number: number
+  logo: string
+  provider: string
+  group: string
+  rawId: string
+  normalizedId: string
+  excluded: boolean
+  programmes: XmltvProgramme[]
 }
 
 const PX_PER_MIN = 4 // 240px per hour
@@ -54,17 +62,15 @@ function tickLabel(ms: number): string {
   return d.toLocaleTimeString([], { hour: 'numeric' })
 }
 
-function fmtRange(startISO: string, stopISO: string): string {
-  const s = new Date(startISO)
-  const e = new Date(stopISO)
-  const day = s.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
-  const st = s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const et = e.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+function fmtRange(start: Date, stop: Date): string {
+  const day = start.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+  const st = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const et = stop.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return `${day} ${st}–${et}`
 }
 
 export function GuidePage() {
-  const [data, setData] = useState<GuideResponse | null>(null)
+  const [data, setData] = useState<{ channels: ChannelRow[]; guide: Xmltv } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [providerFilter, setProviderFilter] = useState('all')
   const [q, setQ] = useState('')
@@ -73,16 +79,19 @@ export function GuidePage() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/guide')
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`${res.status} ${res.statusText}`)
-        }
-        return res.json() as Promise<GuideResponse>
-      })
-      .then((body) => {
+    Promise.all([
+      fetch('/api/channels').then(async (res) => {
+        if (!res.ok) throw new Error(`channels: ${res.status} ${res.statusText}`)
+        return (await res.json()) as { channels: ChannelRow[] }
+      }),
+      fetch('/api/guide.xml?includeAll=true').then(async (res) => {
+        if (!res.ok) throw new Error(`guide: ${res.status} ${res.statusText}`)
+        return parseXMLTV(await res.text())
+      }),
+    ])
+      .then(([chans, guide]) => {
         if (!cancelled) {
-          setData(body)
+          setData({ channels: chans.channels, guide })
           setError(null)
         }
       })
@@ -96,38 +105,69 @@ export function GuidePage() {
     }
   }, [])
 
-  const providers = useMemo(() => {
-    if (!data) return [] as string[]
-    return [...new Set(data.channels.map((c) => c.provider))].sort()
+  // Merge XMLTV (primary: id, name, number, logo, programmes) with /api/channels
+  // (augment: provider, group, excluded, raw id) joined on the namespaced id.
+  const allRows = useMemo<Row[]>(() => {
+    if (!data) return []
+    const meta = new Map<string, ChannelRow>()
+    for (const c of data.channels) {
+      meta.set(combinedId(c.provider, c.normalized_id), c)
+    }
+    const progs = new Map<string, XmltvProgramme[]>()
+    for (const p of data.guide.programmes) {
+      const arr = progs.get(p.channel)
+      if (arr) arr.push(p)
+      else progs.set(p.channel, [p])
+    }
+    return data.guide.channels.map((xc) => {
+      const m = meta.get(xc.id)
+      const list = (progs.get(xc.id) ?? [])
+        .slice()
+        .sort((a, b) => a.start.getTime() - b.start.getTime())
+      return {
+        id: xc.id,
+        name: xc.displayName,
+        number: xc.number,
+        logo: xc.logo,
+        provider: m?.provider ?? '',
+        group: m?.group ?? '',
+        rawId: m?.id ?? '',
+        normalizedId: m?.normalized_id ?? xc.id,
+        excluded: m?.excluded ?? false,
+        programmes: list,
+      }
+    })
   }, [data])
 
+  const providers = useMemo(() => {
+    return [...new Set(allRows.map((r) => r.provider).filter(Boolean))].sort()
+  }, [allRows])
+
   const rows = useMemo(() => {
-    if (!data) return [] as GuideChannel[]
     const needle = q.trim().toLowerCase()
-    return data.channels.filter((ch) => {
-      if (providerFilter !== 'all' && ch.provider !== providerFilter) {
+    return allRows.filter((r) => {
+      if (providerFilter !== 'all' && r.provider !== providerFilter) {
         return false
       }
       if (!needle) return true
       return (
-        ch.name.toLowerCase().includes(needle) ||
-        ch.id.toLowerCase().includes(needle) ||
-        ch.normalized_id.toLowerCase().includes(needle) ||
-        ch.group.toLowerCase().includes(needle) ||
-        String(ch.number).includes(needle) ||
-        String(ch.offset_number).includes(needle)
+        r.name.toLowerCase().includes(needle) ||
+        r.rawId.toLowerCase().includes(needle) ||
+        r.normalizedId.toLowerCase().includes(needle) ||
+        r.group.toLowerCase().includes(needle) ||
+        String(r.number).includes(needle)
       )
     })
-  }, [data, providerFilter, q])
+  }, [allRows, providerFilter, q])
 
   // Time window spanning every programme in the filtered rows (snapped to hours).
   const window = useMemo(() => {
     let min = Infinity
     let max = -Infinity
-    for (const ch of rows) {
-      for (const p of ch.programmes) {
-        const s = new Date(p.start).getTime()
-        const e = new Date(p.stop).getTime()
+    for (const r of rows) {
+      for (const p of r.programmes) {
+        const s = p.start.getTime()
+        const e = p.stop.getTime()
         if (s < min) min = s
         if (e > max) max = e
       }
@@ -160,8 +200,7 @@ export function GuidePage() {
       ? ((now - window.start) / 60_000) * PX_PER_MIN
       : null
 
-  // On first load, scroll the timeline so "now" sits near the left edge
-  // (with a little past context) instead of the start of the guide.
+  // On first load, scroll the timeline so "now" sits near the left edge.
   useEffect(() => {
     if (centered.current) return
     const el = scrollRef.current
@@ -177,9 +216,9 @@ export function GuidePage() {
     <>
       <h1>Guide</h1>
       <p className="lead">
-        Programme schedule from the last successful refresh (the same data
-        served as XMLTV at <code>/{'{provider}'}.xml</code>). Scroll horizontally
-        to move through time.
+        Programme schedule parsed from XMLTV (the same artifact served at{' '}
+        <code>/api/guide.xml</code> and <code>/{'{provider}'}.xml</code>). Scroll
+        horizontally to move through time.
       </p>
 
       {error && (
@@ -221,7 +260,7 @@ export function GuidePage() {
               />
             </label>
             <span className="meta">
-              {rows.length} of {data.channels.length} channels
+              {rows.length} of {allRows.length} channels
             </span>
           </div>
 
@@ -234,10 +273,7 @@ export function GuidePage() {
             </div>
           ) : (
             <div className="epg" ref={scrollRef}>
-              <div
-                className="epg-inner"
-                style={{ width: LABEL_W + timelineW }}
-              >
+              <div className="epg-inner" style={{ width: LABEL_W + timelineW }}>
                 <div className="epg-timebar" style={{ height: 30 }}>
                   <div className="epg-corner" style={{ width: LABEL_W }}>
                     Channel
@@ -263,20 +299,18 @@ export function GuidePage() {
                   />
                 )}
 
-                {rows.map((ch) => (
+                {rows.map((r) => (
                   <div
-                    key={`${ch.provider}:${ch.normalized_id}`}
-                    className={`epg-row${ch.excluded ? ' excluded' : ''}`}
+                    key={r.id}
+                    className={`epg-row${r.excluded ? ' excluded' : ''}`}
                     style={{ height: ROW_H }}
                   >
                     <div className="epg-label" style={{ width: LABEL_W }}>
-                      <span className="epg-num">
-                        {displayNumber(ch.offset_number)}
-                      </span>
-                      {ch.logo_url && (
+                      <span className="epg-num">{displayNumber(r.number)}</span>
+                      {r.logo && (
                         <img
                           className="epg-logo"
-                          src={ch.logo_url}
+                          src={r.logo}
                           alt=""
                           loading="lazy"
                           onError={(e) => {
@@ -284,14 +318,14 @@ export function GuidePage() {
                           }}
                         />
                       )}
-                      <span className="epg-name" title={ch.name}>
-                        {ch.name}
+                      <span className="epg-name" title={r.name}>
+                        {r.name}
                       </span>
                     </div>
                     <div className="epg-track" style={{ width: timelineW }}>
-                      {ch.programmes.map((p, i) => {
-                        const s = new Date(p.start).getTime()
-                        const e = new Date(p.stop).getTime()
+                      {r.programmes.map((p, i) => {
+                        const s = p.start.getTime()
+                        const e = p.stop.getTime()
                         let left = ((s - window.start) / 60_000) * PX_PER_MIN
                         let width = ((e - s) / 60_000) * PX_PER_MIN
                         if (left < 0) {
