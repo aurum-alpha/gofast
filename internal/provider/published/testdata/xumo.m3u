@@ -1,0 +1,5 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="99991247" tvg-name="NBC News NOW" tvg-logo="https://image.example/xumo.png" group-title="News",NBC News NOW
+https://stream.example/xumo-news/master.m3u8?ads.channel=99991247
+#EXTINF:-1 tvg-id="99951517" tvg-name="ABC News Live" group-title="News",ABC News Live
+https://stream.example/xumo-abc/master.m3u8

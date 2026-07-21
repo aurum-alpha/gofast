@@ -8,12 +8,18 @@ package model
 type ProviderID string
 
 const (
+	// ProviderDistroTV is the DistroTV published-pair provider.
+	ProviderDistroTV ProviderID = "distrotv"
 	// ProviderLG is the LG Channels US provider.
 	ProviderLG ProviderID = "lg"
+	// ProviderLocalNow is the LocalNow published-pair provider.
+	ProviderLocalNow ProviderID = "localnow"
 	// ProviderPluto is the Pluto TV US provider.
 	ProviderPluto ProviderID = "pluto"
 	// ProviderRoku is the Roku Channel provider.
 	ProviderRoku ProviderID = "roku"
 	// ProviderSamsung is the Samsung TV Plus US provider.
 	ProviderSamsung ProviderID = "samsung"
+	// ProviderXumo is the Xumo Play published-pair provider.
+	ProviderXumo ProviderID = "xumo"
 )

@@ -1,0 +1,7 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="dtv_EPGACE TV" tvg-name="Ace" tvg-logo="https://image.example/ace.png" group-title="Entertainment",Ace
+https://stream.example/ace/master.m3u8
+#EXTINF:-1 tvg-id="dtv_EPGACE_TV" tvg-name="Duplicate Ace" group-title="Entertainment",Duplicate Ace
+https://stream.example/duplicate/master.m3u8
+#EXTINF:-1 tvg-id="DUMMYother" tvg-name="Other" group-title="Entertainment",Other
+https://stream.example/other/master.m3u8

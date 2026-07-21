@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="LN_NEWS"/>
+  <channel id="LN_ORPHAN"/>
+  <programme channel="LN_NEWS" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>Local Headlines</title>
+  </programme>
+  <programme channel="LN_ORPHAN" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>Orphaned Guide Row</title>
+  </programme>
+</tv>

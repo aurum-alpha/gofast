@@ -62,11 +62,11 @@ Production files (pull-only, no secrets):
 
 ### Config (`/data/config.yaml`)
 
-Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, and `roku`. Pluto/Samsung/Roku use Matt Huisman's `i.mjh.nz` metadata/EPG feeds and run only when their YAML block is present; `enabled: false` disables an existing block.
+Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, `roku`, `xumo`, `distrotv`, and `localnow`. Pluto/Samsung/Roku use Matt Huisman's `i.mjh.nz` feeds; Xumo/DistroTV/LocalNow consume maintained M3U/XMLTV pairs. All except LG run only when their YAML block is present; `enabled: false` disables an existing block.
 
 - [`config.example.yaml`](config.example.yaml) — starter template with the well-known provider overlays; copy to `/data/config.yaml`.
 
-Each enabled provider is served at `/{id}.m3u` and `/{id}.xml`; combined output is `/playlist.m3u` and `/epg.xml`. The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`, while MJH providers store `channels.json.gz` and `guide.xml.gz`.
+Each enabled provider is served at `/{id}.m3u` and `/{id}.xml`; combined output is `/playlist.m3u` and `/epg.xml`. The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`; MJH providers store `channels.json.gz` + `guide.xml.gz`; published-pair providers store `playlist.m3u` plus `guide.xml.gz` (Xumo/DistroTV) or `guide.xml` (LocalNow). Published-pair refreshes log normalized playlist/guide ID match rates. Stable synthetic channel-number allocation lands with J27-19; adapters never assign order-dependent numbers.
 
 Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, …) stay in env — see `AGENTS.md`. Config keys for proxy, logo TLS, and health are added later **with those features**, not as a standalone M0 layer. Adapters that fetch providers arrive in M1.
 
@@ -89,4 +89,4 @@ go run ./cmd/fastgen
 
 ## Status
 
-LG, Pluto, Samsung TV Plus, and Roku provider pipelines are implemented. Additional product features continue through Linear issues.
+LG, Pluto, Samsung TV Plus, Roku, Xumo, DistroTV, and LocalNow provider pipelines are implemented. Additional product features continue through Linear issues.
