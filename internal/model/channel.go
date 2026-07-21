@@ -5,8 +5,6 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
-
-	"github.com/j27-aurum/gofast/internal/format"
 )
 
 const (
@@ -86,15 +84,16 @@ func (c *Channel) ApplyChannelNumberOffset(offset int) {
 	c.OffsetNumber = c.Number + offset
 }
 
-// Normalize fills NormalizedID and cleans Name/Group for storage (quote-safe text).
+// Normalize fills NormalizedID and trims display fields. Presentation escaping
+// remains the responsibility of the output format.
 func (c *Channel) Normalize() {
 	if c == nil {
 		return
 	}
 	c.ID = strings.TrimSpace(c.ID)
 	c.NormalizedID = NormalizeID(c.ID)
-	c.Name = strings.TrimSpace(format.StripQuotes(c.Name))
-	c.Group = strings.TrimSpace(format.StripQuotes(c.Group))
+	c.Name = strings.TrimSpace(c.Name)
+	c.Group = strings.TrimSpace(c.Group)
 }
 
 // ForExport returns channels that belong in M3U/XMLTV playlists.
@@ -152,4 +151,26 @@ func NormalizeID(raw string) string {
 		s = strings.ReplaceAll(s, "__", "_")
 	}
 	return strings.Trim(s, "_")
+}
+
+// ValidateNormalizedIDs rejects ambiguous channel identities after
+// normalization. Distinct upstream ids must never collapse to one M3U/XMLTV
+// join key.
+func ValidateNormalizedIDs(channels []Channel) error {
+	rawByNormalized := make(map[string]string, len(channels))
+	for _, channel := range channels {
+		if channel.NormalizedID == "" {
+			continue
+		}
+		if previous, exists := rawByNormalized[channel.NormalizedID]; exists {
+			return fmt.Errorf(
+				"normalized channel id collision %q from upstream ids %q and %q",
+				channel.NormalizedID,
+				previous,
+				channel.ID,
+			)
+		}
+		rawByNormalized[channel.NormalizedID] = channel.ID
+	}
+	return nil
 }

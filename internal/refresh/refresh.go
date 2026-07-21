@@ -4,7 +4,6 @@
 package refresh
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -212,6 +211,9 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 		chs[i].Normalize()
 		chs[i].ApplyChannelNumberOffset(s.ChannelNumberOffset)
 	}
+	if err := model.ValidateNormalizedIDs(chs); err != nil {
+		return nil, nil, nil, fmt.Errorf("provider %s: %w", id, err)
+	}
 	chs = model.MarkExclusions(chs, s.ExclusionRegexes)
 	assignments, err := previous.Apply(chs, s.SynthesizeChannelNumbers)
 	if err != nil {
@@ -266,7 +268,7 @@ func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme
 	}
 	progN := 0
 	for _, pr := range progs {
-		if _, ok := exportedIDs[pr.ChannelID]; ok && pr.Title != "" && pr.Stop.After(pr.Start) {
+		if _, ok := exportedIDs[pr.ChannelID]; ok && pr.IsValid() {
 			progN++
 		}
 	}
@@ -274,11 +276,12 @@ func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme
 		return provider.Lineup{}, nil, nil, fmt.Errorf("provider %s: no exportable programmes", id)
 	}
 
-	var m3uBuf, xmltvBuf bytes.Buffer
-	if err := m3u.Write(&m3uBuf, chs, label); err != nil {
+	m3uData, err := m3u.Marshal(chs, label)
+	if err != nil {
 		return provider.Lineup{}, nil, nil, err
 	}
-	if err := xmltv.Write(&xmltvBuf, chs, progs, label); err != nil {
+	xmlData, err := xmltv.Marshal(chs, progs, label)
+	if err != nil {
 		return provider.Lineup{}, nil, nil, err
 	}
 
@@ -290,7 +293,7 @@ func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme
 		FetchedAt:               fetchedAt,
 		SyntheticChannelNumbers: assignments,
 	}
-	return lineup, cache.M3U(m3uBuf.Bytes()), cache.XMLTV(xmltvBuf.Bytes()), nil
+	return lineup, cache.M3U(m3uData), cache.XMLTV(xmlData), nil
 }
 
 func (p *providerRefresher) fail(err error) error {

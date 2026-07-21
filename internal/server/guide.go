@@ -54,7 +54,7 @@ func sourcesFrom(feeds []*provider.Feed) []xmltv.Source {
 	for _, f := range feeds {
 		lin := f.Lineup()
 		sources = append(sources, xmltv.Source{
-			Provider:   string(f.ID()),
+			Provider:   f.ID(),
 			Label:      f.Label(),
 			Channels:   lin.Channels,
 			Programmes: lin.Programmes,
@@ -64,8 +64,14 @@ func sourcesFrom(feeds []*provider.Feed) []xmltv.Source {
 }
 
 func writeGuide(w http.ResponseWriter, sources []xmltv.Source, all, namespaceIDs bool) {
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	if err := xmltv.WriteAll(w, sources, all, namespaceIDs); err != nil {
+	data, err := xmltv.MarshalAll(sources, xmltv.Options{
+		IncludeExcluded: all,
+		NamespaceIDs:    namespaceIDs,
+	})
+	if err != nil {
 		http.Error(w, "guide not ready", http.StatusServiceUnavailable)
+		return
 	}
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	_, _ = w.Write(data)
 }

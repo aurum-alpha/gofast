@@ -2,6 +2,7 @@
 package m3u
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"sort"
@@ -11,59 +12,143 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
+// Options controls document-wide M3U rendering.
+type Options struct {
+	NamespaceIDs bool
+}
+
 // Source is one provider's channels for a playlist.
 type Source struct {
-	Provider string // provider id; used to namespace tvg-ids when namespaceIDs is true
+	Provider model.ProviderID
 	Label    string
 	Channels []model.Channel
 }
 
-// Write writes a single-provider #EXTM3U playlist with bare (un-namespaced) ids.
-// Used for the per-provider playlist. Excluded channels are omitted.
-func Write(w io.Writer, channels []model.Channel, label string) error {
-	return WriteAll(w, []Source{{Label: label, Channels: channels}}, false)
+type entry struct {
+	channel  model.Channel
+	id       string
+	label    string
+	provider model.ProviderID
 }
 
-// WriteAll writes one or more provider sources into a single #EXTM3U playlist,
-// each source's channels sorted by OffsetNumber (then NormalizedID). Excluded
-// channels are omitted. When namespaceIDs is true, each tvg-id is prefixed with
-// the provider via format.CombinedID (globally-unique ids for a combined doc).
-func WriteAll(w io.Writer, sources []Source, namespaceIDs bool) error {
-	if _, err := io.WriteString(w, "#EXTM3U\n"); err != nil {
+// Marshal renders a single-provider playlist with bare ids.
+func Marshal(channels []model.Channel, label string) ([]byte, error) {
+	return MarshalAll([]Source{{Label: label, Channels: channels}}, Options{})
+}
+
+// MarshalAll renders a complete playlist before returning it. Exportable
+// channels from every source are globally sorted by final channel number, with
+// unnumbered channels last. Namespaced ids are used for aggregate documents.
+func MarshalAll(sources []Source, options Options) ([]byte, error) {
+	entries, err := collectEntries(sources, options)
+	if err != nil {
+		return nil, err
+	}
+
+	var buffer bytes.Buffer
+	buffer.WriteString("#EXTM3U\n")
+	for _, item := range entries {
+		channel := item.channel
+		line := fmt.Sprintf(
+			`#EXTINF:-1 tvg-id="%s" tvg-name="%s"`,
+			item.id,
+			format.M3UAttribute(channel.Name),
+		)
+		if channel.OffsetNumber > 0 {
+			line += fmt.Sprintf(` tvg-chno="%s"`, strconv.Itoa(channel.OffsetNumber))
+		}
+		if logo := format.M3UAttribute(channel.LogoURL); logo != "" {
+			line += fmt.Sprintf(` tvg-logo="%s"`, logo)
+		}
+		if group := format.M3UAttribute(format.FormatGroupTitle(item.label, channel.Group)); group != "" {
+			line += fmt.Sprintf(` group-title="%s"`, group)
+		}
+		line += "," + format.M3UText(format.FormatDisplayName(channel.Name, item.label))
+		buffer.WriteString(line)
+		buffer.WriteByte('\n')
+		buffer.WriteString(channel.OutputURL())
+		buffer.WriteByte('\n')
+	}
+	return buffer.Bytes(), nil
+}
+
+// Write writes a single-provider playlist with bare ids.
+func Write(w io.Writer, channels []model.Channel, label string) error {
+	data, err := Marshal(channels, label)
+	if err != nil {
 		return err
 	}
-	for _, src := range sources {
-		chs := model.ForExport(src.Channels)
-		sort.SliceStable(chs, func(i, j int) bool {
-			if chs[i].OffsetNumber != chs[j].OffsetNumber {
-				return chs[i].OffsetNumber < chs[j].OffsetNumber
+	return writeAll(w, data)
+}
+
+// WriteAll writes a complete multi-source playlist.
+func WriteAll(w io.Writer, sources []Source, options Options) error {
+	data, err := MarshalAll(sources, options)
+	if err != nil {
+		return err
+	}
+	return writeAll(w, data)
+}
+
+func collectEntries(sources []Source, options Options) ([]entry, error) {
+	var entries []entry
+	seen := make(map[string]model.Channel)
+	for _, source := range sources {
+		for _, channel := range model.ForExport(source.Channels) {
+			if !format.ValidM3ULine(channel.OutputURL()) {
+				return nil, fmt.Errorf("m3u: channel %q has invalid playback URL", channel.NormalizedID)
 			}
-			return chs[i].NormalizedID < chs[j].NormalizedID
-		})
-		for _, ch := range chs {
-			id := ch.NormalizedID
-			if namespaceIDs {
-				id = format.CombinedID(src.Provider, ch.NormalizedID)
+			id := channel.NormalizedID
+			if options.NamespaceIDs {
+				if source.Provider == "" {
+					return nil, fmt.Errorf("m3u: channel %q has no provider for namespaced id", channel.NormalizedID)
+				}
+				id = format.CombinedID(string(source.Provider), channel.NormalizedID)
 			}
-			name := format.StripQuotes(ch.Name)
-			display := format.FormatDisplayName(ch.Name, src.Label)
-			group := format.FormatGroupTitle(src.Label, ch.Group)
-			logo := format.StripQuotes(ch.LogoURL)
-			line := fmt.Sprintf(`#EXTINF:-1 tvg-id="%s" tvg-name="%s"`, id, name)
-			if ch.OffsetNumber > 0 {
-				line += fmt.Sprintf(` tvg-chno="%s"`, strconv.Itoa(ch.OffsetNumber))
+			if previous, duplicate := seen[id]; duplicate {
+				return nil, fmt.Errorf(
+					"m3u: duplicate emitted channel id %q from upstream ids %q and %q",
+					id,
+					previous.ID,
+					channel.ID,
+				)
 			}
-			if logo != "" {
-				line += fmt.Sprintf(` tvg-logo="%s"`, logo)
-			}
-			if group != "" {
-				line += fmt.Sprintf(` group-title="%s"`, group)
-			}
-			line += fmt.Sprintf(",%s\n%s\n", display, ch.OutputURL())
-			if _, err := io.WriteString(w, line); err != nil {
-				return err
-			}
+			seen[id] = channel
+			entries = append(entries, entry{
+				channel:  channel,
+				id:       id,
+				label:    source.Label,
+				provider: source.Provider,
+			})
 		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		left, right := entries[i], entries[j]
+		leftNumber, rightNumber := left.channel.OffsetNumber, right.channel.OffsetNumber
+		if leftNumber <= 0 && rightNumber > 0 {
+			return false
+		}
+		if leftNumber > 0 && rightNumber <= 0 {
+			return true
+		}
+		if leftNumber != rightNumber {
+			return leftNumber < rightNumber
+		}
+		if left.provider != right.provider {
+			return left.provider < right.provider
+		}
+		return left.id < right.id
+	})
+	return entries, nil
+}
+
+func writeAll(w io.Writer, data []byte) error {
+	written, err := w.Write(data)
+	if err != nil {
+		return err
+	}
+	if written != len(data) {
+		return io.ErrShortWrite
 	}
 	return nil
 }

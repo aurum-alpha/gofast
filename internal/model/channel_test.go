@@ -62,8 +62,28 @@ func TestChannelNormalize(t *testing.T) {
 	if ch.NormalizedID != "dtv_EPGACE_TV" {
 		t.Fatalf("id: %q", ch.NormalizedID)
 	}
-	if ch.Name != "A&E Crime" {
+	if ch.Name != `A&E "Crime"` {
 		t.Fatalf("name: %q", ch.Name)
+	}
+}
+
+func TestValidateNormalizedIDsRejectsCollision(t *testing.T) {
+	channels := []Channel{
+		{ID: "a b", NormalizedID: "a_b"},
+		{ID: "a_b", NormalizedID: "a_b"},
+	}
+	if err := ValidateNormalizedIDs(channels); err == nil {
+		t.Fatal("expected normalized id collision")
+	}
+}
+
+func TestValidateNormalizedIDsAllowsDistinctIDs(t *testing.T) {
+	channels := []Channel{
+		{ID: "a", NormalizedID: "a"},
+		{ID: "b", NormalizedID: "b"},
+	}
+	if err := ValidateNormalizedIDs(channels); err != nil {
+		t.Fatal(err)
 	}
 }
 

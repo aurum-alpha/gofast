@@ -1,0 +1,7 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="alpha" tvg-name="Fixture & Channel <One>" tvg-chno="1001" group-title="TEST_PROVIDER: Fixture",Fixture & Channel <One> · TEST_PROVIDER
+https://stream.test/alpha.m3u8
+#EXTINF:-1 tvg-id="beta" tvg-name="Apostrophe's Channel Live" tvg-chno="1002" tvg-logo="https://logo.test/beta?title=live" group-title="TEST_PROVIDER: Fixture Group",Apostrophe's "Channel" Live · TEST_PROVIDER
+https://proxy.test/stream/fixture/beta.m3u8
+#EXTINF:-1 tvg-id="none" tvg-name="Unnumbered" group-title="TEST_PROVIDER",Unnumbered · TEST_PROVIDER
+https://stream.test/none.m3u8

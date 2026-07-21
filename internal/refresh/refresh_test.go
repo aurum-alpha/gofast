@@ -64,6 +64,24 @@ func TestApplyEmissionPolicyDropsDRM(t *testing.T) {
 	}
 }
 
+func TestTransformRejectsNormalizedIDCollision(t *testing.T) {
+	settings := model.ProviderSettings{ID: model.ProviderLG}
+	registry := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: staticReader{}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := registry.Feed(model.ProviderLG)
+	refresher := &providerRefresher{feed: feed}
+
+	_, _, _, err := refresher.transform([]model.Channel{
+		{ID: "a b", Name: "One", StreamURL: "https://stream.test/one.m3u8"},
+		{ID: "a_b", Name: "Two", StreamURL: "https://stream.test/two.m3u8"},
+	}, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), `normalized channel id collision "a_b"`) {
+		t.Fatalf("collision error: %v", err)
+	}
+}
+
 func TestProviderRefresherPublishesAndArchives(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join("..", "provider", "lg", "testdata", "schedulelist.json"))
 	if err != nil {
