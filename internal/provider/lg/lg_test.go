@@ -1,10 +1,16 @@
 package lg
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/j27-aurum/gofast/internal/httpx"
 )
 
 func TestParseScheduleFixture(t *testing.T) {
@@ -58,9 +64,67 @@ func TestParseScheduleFixture(t *testing.T) {
 	}
 }
 
+func TestParseScheduleBase64ZlibFixture(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("testdata", "schedulelist.b64z"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(body), "eN") {
+		t.Fatalf("fixture should look like base64 zlib, got %q", body[:8])
+	}
+	chs, progs, err := ParseSchedule(strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chs) != 2 || len(progs) != 3 {
+		t.Fatalf("chs=%d progs=%d", len(chs), len(progs))
+	}
+}
+
+func TestFetchNormalizesBase64ZlibToJSON(t *testing.T) {
+	wire, err := os.ReadFile(filepath.Join("testdata", "schedulelist.b64z"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain;charset=UTF-8")
+		_, _ = w.Write(wire)
+	}))
+	t.Cleanup(srv.Close)
+
+	settings := DefaultSettings()
+	settings.ChannelsURL = srv.URL
+	client := New(settings, httpx.NewClient(5*time.Second, 0))
+	raw, err := client.Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := raw[rawSchedule]
+	if len(body) == 0 || body[0] != '{' {
+		t.Fatalf("Fetch should store JSON, got %q", truncate(body, 40))
+	}
+	chs, _, err := client.Parse(raw)
+	if err != nil || len(chs) != 2 {
+		t.Fatalf("Parse after Fetch: chs=%d err=%v", len(chs), err)
+	}
+}
+
+func TestDecodeScheduleRejectsGarbage(t *testing.T) {
+	if _, err := decodeScheduleBytes([]byte("not-json-or-b64")); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestStripQuery(t *testing.T) {
 	got := stripQuery("https://x/y.m3u8?a=1&b=2")
 	if got != "https://x/y.m3u8" {
 		t.Fatalf("got %q", got)
 	}
+}
+
+func truncate(b []byte, n int) string {
+	if len(b) <= n {
+		return string(b)
+	}
+	return string(b[:n]) + "…"
 }

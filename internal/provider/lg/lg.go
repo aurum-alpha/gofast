@@ -59,7 +59,9 @@ func New(settings model.ProviderSettings, client *httpx.Client) *Client {
 	return &Client{settings: settings, client: client, url: u}
 }
 
-// Fetch returns the exact provider-native response body.
+// Fetch returns the schedulelist payload normalized to JSON. Live LG responses
+// may be base64(zlib(JSON)) under Content-Type text/plain; we decode before
+// storing so cache/rehydrate always sees plain JSON.
 func (c *Client) Fetch(ctx context.Context) (provider.Raw, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
@@ -89,7 +91,11 @@ func (c *Client) Fetch(ctx context.Context) (provider.Raw, error) {
 	if err != nil {
 		return nil, err
 	}
-	return provider.Raw{rawSchedule: body}, nil
+	jsonBody, err := decodeScheduleBytes(body)
+	if err != nil {
+		return nil, err
+	}
+	return provider.Raw{rawSchedule: jsonBody}, nil
 }
 
 // Parse decodes raw schedulelist bytes into channels/programmes (no network),
@@ -105,10 +111,20 @@ func (c *Client) Parse(raw provider.Raw) ([]model.Channel, []model.Programme, er
 	return ParseSchedule(bytes.NewReader(body))
 }
 
-// ParseSchedule decodes an LG schedulelist JSON document.
+// ParseSchedule decodes an LG schedulelist JSON document (or a wire-encoded
+// body that decodeScheduleBytes understands).
 func ParseSchedule(r io.Reader) ([]model.Channel, []model.Programme, error) {
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return nil, nil, fmt.Errorf("lg: read: %w", err)
+	}
+	jsonBody, err := decodeScheduleBytes(body)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	var root scheduleRoot
-	dec := json.NewDecoder(r)
+	dec := json.NewDecoder(bytes.NewReader(jsonBody))
 	if err := dec.Decode(&root); err != nil {
 		return nil, nil, fmt.Errorf("lg: decode: %w", err)
 	}

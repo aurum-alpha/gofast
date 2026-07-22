@@ -79,12 +79,17 @@ with two fetch strategies:
 
 **LG Channels US** — `GET https://api.lgchannels.com/api/v1.0/schedulelist`
 with headers `x-device-country: US`, `x-device-language: en`, and a desktop
-Chrome user-agent. Response JSON: `categories[] → channels[] → programs[]`.
+Chrome user-agent. Wire body is often **base64(zlib(JSON))** under
+`Content-Type: text/plain` (no `Content-Encoding`); `Accept: application/json`
+is rejected (406). Older responses were plain JSON — fastgen accepts both and
+stores decoded JSON in cache. Response JSON shape:
+`categories[] → channels[] → programs[]`.
 Channel fields: `channelId`, `channelName`, `channelNumber` (string!), 
 `channelLogoUrl`, `mediaStaticUrl` (strip query string), `providerId`,
 `channelGenreName`. Programs: `programTitle`, `description`, `startDateTime`/
 `endDateTime` (ISO8601 Z → XMLTV `20060102150405 +0000`). Dedupe channels by
-`channelId` across categories.
+`channelId` across categories. Guide depth is short (~12–14h); there are no
+time-range query params to request more.
 
 ### i.mjh.nz adapters (matthuisman's aggregated feeds)
 
