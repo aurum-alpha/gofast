@@ -66,6 +66,7 @@ streams). Default remains selective proxying (BEACON only).
 - `GET /{provider}.xml`  — XMLTV guide for that provider
 - `GET /all.m3u` and `GET /all.xml` — merged output across enabled providers
 - `GET /logos/{provider}/{channel_id}.png` — locally cached channel logos
+  (populated when `cache_logos` is enabled; otherwise unused)
 - `GET /healthz` — JSON: per-provider status, last successful refresh, channel
   count, programme count, staleness flag
 - `GET /metrics` — Prometheus format (refresh duration, failures, channel counts)
@@ -207,13 +208,19 @@ streams).
   record. Playback URLs are never rewritten: reject any URL containing a
   control/newline and retain last-known-good.
 
-## Logo caching (required, not optional)
+## Logo caching
 
-Download every channel logo at refresh time into an on-disk cache
-(`/data/logos/{provider}/{id}.{ext}`), and rewrite `tvg-logo` and XMLTV `<icon>`
-to this service's own `/logos/...` URLs (base URL configurable, e.g.
-`http://fastgen.lan:8180`). Rationale: Jellyfin fetches artwork itself and
-chokes on hostile CDNs. Requirements:
+Controlled by `cache_logos` / `FASTGEN_CACHE_LOGOS` (default **false**).
+
+- **Off:** leave upstream CDN `tvg-logo` / XMLTV `<icon>` / API `logo_url`
+  unchanged (browsers and Jellyfin fetch artwork themselves).
+- **On:** download every channel logo at refresh time into an on-disk cache
+  (`/data/cache/{provider}/logos/{id}.{ext}`), and rewrite those URLs to this
+  service's own `/logos/...` paths under `base_url` / `FASTGEN_BASE_URL`
+  (required when enabled — e.g. `http://fastgen.lan:8180`). Rationale: Jellyfin
+  fetches artwork itself and chokes on hostile CDNs.
+
+When caching is enabled:
 
 - Fetch logos with per-provider request headers (mjh metadata's `headers` field,
   e.g. Samsung wants `user-agent: okhttp/4.12.0`).
@@ -223,8 +230,12 @@ chokes on hostile CDNs. Requirements:
   CAs (PEM in config) and, as a last resort, per-host `insecure_skip_verify`
   for artwork-only hosts. Default everything else to system roots. Never apply
   relaxed TLS to stream or EPG endpoints.
-- Cache is content-addressed enough to skip re-downloading unchanged logos
-  (ETag/Last-Modified or just skip-if-exists with a max-age).
+- On hard upstream failures (HTTP 403/404), clear `logo_url` and set
+  `logo_error` on the channel (soft failures keep the upstream URL).
+- Cache revalidation on each provider refresh: if the upstream logo URL changed,
+  fetch unconditionally; if it is unchanged and the CDN sent ETag/Last-Modified,
+  use a conditional GET; if there are no validators, skip re-download while the
+  on-disk file is within max-age (default 7d).
 - Strip per-programme `<icon>` elements from mjh EPGs (thousands of them, they
   flood Jellyfin's pre-cache with fetch failures and barely render).
 
@@ -284,7 +295,8 @@ nice-to-have.
   stages in `Dockerfile.prod`).
 - Optional `Dockerfile` may multi-stage build from source for local compose
   convenience; it is not the GHCR ship path.
-- Volume on gen: `/data` (config, logo cache, last-good snapshots).
+- Volume on gen: `/data` (config, last-good snapshots under `cache/`, durable
+  logos under `cache/{provider}/logos/` when enabled).
 - Expose gen `8180` (and document proxy port, e.g. `8181`). Healthcheck hits
   `/healthz` on each service.
 - Provide `docker-compose.yml` for local/dev and `docker-compose.prod.yml` for

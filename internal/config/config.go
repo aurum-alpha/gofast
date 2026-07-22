@@ -6,6 +6,8 @@
 package config
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -32,9 +34,17 @@ type Config struct {
 	DataDir      string                                      `yaml:"data_dir"`
 	ProxyBaseURL string                                      `yaml:"proxy_base_url"`
 	ProxyAll     *bool                                       `yaml:"proxy_all"`
+	CacheLogos   *bool                                       `yaml:"cache_logos"`
+	ArtworkTLS   map[string]ArtworkTLS                       `yaml:"artwork_tls"`
 	Timeouts     Timeouts                                    `yaml:"timeouts"`
 	Logging      Logging                                     `yaml:"logging"`
 	Providers    map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
+}
+
+// ArtworkTLS is a per-host TLS exception for logo downloads only.
+type ArtworkTLS struct {
+	CAPem              string `yaml:"ca_pem"`
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
 }
 
 // Timeouts holds outbound and request-bound durations.
@@ -71,12 +81,23 @@ func New(path string) (*Config, error) {
 	}
 	cfg.merge(env)
 
+	cfg.BaseURL, err = NormalizeBaseURL(cfg.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("config: base_url: %w", err)
+	}
 	cfg.ProxyBaseURL, err = NormalizeProxyBaseURL(cfg.ProxyBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("config: proxy_base_url: %w", err)
 	}
 	if cfg.ProxyAllEnabled() && cfg.ProxyBaseURL == "" {
 		return nil, fmt.Errorf("config: proxy_all requires proxy_base_url")
+	}
+	if cfg.CacheLogosEnabled() && cfg.BaseURL == "" {
+		return nil, fmt.Errorf("config: cache_logos requires base_url")
+	}
+	cfg.ArtworkTLS = normalizeArtworkTLSKeys(cfg.ArtworkTLS)
+	if err := cfg.validateArtworkTLS(); err != nil {
+		return nil, err
 	}
 
 	providers, err := compileProviders(cfg.Providers)
@@ -89,11 +110,13 @@ func New(path string) (*Config, error) {
 
 func defaults() *Config {
 	proxyAll := false
+	cacheLogos := false
 	return &Config{
-		Listen:   DefaultListen,
-		BaseURL:  "",
-		DataDir:  DefaultDataDir,
-		ProxyAll: &proxyAll,
+		Listen:     DefaultListen,
+		BaseURL:    "",
+		DataDir:    DefaultDataDir,
+		ProxyAll:   &proxyAll,
+		CacheLogos: &cacheLogos,
 		Timeouts: Timeouts{
 			HTTPClient: 60 * time.Second,
 		},
@@ -125,6 +148,13 @@ func envOverlay() (*Config, error) {
 		}
 		o.ProxyAll = &parsed
 	}
+	if v := os.Getenv("FASTGEN_CACHE_LOGOS"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_CACHE_LOGOS: %w", err)
+		}
+		o.CacheLogos = &parsed
+	}
 	return o, nil
 }
 
@@ -142,6 +172,7 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"base_url", c.BaseURL,
 		"proxy_base_url", c.ProxyBaseURL,
 		"proxy_all", c.ProxyAllEnabled(),
+		"cache_logos", c.CacheLogosEnabled(),
 		"data_dir", c.DataDir,
 		"provider_overlays", len(c.Providers),
 	)
@@ -169,6 +200,13 @@ func (c *Config) merge(o *Config) {
 		value := *o.ProxyAll
 		c.ProxyAll = &value
 	}
+	if o.CacheLogos != nil {
+		value := *o.CacheLogos
+		c.CacheLogos = &value
+	}
+	if o.ArtworkTLS != nil {
+		c.ArtworkTLS = maps.Clone(o.ArtworkTLS)
+	}
 	if o.Timeouts.HTTPClient != 0 {
 		c.Timeouts.HTTPClient = o.Timeouts.HTTPClient
 	}
@@ -183,6 +221,65 @@ func (c *Config) merge(o *Config) {
 // ProxyAllEnabled reports whether all exported streams should use FASTProxy.
 func (c *Config) ProxyAllEnabled() bool {
 	return c != nil && c.ProxyAll != nil && *c.ProxyAll
+}
+
+// CacheLogosEnabled reports whether channel logos should be downloaded and rewritten.
+func (c *Config) CacheLogosEnabled() bool {
+	return c != nil && c.CacheLogos != nil && *c.CacheLogos
+}
+
+func normalizeArtworkTLSKeys(in map[string]ArtworkTLS) map[string]ArtworkTLS {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]ArtworkTLS, len(in))
+	for host, policy := range in {
+		key := strings.ToLower(strings.TrimSpace(host))
+		out[key] = policy
+	}
+	return out
+}
+
+func (c *Config) validateArtworkTLS() error {
+	if c == nil {
+		return nil
+	}
+	for host, policy := range c.ArtworkTLS {
+		if host == "" {
+			return fmt.Errorf("config: artwork_tls: empty hostname")
+		}
+		if policy.CAPem == "" {
+			continue
+		}
+		if _, err := parseCAPem(policy.CAPem); err != nil {
+			return fmt.Errorf("config: artwork_tls[%s].ca_pem: %w", host, err)
+		}
+	}
+	return nil
+}
+
+func parseCAPem(pemData string) ([]*x509.Certificate, error) {
+	var certs []*x509.Certificate
+	rest := []byte(pemData)
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		certs = append(certs, cert)
+	}
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("no certificates found")
+	}
+	return certs, nil
 }
 
 // ListenFromEnv returns the shared PORT listen address, or fallback if unset.
@@ -210,8 +307,17 @@ func NormalizeListen(v string) string {
 	return ":" + v
 }
 
+// NormalizeBaseURL validates and canonicalizes the public fastgen origin.
+func NormalizeBaseURL(value string) (string, error) {
+	return normalizeAbsoluteOrigin(value)
+}
+
 // NormalizeProxyBaseURL validates and canonicalizes the public FASTProxy origin.
 func NormalizeProxyBaseURL(value string) (string, error) {
+	return normalizeAbsoluteOrigin(value)
+}
+
+func normalizeAbsoluteOrigin(value string) (string, error) {
 	value = strings.TrimRight(strings.TrimSpace(value), "/")
 	if value == "" {
 		return "", nil

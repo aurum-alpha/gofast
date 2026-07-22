@@ -3,7 +3,7 @@
 #
 # Deploy-varying values prefer env (see AGENTS.md / 12factor):
 #   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG,
-#   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL
+#   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL, FASTGEN_CACHE_LOGOS
 # Env always wins over this file for overlapping keys.
 #
 # base_url: public origin Jellyfin/browsers use for logos and absolute links.
@@ -25,6 +25,21 @@ data_dir: /data
 # NATIVE remains direct by default.
 # proxy_base_url: "http://192.168.1.50:8181"
 proxy_all: false
+
+# When true, download logos to {data_dir}/cache/{provider}/logos and rewrite
+# tvg-logo / XMLTV <icon> / API logo_url to {base_url}/logos/... . Requires
+# base_url / FASTGEN_BASE_URL. When false, leave upstream CDN URLs unchanged.
+# Prefer FASTGEN_CACHE_LOGOS in Portainer/stack.env for the deploy.
+cache_logos: false
+
+# Artwork-only TLS exceptions (never used by stream/EPG clients).
+# Only relevant when cache_logos is true.
+artwork_tls:
+   tvpnlogopus.samsungcloud.tv:
+     # ca_pem: |
+     #   -----BEGIN CERTIFICATE-----
+     #   ...
+     insecure_skip_verify: true   # last resort
 
 timeouts:
   http_client: 60s
@@ -113,6 +128,3 @@ providers:
     user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     # m3u_url: https://www.apsattv.com/localnow.m3u
     # epg_url: https://raw.githubusercontent.com/BuddyChewChew/localnow-playlist-generator/refs/heads/main/epg.xml
-
-# Logo TLS and health knobs are added in the same PRs that implement those
-# features — not ahead of time.

@@ -16,6 +16,7 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/httpx"
+	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/provider/lg"
@@ -157,7 +158,7 @@ func TestSyntheticNumberPersistsAcrossRefreshAndRestore(t *testing.T) {
 	}
 
 	restored := newRegistry()
-	Restore(restored, cc, EmissionPolicy{})
+	Restore(restored, cc, EmissionPolicy{}, nil)
 	restoredFeed, _ := restored.Feed(model.ProviderXumo)
 	if got := restoredFeed.Channels()[0].OffsetNumber; got != 5000 {
 		t.Fatalf("restored number = %d, want 5000", got)
@@ -259,7 +260,7 @@ func TestPublishedProviderRefreshAndRestore(t *testing.T) {
 		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: restoredReader},
 		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
 	)
-	Restore(restoredRegistry, cc, EmissionPolicy{})
+	Restore(restoredRegistry, cc, EmissionPolicy{}, nil)
 	restoredFeed, _ := restoredRegistry.Feed(model.ProviderDistroTV)
 	if channels := restoredFeed.Channels(); len(channels) != 2 || channels[0].NormalizedID != "dtv_EPGACE_TV" {
 		t.Fatalf("restored channels: %+v", channels)
@@ -421,7 +422,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
 	)
 
-	Restore(reg, cc, EmissionPolicy{})
+	Restore(reg, cc, EmissionPolicy{}, nil)
 
 	f, _ := reg.Feed(model.ProviderLG)
 	if len(f.Channels()) == 0 {
@@ -736,5 +737,88 @@ func TestNextRefreshHeartbeat(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 	if buf.Len() > beforeCancel+200 {
 		t.Fatalf("heartbeat continued after cancel: grew %d bytes", buf.Len()-beforeCancel)
+	}
+}
+
+type logoReader struct {
+	logoURL string
+}
+
+func (r logoReader) Fetch(context.Context) (provider.Raw, error) {
+	return provider.Raw{"fixture": []byte("RAW")}, nil
+}
+
+func (r logoReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
+	start := time.Now().UTC()
+	return []model.Channel{{
+			ID:        "news",
+			Name:      "News",
+			StreamURL: "https://example.test/news.m3u8",
+			LogoURL:   r.logoURL,
+		}}, []model.Programme{{
+			ChannelID: "news",
+			Title:     "News",
+			Start:     start,
+			Stop:      start.Add(time.Hour),
+		}}, nil
+}
+
+func TestPrepareRewritesLogosWhenEnabled(t *testing.T) {
+	var hits int
+	logoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("png"))
+	}))
+	t.Cleanup(logoSrv.Close)
+
+	settings := model.ProviderSettings{ID: model.ProviderLG, Label: "LG", MinChannels: 1}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: logoReader{logoURL: logoSrv.URL + "/a.png"}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	cc := cache.New(t.TempDir())
+	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
+	pr := &providerRefresher{feed: feed, cache: cc, logos: logos}
+	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	m3uData, err := cc.ReadM3U(model.ProviderLG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(m3uData), "http://fastgen.lan:8180/logos/lg/news.png") {
+		t.Fatalf("m3u missing rewritten logo: %s", m3uData)
+	}
+	if hits != 1 {
+		t.Fatalf("logo hits=%d", hits)
+	}
+	if got := feed.Channels()[0].LogoURL; got != "http://fastgen.lan:8180/logos/lg/news.png" {
+		t.Fatalf("api logo_url=%q", got)
+	}
+}
+
+func TestPrepareKeepsUpstreamLogosWhenDisabled(t *testing.T) {
+	upstream := "https://cdn.example/logo.png"
+	settings := model.ProviderSettings{ID: model.ProviderLG, Label: "LG", MinChannels: 1}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: logoReader{logoURL: upstream}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	pr := &providerRefresher{feed: feed, cache: cache.New(t.TempDir())}
+	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	m3uData, err := pr.cache.ReadM3U(model.ProviderLG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(m3uData), upstream) {
+		t.Fatalf("expected upstream logo in m3u: %s", m3uData)
+	}
+	if got := feed.Channels()[0].LogoURL; got != upstream {
+		t.Fatalf("logo_url=%q", got)
 	}
 }

@@ -11,6 +11,7 @@ type Channel = {
   stream_url: string
   emitted_url?: string
   logo_url?: string
+  logo_error?: string
   classification?: string
   filter_reason?: string
   excluded: boolean
@@ -181,23 +182,41 @@ export function ChannelsPage() {
                       <td>{displayNumber(ch.offset_number)}</td>
                       <td>{displayNumber(ch.number)}</td>
                       <td>
-                        {ch.name}
-                        {ch.id === ch.normalized_id ? (
-                          <div className="subtle">
-                            <code>{ch.id}</code>
-                          </div>
-                        ) : (
-                          <div className="subtle ids">
-                            <span>
-                              <span className="id-label">raw</span>
-                              <code>{ch.id}</code>
-                            </span>
-                            <span>
-                              <span className="id-label">norm</span>
-                              <code>{ch.normalized_id}</code>
-                            </span>
-                          </div>
-                        )}
+                        <div className="channel-name">
+                          {ch.logo_url && (
+                            <img
+                              className="channel-logo"
+                              src={ch.logo_url}
+                              alt=""
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none'
+                              }}
+                            />
+                          )}
+                          <span>
+                            {ch.name}
+                            {ch.logo_error && (
+                              <div className="subtle">logo: {ch.logo_error}</div>
+                            )}
+                            {ch.id === ch.normalized_id ? (
+                              <div className="subtle">
+                                <code>{ch.id}</code>
+                              </div>
+                            ) : (
+                              <div className="subtle ids">
+                                <span>
+                                  <span className="id-label">raw</span>
+                                  <code>{ch.id}</code>
+                                </span>
+                                <span>
+                                  <span className="id-label">norm</span>
+                                  <code>{ch.normalized_id}</code>
+                                </span>
+                              </div>
+                            )}
+                          </span>
+                        </div>
                       </td>
                       <td>
                         <code>{ch.provider}</code>

@@ -8,14 +8,18 @@ services:
     ports:
       - "8180:8180"
     volumes:
-      # Local bind mount so generated artifacts are viewable in the repo (./cache).
-      - ./cache:/data/cache
+      # Local bind mount so generated artifacts (LKG + logos) are viewable in the repo.
+      - ./.cache:/data/cache
       # Seed providers for local smoke; override by replacing the file on the volume.
       - ./config.example.yaml:/data/config.yaml:ro
     environment:
       PORT: "8180"
       FASTGEN_PROXY_BASE_URL: "${FASTGEN_PROXY_BASE_URL:-}"
       FASTGEN_PROXY_ALL: "${FASTGEN_PROXY_ALL:-false}"
+      FASTGEN_BASE_URL: "${FASTGEN_BASE_URL:-}"
+      # Leave empty by default so config.yaml cache_logos is not overridden
+      # (env always wins when set). Export FASTGEN_CACHE_LOGOS=true|false to force.
+      FASTGEN_CACHE_LOGOS: "${FASTGEN_CACHE_LOGOS:-}"
 
   fastproxy:
     profiles:

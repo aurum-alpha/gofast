@@ -494,6 +494,20 @@
   object-fit: contain;
 }
 
+.channel-name {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.channel-logo {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  margin-top: 0.1rem;
+  object-fit: contain;
+}
+
 .epg-name {
   font-weight: 600;
   overflow: hidden;
