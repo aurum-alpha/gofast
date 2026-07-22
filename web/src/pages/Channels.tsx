@@ -3,19 +3,35 @@ import { Link } from 'react-router-dom'
 import {
   channelDetailPath,
   classBadge,
+  CLASS_FILTERS,
   displayNumber,
   lineupBadge,
+  lineupStatus,
+  STATUS_FILTERS,
 } from '../lib/channel'
-import type { Channel } from '../lib/channel'
+import type { Channel, LineupStatusKind } from '../lib/channel'
 
 type ChannelsResponse = {
   channels: Channel[]
+}
+
+const EMPTY_GROUP = '__none__'
+
+function groupKey(group: string): string {
+  return group || EMPTY_GROUP
+}
+
+function groupLabel(key: string): string {
+  return key === EMPTY_GROUP ? '(none)' : key
 }
 
 export function ChannelsPage() {
   const [data, setData] = useState<ChannelsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [providerFilter, setProviderFilter] = useState('all')
+  const [groupFilter, setGroupFilter] = useState('all')
+  const [classFilter, setClassFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [q, setQ] = useState('')
 
   useEffect(() => {
@@ -48,11 +64,34 @@ export function ChannelsPage() {
     return [...new Set(data.channels.map((c) => c.provider))].sort()
   }, [data])
 
+  const groups = useMemo(() => {
+    if (!data) return [] as string[]
+    const set = new Set<string>()
+    for (const c of data.channels) {
+      set.add(groupKey(c.group))
+    }
+    return [...set].sort((a, b) => {
+      if (a === EMPTY_GROUP) return 1
+      if (b === EMPTY_GROUP) return -1
+      return a.localeCompare(b)
+    })
+  }, [data])
+
   const rows = useMemo(() => {
     if (!data) return [] as Channel[]
     const needle = q.trim().toLowerCase()
     return data.channels.filter((ch) => {
       if (providerFilter !== 'all' && ch.provider !== providerFilter) {
+        return false
+      }
+      if (groupFilter !== 'all' && groupKey(ch.group) !== groupFilter) {
+        return false
+      }
+      if (classFilter !== 'all') {
+        const classification = ch.classification || ''
+        if (classification !== classFilter) return false
+      }
+      if (statusFilter !== 'all' && lineupStatus(ch) !== statusFilter) {
         return false
       }
       if (!needle) return true
@@ -65,7 +104,7 @@ export function ChannelsPage() {
         String(ch.offset_number).includes(needle)
       )
     })
-  }, [data, providerFilter, q])
+  }, [data, providerFilter, groupFilter, classFilter, statusFilter, q])
 
   return (
     <>
@@ -101,6 +140,50 @@ export function ChannelsPage() {
                 {providers.map((p) => (
                   <option key={p} value={p}>
                     {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Group{' '}
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+              >
+                <option value="all">all</option>
+                {groups.map((g) => (
+                  <option key={g} value={g}>
+                    {groupLabel(g)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Class{' '}
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+              >
+                <option value="all">all</option>
+                {CLASS_FILTERS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Status{' '}
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as 'all' | LineupStatusKind)
+                }
+              >
+                <option value="all">all</option>
+                {STATUS_FILTERS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
                   </option>
                 ))}
               </select>

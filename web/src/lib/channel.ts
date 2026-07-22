@@ -88,6 +88,18 @@ export function lineupBadge(ch: Channel): LineupBadge {
   }
 }
 
+/** Fixed Class filter options (probe classification). */
+export const CLASS_FILTERS = ['NATIVE', 'BEACON', 'DRM'] as const
+
+/** Fixed Status filter options with display labels. */
+export const STATUS_FILTERS: { value: LineupStatusKind; label: string }[] = [
+  { value: 'in-lineup', label: 'In lineup' },
+  { value: 'proxied', label: 'Via proxy' },
+  { value: 'needs-proxy', label: 'Needs proxy' },
+  { value: 'drm', label: 'DRM blocked' },
+  { value: 'excluded', label: 'Excluded' },
+]
+
 export function classBadge(classification?: string): { label: string; kind: string } {
   switch (classification) {
     case 'NATIVE':
