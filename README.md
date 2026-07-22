@@ -59,7 +59,7 @@ Production files (pull-only, no secrets):
 5. Optional: set `FASTGEN_DATA=/path/on/host` for a bind mount instead of the named volume.
 6. Optional: set `FASTGEN_BASE_URL` to the public origin Jellyfin uses (include `:port` unless on 80/443), e.g. `http://192.168.1.50:8180`.
 7. When enabling the proxy profile, set `FASTGEN_PROXY_BASE_URL` to the public proxy origin Jellyfin/ffmpeg can reach, e.g. `http://192.168.1.50:8181`. Optionally set `FASTGEN_PROXY_ALL=true`.
-8. Smoke test: `curl http://HOST:8180/healthz` → JSON with `"ok": true` plus per-provider stale/export fields (container logs a `request` line; Docker/Portainer healthcheck only requires HTTP 200 on this path).
+8. Smoke test: `curl http://HOST:8180/healthz` → JSON with `"ok": true` plus per-provider stale/export fields (container logs a `request` line; Docker/Portainer healthcheck only requires HTTP 200 on this path). Prometheus scrapes `GET /metrics` on the same port.
 
 ### Config (`/data/config.yaml`)
 

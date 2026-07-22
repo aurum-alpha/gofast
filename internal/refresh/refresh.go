@@ -194,16 +194,16 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 
 	raw, err := p.feed.Reader().Fetch(ctx)
 	if err != nil {
-		return p.fail(err)
+		return p.fail(err, time.Since(start))
 	}
 	chs, progs, err := p.feed.Reader().Parse(raw)
 	if err != nil {
-		return p.fail(err)
+		return p.fail(err, time.Since(start))
 	}
 	previous := p.feed.Lineup().SyntheticChannelNumbers
 	chs, progs, assignments, err := p.transform(chs, progs, previous)
 	if err != nil {
-		return p.fail(err)
+		return p.fail(err, time.Since(start))
 	}
 	if p.clf != nil {
 		slog.Info("classifying channels", "provider", p.feed.ID(), "count", len(chs))
@@ -211,20 +211,22 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 	}
 	lineup, m3uData, xmlData, err := p.prepare(ctx, chs, progs, assignments, time.Now())
 	if err != nil {
-		return p.fail(err)
+		return p.fail(err, time.Since(start))
 	}
 	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
-		return p.fail(err)
+		return p.fail(err, time.Since(start))
 	}
 	p.feed.Set(lineup)
 	status = p.feed.Status()
 	status.LastError = ""
 	status.LastErrorAt = time.Time{}
 	p.setStatus(status)
+	duration := time.Since(start)
+	p.feed.RecordRefresh(true, duration)
 	if p.notify != nil {
 		p.notify()
 	}
-	p.logPublished(lineup, len(m3uData), len(xmlData), time.Since(start))
+	p.logPublished(lineup, len(m3uData), len(xmlData), duration)
 	if p.logos != nil {
 		go p.scheduleLogoRewrite(context.WithoutCancel(ctx))
 	}
@@ -354,11 +356,12 @@ func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, pr
 	return lineup, cache.M3U(m3uData), cache.XMLTV(xmlData), nil
 }
 
-func (p *providerRefresher) fail(err error) error {
+func (p *providerRefresher) fail(err error, duration time.Duration) error {
 	status := p.feed.Status()
 	status.LastError = err.Error()
 	status.LastErrorAt = time.Now()
 	p.setStatus(status)
+	p.feed.RecordRefresh(false, duration)
 	return err
 }
 

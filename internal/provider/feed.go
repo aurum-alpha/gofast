@@ -45,6 +45,14 @@ type Status struct {
 	LastErrorAt   time.Time `json:"last_error_at,omitempty"`
 }
 
+// RefreshMetrics is process-lifetime refresh timing for Prometheus scrapes
+// (not persisted to status.json).
+type RefreshMetrics struct {
+	LastDuration time.Duration
+	Successes    uint64
+	Failures     uint64
+}
+
 // Feed is the runtime state for one provider: its Reader + settings + last-good
 // Lineup, guarded by its own RWMutex (written by its refresh goroutine, read by
 // HTTP handlers and the aggregator).
@@ -54,6 +62,7 @@ type Feed struct {
 	mu       sync.RWMutex
 	lineup   Lineup
 	status   Status
+	refresh  RefreshMetrics
 }
 
 func newFeed(reader Reader, settings model.ProviderSettings) *Feed {
@@ -107,18 +116,11 @@ func (f *Feed) Programmes() []model.Programme {
 // Reader returns the provider's fetch adapter.
 func (f *Feed) Reader() Reader { return f.reader }
 
-// Set replaces the last-good lineup (called after a successful refresh cycle).
-func (f *Feed) Set(l Lineup) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.lineup = l
-}
-
-// SetStatus replaces refresh-attempt state.
-func (f *Feed) SetStatus(status Status) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.status = status
+// RefreshMetrics returns process-lifetime refresh counters for /metrics.
+func (f *Feed) RefreshMetrics() RefreshMetrics {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.refresh
 }
 
 // Settings returns the effective provider settings.
@@ -188,4 +190,30 @@ func (f *Feed) Status() Status {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.status
+}
+
+// RecordRefresh records one completed refresh attempt for Prometheus counters.
+func (f *Feed) RecordRefresh(ok bool, d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refresh.LastDuration = d
+	if ok {
+		f.refresh.Successes++
+		return
+	}
+	f.refresh.Failures++
+}
+
+// Set replaces the last-good lineup (called after a successful refresh cycle).
+func (f *Feed) Set(l Lineup) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lineup = l
+}
+
+// SetStatus replaces refresh-attempt state.
+func (f *Feed) SetStatus(status Status) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.status = status
 }

@@ -104,6 +104,7 @@ func main() {
 			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}", server.ChannelHandler(reg))
 			mux.HandleFunc("GET /api/guide.xml", server.GuideXML(reg))
 			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(reg))
+			mux.HandleFunc("GET /metrics", server.MetricsHandler(reg))
 			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(cc))
 			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc))
 			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc))
