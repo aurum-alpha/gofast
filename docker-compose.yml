@@ -1,3 +1,12 @@
+# Local / dev compose (build from source).
+#
+# Jellyfin Live TV (gen-only) — see README:
+#   Tuner M3U:  http://HOST:8180/playlist.m3u
+#   Guide XMLTV: http://HOST:8180/epg.xml
+#   Per-provider: /{id}.m3u and /{id}.xml
+# Set FASTGEN_BASE_URL to the origin Jellyfin reaches (include :8180 unless
+# behind TLS on 443). Optional proxy: docker compose --profile proxy up.
+
 services:
   fastgen:
     image: ghcr.io/j27-aurum/gofast/fastgen:latest
