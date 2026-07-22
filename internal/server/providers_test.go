@@ -25,12 +25,20 @@ func TestProvidersAPI(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
-	var list model.ProviderList
+	var list struct {
+		Providers []struct {
+			ID    model.ProviderID `json:"id"`
+			Stats provider.Stats   `json:"stats"`
+		} `json:"providers"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
 	if len(list.Providers) != 1 || list.Providers[0].ID != "lg" {
 		t.Fatalf("%+v", list)
+	}
+	if list.Providers[0].Stats.TotalChannels != 0 {
+		t.Fatalf("empty lineup stats: %+v", list.Providers[0].Stats)
 	}
 	// Server listen/path must not leak into the providers payload.
 	var raw map[string]json.RawMessage
@@ -49,6 +57,46 @@ func TestProvidersAPI(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("want 405, got %d", rec.Code)
+	}
+}
+
+func TestProvidersAPIIncludesStats(t *testing.T) {
+	fetchedAt := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	reg := regWith(
+		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG"}},
+		map[model.ProviderID]provider.Lineup{"lg": {
+			Channels: []model.Channel{
+				{NormalizedID: "a", StreamURL: "https://a"},
+				{NormalizedID: "b", Excluded: true, FilterReason: "DRM", StreamURL: "https://b"},
+			},
+			ChannelCount: 2,
+			FetchedAt:    fetchedAt,
+		}},
+	)
+	rec := httptest.NewRecorder()
+	server.ProvidersHandler(reg).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/providers", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var list struct {
+		Providers []struct {
+			ID    model.ProviderID `json:"id"`
+			Stats provider.Stats   `json:"stats"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Providers) != 1 {
+		t.Fatalf("%+v", list)
+	}
+	st := list.Providers[0].Stats
+	if st.TotalChannels != 2 || st.ExcludedChannels != 1 || !st.FetchedAt.Equal(fetchedAt) {
+		t.Fatalf("body=%s stats: %+v", rec.Body.String(), st)
+	}
+	// ExportedChannels comes from lineup.ChannelCount (export gate count), not live non-excluded.
+	if st.ExportedChannels != 2 {
+		t.Fatalf("exported_channels want ChannelCount=2, got %d", st.ExportedChannels)
 	}
 }
 

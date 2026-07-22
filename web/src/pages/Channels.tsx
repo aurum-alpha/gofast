@@ -1,48 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-
-type Channel = {
-  provider: string
-  id: string
-  normalized_id: string
-  name: string
-  group: string
-  number: number
-  offset_number: number
-  stream_url: string
-  emitted_url?: string
-  logo_url?: string
-  logo_error?: string
-  classification?: string
-  filter_reason?: string
-  excluded: boolean
-}
+import { Link } from 'react-router-dom'
+import {
+  channelDetailPath,
+  classBadge,
+  displayNumber,
+  exportBadge,
+  exportKind,
+} from '../lib/channel'
+import type { Channel } from '../lib/channel'
 
 type ChannelsResponse = {
   channels: Channel[]
-}
-
-function exportLabel(ch: Channel): string {
-  if (ch.excluded) {
-    return ch.filter_reason ? `filtered · ${ch.filter_reason}` : 'filtered'
-  }
-  return ch.emitted_url && ch.emitted_url !== ch.stream_url ? 'proxied' : 'direct'
-}
-
-function displayNumber(n: number): string {
-  return n > 0 ? String(n) : '—'
-}
-
-function classBadge(classification?: string): { label: string; kind: string } {
-  switch (classification) {
-    case 'NATIVE':
-      return { label: 'NATIVE', kind: 'native' }
-    case 'BEACON':
-      return { label: 'BEACON', kind: 'beacon' }
-    case 'DRM':
-      return { label: 'DRM', kind: 'drm' }
-    default:
-      return { label: '—', kind: 'none' }
-  }
 }
 
 export function ChannelsPage() {
@@ -104,9 +72,9 @@ export function ChannelsPage() {
     <>
       <h1>Channels</h1>
       <p className="lead">
-        Live lineup from the last successful refresh. Class is probed at
-        refresh (NATIVE / BEACON / DRM). DRM is never exported; BEACON uses
-        FASTProxy when configured.
+        Live lineup from the last successful refresh. Click a row for export
+        status, reasons, URLs, and identity. Class is probed at refresh (NATIVE /
+        BEACON / DRM).
       </p>
 
       {error && (
@@ -144,7 +112,7 @@ export function ChannelsPage() {
                 type="search"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="name, raw/normalized id, group, number…"
+                placeholder="name, id, group, number…"
               />
             </label>
             <span className="meta">
@@ -162,7 +130,7 @@ export function ChannelsPage() {
                   <th scope="col">Provider</th>
                   <th scope="col">Group</th>
                   <th scope="col">Class</th>
-                  <th scope="col">Playback</th>
+                  <th scope="col">Export</th>
                 </tr>
               </thead>
               <tbody>
@@ -174,65 +142,48 @@ export function ChannelsPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((ch) => (
-                    <tr
-                      key={`${ch.provider}:${ch.normalized_id}`}
-                      className={ch.excluded ? 'excluded' : undefined}
-                    >
-                      <td>{displayNumber(ch.offset_number)}</td>
-                      <td>{displayNumber(ch.number)}</td>
-                      <td>
-                        <div className="channel-name">
-                          {ch.logo_url && (
-                            <img
-                              className="channel-logo"
-                              src={ch.logo_url}
-                              alt=""
-                              loading="lazy"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none'
-                              }}
-                            />
-                          )}
-                          <span>
-                            {ch.name}
-                            {ch.logo_error && (
-                              <div className="subtle">logo: {ch.logo_error}</div>
+                  rows.map((ch) => {
+                    const cls = classBadge(ch.classification)
+                    const exp = exportBadge(exportKind(ch))
+                    return (
+                      <tr
+                        key={`${ch.provider}:${ch.normalized_id}`}
+                        className={ch.excluded ? 'excluded' : undefined}
+                      >
+                        <td>{displayNumber(ch.offset_number)}</td>
+                        <td>{displayNumber(ch.number)}</td>
+                        <td>
+                          <Link
+                            to={channelDetailPath(ch)}
+                            className="channel-name channel-link"
+                          >
+                            {ch.logo_url && (
+                              <img
+                                className="channel-logo"
+                                src={ch.logo_url}
+                                alt=""
+                                loading="lazy"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                }}
+                              />
                             )}
-                            {ch.id === ch.normalized_id ? (
-                              <div className="subtle">
-                                <code>{ch.id}</code>
-                              </div>
-                            ) : (
-                              <div className="subtle ids">
-                                <span>
-                                  <span className="id-label">raw</span>
-                                  <code>{ch.id}</code>
-                                </span>
-                                <span>
-                                  <span className="id-label">norm</span>
-                                  <code>{ch.normalized_id}</code>
-                                </span>
-                              </div>
-                            )}
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        <code>{ch.provider}</code>
-                      </td>
-                      <td>{ch.group || '—'}</td>
-                      <td>
-                        {(() => {
-                          const b = classBadge(ch.classification)
-                          return (
-                            <span className={`badge badge-${b.kind}`}>{b.label}</span>
-                          )
-                        })()}
-                      </td>
-                      <td>{exportLabel(ch)}</td>
-                    </tr>
-                  ))
+                            <span>{ch.name}</span>
+                          </Link>
+                        </td>
+                        <td>
+                          <code>{ch.provider}</code>
+                        </td>
+                        <td>{ch.group || '—'}</td>
+                        <td>
+                          <span className={`badge badge-${cls.kind}`}>{cls.label}</span>
+                        </td>
+                        <td>
+                          <span className={`badge ${exp.className}`}>{exp.label}</span>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>

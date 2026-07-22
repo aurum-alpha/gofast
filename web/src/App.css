@@ -217,6 +217,114 @@
   text-decoration: none;
 }
 
+.channel-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.channel-link:hover span {
+  text-decoration: underline;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.detail-title {
+  align-items: flex-start;
+}
+
+.channel-logo-lg {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+}
+
+.channel-logo-full {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 16rem);
+  max-height: 8rem;
+  margin: 0 0 0.5rem;
+  object-fit: contain;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 0.5rem;
+}
+
+.compare-lead {
+  margin-bottom: 1rem;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.compare-table th,
+.compare-table td {
+  vertical-align: top;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.compare-table thead th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  background: var(--panel);
+  border-bottom: 2px solid var(--ink);
+}
+
+.compare-table tbody th[scope='row'] {
+  width: 8.5rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.compare-table tbody td {
+  width: 40%;
+  background: transparent;
+}
+
+.compare-table tbody td:nth-child(2) {
+  border-right: 1px dashed var(--line);
+}
+
+.compare-value {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.field-hint {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.compare-error {
+  margin: 0;
+  color: #c44;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.url-break {
+  word-break: break-all;
+  font-size: 0.85em;
+}
+
 .detail-heading {
   display: flex;
   align-items: flex-start;

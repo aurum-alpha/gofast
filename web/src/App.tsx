@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
+import { ChannelDetailPage } from './pages/ChannelDetail'
 import { ChannelsPage } from './pages/Channels'
 import { ConfigPage } from './pages/Config'
 import { GuidePage } from './pages/Guide'
@@ -14,11 +15,11 @@ export default function App() {
           GoFAST
         </NavLink>
         <nav className="nav" aria-label="Primary">
+          <NavLink to="/providers">Providers</NavLink>
           <NavLink to="/" end>
             Channels
           </NavLink>
           <NavLink to="/guide">Guide</NavLink>
-          <NavLink to="/providers">Providers</NavLink>
           <NavLink to="/config">Config</NavLink>
         </nav>
       </header>
@@ -26,6 +27,10 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ChannelsPage />} />
           <Route path="/channels" element={<ChannelsPage />} />
+          <Route
+            path="/channels/:provider/:normalizedId"
+            element={<ChannelDetailPage />}
+          />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/providers" element={<ProvidersPage />} />
           <Route path="/providers/:id" element={<ProviderDetailPage />} />

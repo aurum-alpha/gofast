@@ -22,7 +22,11 @@ type Channel struct {
 	Number      int        `json:"number"`                // provider's upstream channel number
 	StreamURL   string     `json:"stream_url"`            // provider's upstream URL
 	EmittedURL  string     `json:"emitted_url,omitempty"` // selected direct/proxy playback URL
-	LogoURL     string     `json:"logo_url,omitempty"`
+	// LogoURL is what we export (tvg-logo / XMLTV icon): local /logos/... when
+	// caching succeeds, upstream on soft failure / cache off, empty after hard 403/404.
+	LogoURL string `json:"logo_url,omitempty"`
+	// LogoSourceURL is the provider's original artwork URL (kept after rewrite).
+	LogoSourceURL string `json:"logo_source_url,omitempty"`
 	// LogoError is set when logo caching cleared LogoURL after a hard upstream
 	// failure (e.g. HTTP 403/404). Empty when the logo is fine or caching is off.
 	LogoError string `json:"logo_error,omitempty"`

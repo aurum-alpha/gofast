@@ -324,25 +324,26 @@ Proxy has no product UI. Ship the UI foundation early and feather features as
 gen capabilities land (classification, export reasons, health, config editor).
 
 Core view — the channel table: every channel from every provider with a
-classification badge and export status:
-- NATIVE — exported, plays anywhere
-- DRM — NOT exported; show the license_url as evidence
-- BEACON — exported only when a proxy is configured; otherwise show an explicit
-  "needs FASTProxy" state (never silently absent)
-Filterable/searchable by provider, status, name, channel number.
+classification badge and a short export badge (`exported` / `proxied` /
+`filtered` / `needs proxy` / `DRM`). The grid stays lean (name + logo thumb;
+no raw/normalized ids or logo errors in-row). Filterable/searchable by
+provider, name, and channel number.
 
-Per-channel detail: upstream URL vs emitted URL, last probe time and result,
-the precise reason string for any filter decision (regex hit, DRM, beacon
-without proxy, min_channels gate), per-channel force-enable/disable override.
+Per-channel detail (`/channels/{provider}/{normalizedId}`): export status and
+full filter reason, DRM `license_url` evidence, upstream vs emitted URL, raw
+and normalized ids, logo URL or `logo_error`. Health/probes and force
+enable/disable overrides are later milestones.
 
-Provider rollups mirroring /healthz: last refresh, channel/programme counts,
-staleness, drop counts by reason.
+Provider list shows triage summaries (exported / excluded / stale / last
+success). Provider detail holds full rollups (classifications, filter
+reasons, guide coverage) mirroring the eventual rich `/healthz` shape.
 
 Config editing for the iterated-on settings (exclusion regexes, channel number offsets,
 labels, proxy settings, per-channel overrides), persisted to the YAML config.
 
 Acceptance test for the UI: a user wondering why a specific LG channel is
-missing from Jellyfin can locate it in the table and read a one-line reason in
+missing from Jellyfin can locate it in the table (provider / search), open
+the channel detail page, and read export status plus a one-line reason in
 under ten seconds.
 
 ## FASTProxy requirements

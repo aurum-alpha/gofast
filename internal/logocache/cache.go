@@ -48,8 +48,9 @@ func New(store *cache.Cache, client *http.Client, baseURL string, maxAge time.Du
 	}
 }
 
-// Rewrite updates LogoURL on each channel that has one. Failures keep the
-// upstream URL except hard HTTP 403/404, which clear LogoURL and set LogoError.
+// Rewrite updates LogoURL on each channel that has one, preserving the provider
+// original in LogoSourceURL. Failures keep the upstream LogoURL except hard
+// HTTP 403/404, which clear LogoURL and set LogoError (source URL is retained).
 func (c *Cache) Rewrite(ctx context.Context, channels []model.Channel) {
 	if c == nil {
 		return
@@ -58,6 +59,7 @@ func (c *Cache) Rewrite(ctx context.Context, channels []model.Channel) {
 		if channels[i].LogoURL == "" {
 			continue
 		}
+		channels[i].LogoSourceURL = channels[i].LogoURL
 		channels[i].LogoURL, channels[i].LogoError = c.Ensure(ctx, channels[i])
 	}
 }

@@ -193,6 +193,9 @@ func TestEnsureForbiddenClearsLogo(t *testing.T) {
 	if chs[0].LogoURL != "" || chs[0].LogoError != "HTTP 403" {
 		t.Fatalf("got logo=%q error=%q", chs[0].LogoURL, chs[0].LogoError)
 	}
+	if chs[0].LogoSourceURL != srv.URL+"/logo.png" {
+		t.Fatalf("source=%q", chs[0].LogoSourceURL)
+	}
 }
 
 func TestEnsureNotFoundClearsLogo(t *testing.T) {
@@ -225,6 +228,9 @@ func TestRewrite(t *testing.T) {
 	c.Rewrite(context.Background(), chs)
 	if chs[0].LogoURL != "http://base/logos/pluto/a.jpg" {
 		t.Fatalf("chs[0]=%q", chs[0].LogoURL)
+	}
+	if chs[0].LogoSourceURL != srv.URL+"/a.jpg" {
+		t.Fatalf("source=%q", chs[0].LogoSourceURL)
 	}
 	if chs[1].LogoURL != "" {
 		t.Fatalf("empty logo should stay empty")

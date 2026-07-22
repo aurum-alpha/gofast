@@ -41,3 +41,44 @@ func TestChannelsAPI(t *testing.T) {
 		t.Fatalf("upstream/emitted URLs lost: %+v", list.Channels[0])
 	}
 }
+
+func TestChannelAPI(t *testing.T) {
+	reg := regWith(
+		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG"}},
+		map[model.ProviderID]provider.Lineup{
+			"lg": {Channels: []model.Channel{
+				{Provider: "lg", ID: "Best of British TV", NormalizedID: "Best_of_British_TV", Name: "British", StreamURL: "https://up/b", Classification: model.ClassNative},
+			}},
+		},
+	)
+	h := server.ChannelHandler(reg)
+	request := func(method, provider, normalizedID string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/channels/"+provider+"/"+normalizedID, nil)
+		req.SetPathValue("provider", provider)
+		req.SetPathValue("normalizedId", normalizedID)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := request(http.MethodGet, "lg", "Best_of_British_TV")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	var ch model.Channel
+	if err := json.Unmarshal(rec.Body.Bytes(), &ch); err != nil {
+		t.Fatal(err)
+	}
+	if ch.Name != "British" || ch.ID != "Best of British TV" || ch.NormalizedID != "Best_of_British_TV" {
+		t.Fatalf("%+v", ch)
+	}
+	if rec := request(http.MethodGet, "lg", "missing"); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing want 404, got %d", rec.Code)
+	}
+	if rec := request(http.MethodGet, "unknown", "Best_of_British_TV"); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown provider want 404, got %d", rec.Code)
+	}
+	if rec := request(http.MethodPost, "lg", "Best_of_British_TV"); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST want 405, got %d", rec.Code)
+	}
+}
