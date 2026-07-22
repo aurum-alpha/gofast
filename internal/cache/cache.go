@@ -10,6 +10,7 @@
 //	<id>/generations/<generation>/*.m3u  per-provider playlist
 //	<id>/generations/<generation>/*.xml  per-provider guide
 //	<id>/generations/<generation>/meta.json
+//	<id>/logos/<channel_id>.<ext>        durable channel logos (outside generations)
 //	aggregate/current                    selected aggregate generation
 //	aggregate/generations/<generation>/playlist.m3u
 //	aggregate/generations/<generation>/epg.xml
@@ -38,6 +39,7 @@ const (
 	fileStatus     = "status.json"
 	fileCurrent    = "current"
 	dirGenerations = "generations"
+	dirLogos       = "logos"
 
 	dirAggregate = "aggregate"
 	aggM3U       = "playlist.m3u"
@@ -423,6 +425,74 @@ func readRaw(dir string) (provider.Raw, error) {
 		raw[entry.Name()] = data
 	}
 	return raw, nil
+}
+
+// LogoPath returns the absolute path for a logo file under {id}/logos/{file}.
+func (c *Cache) LogoPath(id model.ProviderID, file string) (string, error) {
+	providerDir, err := c.providerDir(id)
+	if err != nil {
+		return "", err
+	}
+	if !validRawName(file) {
+		return "", fs.ErrNotExist
+	}
+	return filepath.Join(providerDir, dirLogos, file), nil
+}
+
+// WriteLogo atomically writes logo bytes under {id}/logos/{file}.
+func (c *Cache) WriteLogo(id model.ProviderID, file string, data []byte) error {
+	path, err := c.LogoPath(id, file)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(path, data)
+}
+
+// ReadLogo reads a logo file from {id}/logos/{file}.
+func (c *Cache) ReadLogo(id model.ProviderID, file string) ([]byte, error) {
+	path, err := c.LogoPath(id, file)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// StatLogo returns file info for a logo under {id}/logos/{file}.
+func (c *Cache) StatLogo(id model.ProviderID, file string) (fs.FileInfo, error) {
+	path, err := c.LogoPath(id, file)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, fs.ErrNotExist
+	}
+	return info, nil
+}
+
+// WriteLogoMeta atomically writes the ETag/Last-Modified sidecar for a logo file.
+func (c *Cache) WriteLogoMeta(id model.ProviderID, file string, data []byte) error {
+	path, err := c.LogoPath(id, file)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(path+".meta", data)
+}
+
+// ReadLogoMeta reads the ETag/Last-Modified sidecar for a logo file.
+func (c *Cache) ReadLogoMeta(id model.ProviderID, file string) ([]byte, error) {
+	path, err := c.LogoPath(id, file)
+	if err != nil {
+		return nil, err
+	}
+	return os.ReadFile(path + ".meta")
 }
 
 func validRawName(name string) bool {

@@ -23,6 +23,9 @@ type Channel struct {
 	StreamURL   string     `json:"stream_url"`            // provider's upstream URL
 	EmittedURL  string     `json:"emitted_url,omitempty"` // selected direct/proxy playback URL
 	LogoURL     string     `json:"logo_url,omitempty"`
+	// LogoError is set when logo caching cleared LogoURL after a hard upstream
+	// failure (e.g. HTTP 403/404). Empty when the logo is fine or caching is off.
+	LogoError string `json:"logo_error,omitempty"`
 
 	// OffsetNumber is Number + provider channel_number_offset (export / tvg-chno / lcn).
 	// Zero when the upstream had no number (synthesize path handles it later).

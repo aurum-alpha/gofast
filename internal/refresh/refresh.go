@@ -12,6 +12,7 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/classifier"
+	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/m3u"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
@@ -39,10 +40,11 @@ type Service struct {
 
 // New builds one Refresher per enabled feed. notify is called after each
 // successful publish (wire it to the aggregator); refresh never imports aggregate.
-func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, notify func()) *Service {
+// logos may be nil when cache_logos is disabled.
+func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, notify func()) *Service {
 	var rs []Refresher
 	for _, f := range reg.Feeds() {
-		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, policy: policy, notify: notify})
+		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, policy: policy, logos: logos, notify: notify})
 	}
 	return &Service{refreshers: rs}
 }
@@ -52,7 +54,8 @@ func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy
 // persisted classifications from meta.json. So the API and serving work at boot
 // exactly as after a fetch. Providers with no cached raw are left empty (they
 // fetch on boot); unreadable/unparseable entries are skipped.
-func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy) {
+// logos may be nil when cache_logos is disabled.
+func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache) {
 	for _, f := range reg.Feeds() {
 		raw, meta, _, err := cc.LoadProvider(f.ID())
 		if err != nil {
@@ -65,7 +68,7 @@ func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy) {
 			}
 			f.SetStatus(status)
 		}
-		pr := &providerRefresher{feed: f, cache: cc, policy: policy}
+		pr := &providerRefresher{feed: f, cache: cc, policy: policy, logos: logos}
 		if err := pr.rehydrate(raw, meta); err != nil {
 			slog.Warn("cache restore failed", "provider", f.ID(), "err", err)
 			continue
@@ -168,6 +171,7 @@ type providerRefresher struct {
 	clf    *classifier.Client
 	cache  *cache.Cache
 	policy EmissionPolicy
+	logos  *logocache.Cache
 	notify func()
 }
 
@@ -200,7 +204,7 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 		slog.Info("classifying channels", "provider", p.feed.ID(), "count", len(chs))
 		chs = p.clf.ClassifyChannels(ctx, chs)
 	}
-	lineup, m3uData, xmlData, err := p.prepare(chs, progs, assignments, time.Now())
+	lineup, m3uData, xmlData, err := p.prepare(ctx, chs, progs, assignments, time.Now())
 	if err != nil {
 		return p.fail(err)
 	}
@@ -235,7 +239,7 @@ func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) erro
 			chs[i].Classification = c
 		}
 	}
-	lineup, m3uData, xmlData, err := p.prepare(chs, progs, assignments, meta.FetchedAt)
+	lineup, m3uData, xmlData, err := p.prepare(context.Background(), chs, progs, assignments, meta.FetchedAt)
 	if err != nil {
 		return err
 	}
@@ -282,7 +286,7 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 
 // prepare applies export rules, runs quality gates, and renders one immutable
 // candidate without mutating the feed or cache.
-func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme, assignments provider.ChannelNumberAssignments, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
+func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, progs []model.Programme, assignments provider.ChannelNumberAssignments, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
 	id := p.feed.ID()
 	s := p.feed.Settings()
 	var emission emissionStats
@@ -292,6 +296,10 @@ func (p *providerRefresher) prepare(chs []model.Channel, progs []model.Programme
 			"provider", id,
 			"count", emission.NeedsProxyDropped,
 		)
+	}
+
+	if p.logos != nil {
+		p.logos.Rewrite(ctx, chs)
 	}
 
 	label := s.Label

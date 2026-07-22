@@ -13,6 +13,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/httpx"
+	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/provider/distrotv"
@@ -43,6 +44,23 @@ func main() {
 	client := httpx.NewClient(cfg.Timeouts.HTTPClient, 0)
 	cc := cache.New(filepath.Join(cfg.DataDir, "cache"))
 
+	var logos *logocache.Cache
+	if cfg.CacheLogosEnabled() {
+		artworkHosts := make(map[string]logocache.HostPolicy, len(cfg.ArtworkTLS))
+		for host, policy := range cfg.ArtworkTLS {
+			artworkHosts[host] = logocache.HostPolicy{
+				CAPem:              policy.CAPem,
+				InsecureSkipVerify: policy.InsecureSkipVerify,
+			}
+		}
+		artworkClient, err := logocache.NewArtworkClient(cfg.Timeouts.HTTPClient, artworkHosts)
+		if err != nil {
+			slog.Error("artwork http client", "err", err)
+			os.Exit(1)
+		}
+		logos = logocache.New(cc, artworkClient, cfg.BaseURL, 0)
+	}
+
 	// Providers are code: each known provider's package defaults are overlaid by
 	// its YAML settings. Unknown YAML ids have no implementation (warned).
 	settings := knownProviderSettings(cfg.Providers)
@@ -61,7 +79,7 @@ func main() {
 		ProxyBaseURL: cfg.ProxyBaseURL,
 		ProxyAll:     cfg.ProxyAllEnabled(),
 	}
-	refresh.Restore(reg, cc, emissionPolicy)
+	refresh.Restore(reg, cc, emissionPolicy, logos)
 	agg := aggregate.New(reg, cc)
 	if err := agg.Rebuild(); err != nil && !errors.Is(err, aggregate.ErrEmptyAggregate) {
 		slog.Warn("initial aggregate rebuild failed", "err", err)
@@ -69,7 +87,7 @@ func main() {
 	go agg.Run(ctx)
 
 	clf := classifier.New(client, 0)
-	svc := refresh.New(reg, clf, cc, emissionPolicy, agg.Notify)
+	svc := refresh.New(reg, clf, cc, emissionPolicy, logos, agg.Notify)
 	go svc.Run(ctx)
 
 	uiHandler := ui.Handler()
@@ -81,6 +99,7 @@ func main() {
 			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(reg))
 			mux.HandleFunc("GET /api/guide.xml", server.GuideXML(reg))
 			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(reg))
+			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(cc))
 			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc))
 			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc))
 			mux.HandleFunc("GET /{file}", server.PlaylistFile(cc, uiHandler))

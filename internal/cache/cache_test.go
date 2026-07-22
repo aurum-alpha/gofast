@@ -291,3 +291,34 @@ func TestLegacyAggregateRootFallback(t *testing.T) {
 		t.Fatalf("legacy xml: %q %v", xmlData, err)
 	}
 }
+
+func TestLogoRoundTrip(t *testing.T) {
+	cc := cache.New(t.TempDir())
+	if err := cc.WriteLogo(model.ProviderLG, "ch1.png", []byte("png")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := cc.ReadLogo(model.ProviderLG, "ch1.png")
+	if err != nil || string(got) != "png" {
+		t.Fatalf("ReadLogo: %q %v", got, err)
+	}
+	path, err := cc.LogoPath(model.ProviderLG, "ch1.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(filepath.Dir(path)) != "logos" {
+		t.Fatalf("expected .../logos/file, got %q", path)
+	}
+	if _, err := cc.StatLogo(model.ProviderLG, "ch1.png"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cc.WriteLogoMeta(model.ProviderLG, "ch1.png", []byte(`{"etag":"v1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := cc.ReadLogoMeta(model.ProviderLG, "ch1.png")
+	if err != nil || string(meta) != `{"etag":"v1"}` {
+		t.Fatalf("meta: %q %v", meta, err)
+	}
+	if _, err := cc.LogoPath(model.ProviderLG, "../x.png"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("traversal: %v", err)
+	}
+}
