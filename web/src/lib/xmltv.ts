@@ -62,3 +62,18 @@ export function parseXMLTV(text: string): Xmltv {
 export function combinedId(provider: string, normalizedId: string): string {
   return `${provider}.${normalizedId}`
 }
+
+// namespaceXmltv prefixes bare per-provider channel/programme ids with
+// "{provider}." so they match /api/channels combined ids.
+export function namespaceXmltv(provider: string, doc: Xmltv): Xmltv {
+  return {
+    channels: doc.channels.map((ch) => ({
+      ...ch,
+      id: combinedId(provider, ch.id),
+    })),
+    programmes: doc.programmes.map((p) => ({
+      ...p,
+      channel: combinedId(provider, p.channel),
+    })),
+  }
+}

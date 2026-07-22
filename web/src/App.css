@@ -304,6 +304,83 @@
   font-variant-numeric: tabular-nums;
 }
 
+.toolbar-check {
+  gap: 0.35rem;
+}
+
+.toolbar input[type='checkbox'] {
+  margin: 0;
+}
+
+.guide-status {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.guide-status-summary {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+}
+
+.guide-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.guide-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  background: var(--header);
+}
+
+.guide-chip-phase {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.guide-chip-pending {
+  opacity: 0.65;
+}
+
+.guide-chip-active {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.guide-chip-ready {
+  color: var(--ink);
+  border-color: #2f6b4f;
+}
+
+.guide-chip-empty {
+  opacity: 0.7;
+}
+
+.guide-chip-error {
+  border-color: #a33;
+  color: #c44;
+}
+
+.epg-spacer {
+  width: 100%;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
 /* EPG grid: channels down the left, time across the top, horizontal scroll. */
 .epg {
   background: var(--panel);
