@@ -24,6 +24,7 @@ func DefaultSettings() model.ProviderSettings {
 	settings.SynthesizeChannelNumbers = 5000
 	settings.MinChannels = 100
 	settings.RefreshInterval = 6 * time.Hour
+	settings.ExpectedGuideHorizon = 48 * time.Hour
 	return settings
 }
 

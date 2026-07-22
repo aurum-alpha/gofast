@@ -29,6 +29,11 @@ type ProviderSettings struct {
 
 	RefreshInterval time.Duration `yaml:"refresh_interval" json:"-"`
 
+	// ExpectedGuideHorizon is the upstream EPG ahead-depth we expect (code
+	// default, not YAML). Used to clamp refresh_interval until an empirical
+	// horizon is measured from GuideEnd after a successful fetch.
+	ExpectedGuideHorizon time.Duration `yaml:"-" json:"-"`
+
 	// Exclusions are case-insensitive regex patterns matched against stream URL,
 	// provider id, and channel name. Compiled by CompileExclusions into ExclusionRegexes.
 	Exclusions       []string         `yaml:"exclusions" json:"exclusions,omitempty"`
@@ -61,6 +66,7 @@ type providerSettingsJSON struct {
 	SynthesizeChannelNumbers int               `json:"synthesize_channel_numbers"`
 	MinChannels              int               `json:"min_channels"`
 	RefreshInterval          string            `json:"refresh_interval"`
+	ExpectedGuideHorizon     string            `json:"expected_guide_horizon,omitempty"`
 	Exclusions               []string          `json:"exclusions,omitempty"`
 	SlugTemplate             string            `json:"slug_template,omitempty"`
 	Region                   string            `json:"region,omitempty"`
@@ -81,7 +87,7 @@ func (p ProviderSettings) IsEnabled() bool {
 
 // MarshalJSON encodes refresh_interval as a Go duration string and enabled as IsEnabled().
 func (p ProviderSettings) MarshalJSON() ([]byte, error) {
-	return json.Marshal(providerSettingsJSON{
+	j := providerSettingsJSON{
 		ID:                       p.ID,
 		Enabled:                  p.IsEnabled(),
 		Label:                    p.Label,
@@ -97,7 +103,11 @@ func (p ProviderSettings) MarshalJSON() ([]byte, error) {
 		M3UURL:                   p.M3UURL,
 		UserAgent:                p.UserAgent,
 		Headers:                  p.Headers,
-	})
+	}
+	if p.ExpectedGuideHorizon > 0 {
+		j.ExpectedGuideHorizon = p.ExpectedGuideHorizon.String()
+	}
+	return json.Marshal(j)
 }
 
 // Merge overlays the set fields of o (a YAML overlay) onto p (package defaults)
@@ -121,6 +131,9 @@ func (p ProviderSettings) Merge(o ProviderSettings) ProviderSettings {
 	}
 	if o.RefreshInterval != 0 {
 		p.RefreshInterval = o.RefreshInterval
+	}
+	if o.ExpectedGuideHorizon != 0 {
+		p.ExpectedGuideHorizon = o.ExpectedGuideHorizon
 	}
 	if len(o.Exclusions) > 0 {
 		p.Exclusions = o.Exclusions
@@ -188,6 +201,14 @@ func (p *ProviderSettings) UnmarshalJSON(data []byte) error {
 		}
 		d = parsed
 	}
+	var horizon time.Duration
+	if j.ExpectedGuideHorizon != "" {
+		parsed, err := time.ParseDuration(j.ExpectedGuideHorizon)
+		if err != nil {
+			return fmt.Errorf("expected_guide_horizon: %w", err)
+		}
+		horizon = parsed
+	}
 	enabled := j.Enabled
 	*p = ProviderSettings{
 		ID:                       j.ID,
@@ -197,6 +218,7 @@ func (p *ProviderSettings) UnmarshalJSON(data []byte) error {
 		SynthesizeChannelNumbers: j.SynthesizeChannelNumbers,
 		MinChannels:              j.MinChannels,
 		RefreshInterval:          d,
+		ExpectedGuideHorizon:     horizon,
 		Exclusions:               j.Exclusions,
 		SlugTemplate:             j.SlugTemplate,
 		Region:                   j.Region,

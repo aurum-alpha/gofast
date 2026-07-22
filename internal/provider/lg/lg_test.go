@@ -13,6 +13,16 @@ import (
 	"github.com/j27-aurum/gofast/internal/httpx"
 )
 
+func TestDefaultSettingsRefreshHorizon(t *testing.T) {
+	s := DefaultSettings()
+	if s.RefreshInterval != 3*time.Hour {
+		t.Fatalf("RefreshInterval = %v want 3h", s.RefreshInterval)
+	}
+	if s.ExpectedGuideHorizon != 12*time.Hour {
+		t.Fatalf("ExpectedGuideHorizon = %v want 12h", s.ExpectedGuideHorizon)
+	}
+}
+
 func TestParseScheduleFixture(t *testing.T) {
 	path := filepath.Join("testdata", "schedulelist.json")
 	f, err := os.Open(path)

@@ -23,6 +23,7 @@ func DefaultSettings() model.ProviderSettings {
 	settings.ChannelNumberOffset = 3000
 	settings.MinChannels = 50
 	settings.RefreshInterval = 6 * time.Hour
+	settings.ExpectedGuideHorizon = 48 * time.Hour
 	return settings
 }
 

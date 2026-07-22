@@ -241,10 +241,28 @@ When caching is enabled:
 
 ## Refresh & cache semantics (last-known-good, always)
 
-- Per-provider refresh interval (default 6h) with ±10% jitter; independent
-  goroutines; one provider failing never blocks others. Every 5 minutes each
-  provider logs `next_refresh_at` / `refresh_in` (or `refresh_state=in_progress`
-  while a refresh is running).
+- Per-provider refresh interval (default 6h; LG default **3h**) with ±10%
+  jitter; independent goroutines; one provider failing never blocks others.
+  Every 5 minutes each provider logs `next_refresh_at` / `refresh_in` (or
+  `refresh_state=in_progress` while a refresh is running).
+- **Refresh vs EPG horizon:** every refresh pulls the **full** upstream guide
+  (no artificial time-window trim). The effective `refresh_interval` is clamped
+  to ≤ half of the known ahead-horizon (floor 1m) so the guide cannot expire
+  before the next fetch. Horizon is empirical (`guide_end − fetched_at`) after
+  a successful publish, else the provider's declared `ExpectedGuideHorizon`
+  (code default, not YAML):
+
+  | Provider | Expected guide horizon | Default refresh |
+  |----------|------------------------|-----------------|
+  | LG | ~12–14h (upstream limit) | 3h |
+  | DistroTV | ~72h | 6h |
+  | Pluto / Samsung / Roku / Xumo / LocalNow | ~48h placeholder until measured | 6h |
+
+  When clamping changes the schedule, slog warns and Provider Detail /
+  `/healthz` / `/metrics` expose configured vs effective intervals and
+  `guide_hours_ahead`. Exhausted horizon (`guide_end` before now, or ahead
+  shorter than the effective interval) logs `guide_horizon_exhausted` but does
+  not fail HEALTHCHECK.
 - A refresh is published only if it passes gates: channel count ≥ per-provider
   `min_channels`, XML re-parses, programme count > 0. Otherwise keep serving
   the previous good snapshot. `/healthz` marks a provider `stale: true` when
@@ -254,7 +272,8 @@ When caching is enabled:
   restart serves immediately even if upstreams are down at boot. Per-provider
   and aggregate artifacts use immutable generations selected by an atomic
   `current` pointer so M3U+EPG publish as a pair.
-- Structured refresh success/failure logs include counts and `duration`.
+- Structured refresh success/failure logs include counts and `duration`, plus
+  `guide_horizon` / `refresh_interval` / `effective_interval` on publish.
 - Cache-backed playlist/guide responses carry a strong body `ETag` (SHA-256);
   honor `If-None-Match` with 304s (Jellyfin refetches often).
 

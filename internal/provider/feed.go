@@ -36,6 +36,11 @@ type Stats struct {
 	FilterReasons      map[string]int `json:"filter_reasons"`
 	GuideStart         time.Time      `json:"guide_start"`
 	GuideEnd           time.Time      `json:"guide_end"`
+	GuideHoursAhead    float64        `json:"guide_hours_ahead"`
+
+	RefreshIntervalConfigured string `json:"refresh_interval_configured,omitempty"`
+	RefreshIntervalEffective  string `json:"refresh_interval_effective,omitempty"`
+	RefreshIntervalClamped    bool   `json:"refresh_interval_clamped"`
 }
 
 // Status is refresh-attempt state persisted separately from content snapshots.
@@ -53,6 +58,14 @@ type RefreshMetrics struct {
 	Failures     uint64
 }
 
+// refreshSchedule is the last clamp decision applied by the refresh scheduler.
+type refreshSchedule struct {
+	configured time.Duration
+	effective  time.Duration
+	clamped    bool
+	set        bool
+}
+
 // Feed is the runtime state for one provider: its Reader + settings + last-good
 // Lineup, guarded by its own RWMutex (written by its refresh goroutine, read by
 // HTTP handlers and the aggregator).
@@ -63,6 +76,7 @@ type Feed struct {
 	lineup   Lineup
 	status   Status
 	refresh  RefreshMetrics
+	schedule refreshSchedule
 }
 
 func newFeed(reader Reader, settings model.ProviderSettings) *Feed {
@@ -74,6 +88,24 @@ func (f *Feed) Channels() []model.Channel {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return append([]model.Channel(nil), f.lineup.Channels...)
+}
+
+// EmpiricalGuideHorizon is GuideEnd − FetchedAt from the current lineup (0 if unknown).
+func (f *Feed) EmpiricalGuideHorizon() time.Duration {
+	stats := f.Stats()
+	if stats.GuideEnd.IsZero() || stats.FetchedAt.IsZero() {
+		return 0
+	}
+	h := stats.GuideEnd.Sub(stats.FetchedAt)
+	if h < 0 {
+		return 0
+	}
+	return h
+}
+
+// ExpectedGuideHorizon returns the code-default upstream EPG depth.
+func (f *Feed) ExpectedGuideHorizon() time.Duration {
+	return f.settings.ExpectedGuideHorizon
 }
 
 // FetchedAt returns when the current lineup was last fetched (zero if never).
@@ -182,6 +214,21 @@ func (f *Feed) Stats() Stats {
 			stats.GuideEnd = programme.Stop
 		}
 	}
+	if !stats.GuideEnd.IsZero() {
+		hours := stats.GuideEnd.Sub(time.Now()).Hours()
+		if hours < 0 {
+			hours = 0
+		}
+		stats.GuideHoursAhead = hours
+	}
+	if f.schedule.set {
+		stats.RefreshIntervalConfigured = f.schedule.configured.String()
+		stats.RefreshIntervalEffective = f.schedule.effective.String()
+		stats.RefreshIntervalClamped = f.schedule.clamped
+	} else if f.settings.RefreshInterval > 0 {
+		stats.RefreshIntervalConfigured = f.settings.RefreshInterval.String()
+		stats.RefreshIntervalEffective = f.settings.RefreshInterval.String()
+	}
 	return stats
 }
 
@@ -209,6 +256,29 @@ func (f *Feed) Set(l Lineup) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.lineup = l
+}
+
+// SetRefreshSchedule records the configured vs effective refresh interval.
+func (f *Feed) SetRefreshSchedule(configured, effective time.Duration, clamped bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.schedule = refreshSchedule{
+		configured: configured,
+		effective:  effective,
+		clamped:    clamped,
+		set:        true,
+	}
+}
+
+// RefreshSchedule returns the last clamp decision, or the configured interval
+// when the scheduler has not run yet.
+func (f *Feed) RefreshSchedule() (configured, effective time.Duration, clamped bool) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.schedule.set {
+		return f.schedule.configured, f.schedule.effective, f.schedule.clamped
+	}
+	return f.settings.RefreshInterval, f.settings.RefreshInterval, false
 }
 
 // SetStatus replaces refresh-attempt state.

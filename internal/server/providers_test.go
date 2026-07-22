@@ -103,13 +103,21 @@ func TestProvidersAPIIncludesStats(t *testing.T) {
 func TestProviderDetailAPI(t *testing.T) {
 	fetchedAt := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	reg := regWith(
-		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG", MinChannels: 1}},
+		map[model.ProviderID]model.ProviderSettings{"lg": {
+			ID: "lg", Label: "LG", MinChannels: 1, RefreshInterval: 10 * time.Hour,
+		}},
 		map[model.ProviderID]provider.Lineup{"lg": {
 			Channels:     []model.Channel{{NormalizedID: "news", StreamURL: "https://news"}},
 			ChannelCount: 1,
 			FetchedAt:    fetchedAt,
 		}},
 	)
+	feed, ok := reg.Feed("lg")
+	if !ok {
+		t.Fatal("missing lg feed")
+	}
+	feed.SetRefreshSchedule(10*time.Hour, 6*time.Hour, true)
+
 	h := server.ProviderDetailHandler(reg)
 	request := func(method, id string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, "/api/providers/"+id, nil)
@@ -132,6 +140,11 @@ func TestProviderDetailAPI(t *testing.T) {
 	}
 	if detail.Settings.ID != "lg" || detail.Stats.TotalChannels != 1 || !detail.Stats.FetchedAt.Equal(fetchedAt) {
 		t.Fatalf("detail: %+v", detail)
+	}
+	if !detail.Stats.RefreshIntervalClamped ||
+		detail.Stats.RefreshIntervalConfigured != "10h0m0s" ||
+		detail.Stats.RefreshIntervalEffective != "6h0m0s" {
+		t.Fatalf("clamp stats: %+v", detail.Stats)
 	}
 	if rec := request(http.MethodGet, "unknown"); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown want 404, got %d", rec.Code)

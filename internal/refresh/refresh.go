@@ -31,6 +31,11 @@ type Refresher interface {
 	Interval() time.Duration
 	FetchedAt() time.Time
 	Refresh(ctx context.Context) error
+	ExpectedGuideHorizon() time.Duration
+	EmpiricalGuideHorizon() time.Duration
+	SetRefreshSchedule(configured, effective time.Duration, clamped bool)
+	GuideHoursAhead() float64
+	GuideEnd() time.Time
 }
 
 // Service schedules a set of Refreshers, each on its own goroutine.
@@ -93,10 +98,7 @@ func (s *Service) Run(ctx context.Context) {
 // loops every interval with +/-10% jitter. A local 5-minute ticker logs the
 // next upstream refresh ETA without blocking other providers.
 func run(ctx context.Context, r Refresher) {
-	interval := r.Interval()
-	if interval < minInterval {
-		interval = 6 * time.Hour
-	}
+	interval := applyRefreshClamp(r)
 	first := time.Duration(0)
 	if fa := r.FetchedAt(); !fa.IsZero() {
 		if remaining := interval - time.Since(fa); remaining > 0 {
@@ -117,6 +119,7 @@ func run(ctx context.Context, r Refresher) {
 			return
 		case now := <-heartbeat.C:
 			logRefreshSchedule(r.ID(), now, nextRefreshAt, refreshing)
+			warnIfGuideExhausted(r)
 		case <-t.C:
 			refreshing = true
 			start := time.Now()
@@ -129,10 +132,45 @@ func run(ctx context.Context, r Refresher) {
 					"duration", time.Since(start),
 				)
 			}
+			interval = applyRefreshClamp(r)
+			warnIfGuideExhausted(r)
 			delay := jitter(interval)
 			nextRefreshAt = time.Now().Add(delay)
 			t.Reset(delay)
 		}
+	}
+}
+
+func applyRefreshClamp(r Refresher) time.Duration {
+	configured := r.Interval()
+	horizon := resolveHorizon(r.EmpiricalGuideHorizon(), r.ExpectedGuideHorizon())
+	effective, clamped := ClampInterval(configured, horizon)
+	r.SetRefreshSchedule(configured, effective, clamped)
+	if clamped {
+		slog.Warn("refresh interval clamped to guide horizon",
+			"provider", r.ID(),
+			"configured", configured,
+			"effective", effective,
+			"guide_horizon", horizon,
+		)
+	}
+	return effective
+}
+
+func warnIfGuideExhausted(r Refresher) {
+	if r.GuideEnd().IsZero() {
+		return
+	}
+	ahead := r.GuideHoursAhead()
+	configured := r.Interval()
+	horizon := resolveHorizon(r.EmpiricalGuideHorizon(), r.ExpectedGuideHorizon())
+	effective, _ := ClampInterval(configured, horizon)
+	if r.GuideEnd().Before(time.Now()) || ahead*float64(time.Hour) < float64(effective) {
+		slog.Warn("guide_horizon_exhausted",
+			"provider", r.ID(),
+			"guide_hours_ahead", ahead,
+			"effective_refresh_interval", effective,
+		)
 	}
 }
 
@@ -183,6 +221,26 @@ type providerRefresher struct {
 func (p *providerRefresher) ID() model.ProviderID    { return p.feed.ID() }
 func (p *providerRefresher) Interval() time.Duration { return p.feed.Interval() }
 func (p *providerRefresher) FetchedAt() time.Time    { return p.feed.FetchedAt() }
+
+func (p *providerRefresher) ExpectedGuideHorizon() time.Duration {
+	return p.feed.ExpectedGuideHorizon()
+}
+
+func (p *providerRefresher) EmpiricalGuideHorizon() time.Duration {
+	return p.feed.EmpiricalGuideHorizon()
+}
+
+func (p *providerRefresher) SetRefreshSchedule(configured, effective time.Duration, clamped bool) {
+	p.feed.SetRefreshSchedule(configured, effective, clamped)
+}
+
+func (p *providerRefresher) GuideHoursAhead() float64 {
+	return p.feed.Stats().GuideHoursAhead
+}
+
+func (p *providerRefresher) GuideEnd() time.Time {
+	return p.feed.Stats().GuideEnd
+}
 
 // Refresh runs one full network cycle and publishes only after every stage
 // succeeds. Any failure records status and leaves the last-known-good untouched.
@@ -366,6 +424,9 @@ func (p *providerRefresher) fail(err error, duration time.Duration) error {
 }
 
 func (p *providerRefresher) logPublished(lineup provider.Lineup, m3uBytes, xmlBytes int, duration time.Duration) {
+	horizon := resolveHorizon(p.feed.EmpiricalGuideHorizon(), p.feed.ExpectedGuideHorizon())
+	configured := p.feed.Interval()
+	effective, _ := ClampInterval(configured, horizon)
 	slog.Info("published",
 		"provider", p.feed.ID(),
 		"channels", lineup.ChannelCount,
@@ -373,6 +434,9 @@ func (p *providerRefresher) logPublished(lineup provider.Lineup, m3uBytes, xmlBy
 		"m3u_bytes", m3uBytes,
 		"xml_bytes", xmlBytes,
 		"duration", duration,
+		"guide_horizon", horizon,
+		"refresh_interval", configured,
+		"effective_interval", effective,
 	)
 }
 

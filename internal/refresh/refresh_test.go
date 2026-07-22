@@ -691,6 +691,11 @@ func (s scheduleStub) Refresh(ctx context.Context) error {
 	}
 	return nil
 }
+func (s scheduleStub) ExpectedGuideHorizon() time.Duration                   { return 0 }
+func (s scheduleStub) EmpiricalGuideHorizon() time.Duration                  { return 0 }
+func (s scheduleStub) SetRefreshSchedule(time.Duration, time.Duration, bool) {}
+func (s scheduleStub) GuideHoursAhead() float64                              { return 0 }
+func (s scheduleStub) GuideEnd() time.Time                                   { return time.Time{} }
 
 func TestNextRefreshHeartbeat(t *testing.T) {
 	prev := scheduleHeartbeat

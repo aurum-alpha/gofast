@@ -63,7 +63,8 @@ providers:
     label: LG
     channel_number_offset: 1000
     min_channels: 50
-    refresh_interval: 6h
+    # Capped to ≤ half of expected/empirical EPG horizon (LG ~12h → default 3h).
+    refresh_interval: 3h
     exclusions:
       # Upstream junk that appears on LG feeds (must never reach Jellyfin).
       - dinospluto-lgus

@@ -29,6 +29,10 @@ type ProviderStats = {
   filter_reasons: Record<string, number>
   guide_start: string
   guide_end: string
+  guide_hours_ahead?: number
+  refresh_interval_configured?: string
+  refresh_interval_effective?: string
+  refresh_interval_clamped?: boolean
 }
 
 type ProviderDetail = {
@@ -170,6 +174,22 @@ export function ProviderDetailPage() {
         <div className="error-banner" role="alert">
           <strong>Last refresh failed {relativeTime(stats.last_error_at)}</strong>
           <span>{stats.last_error}</span>
+        </div>
+      )}
+
+      {stats.refresh_interval_clamped &&
+        stats.refresh_interval_configured &&
+        stats.refresh_interval_effective && (
+        <div className="error-banner" role="status">
+          <strong>
+            Refresh interval adjusted for guide horizon:{' '}
+            <code>{stats.refresh_interval_configured}</code>
+            {' → '}
+            <code>{stats.refresh_interval_effective}</code>
+          </strong>
+          <span>
+            Capped to half the EPG ahead-horizon so the guide cannot expire before the next fetch.
+          </span>
         </div>
       )}
 

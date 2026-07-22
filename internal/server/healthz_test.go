@@ -121,3 +121,78 @@ func TestHealthzProviderStale(t *testing.T) {
 		t.Fatalf("counts = %#v", p)
 	}
 }
+
+func TestHealthzGuideHorizonFields(t *testing.T) {
+	fetchedAt := time.Now().UTC().Add(-time.Hour)
+	guideEnd := time.Now().UTC().Add(5 * time.Hour)
+	reg := regWith(
+		map[model.ProviderID]model.ProviderSettings{
+			"lg": {ID: "lg", Label: "LG Channels", RefreshInterval: 10 * time.Hour},
+		},
+		map[model.ProviderID]provider.Lineup{
+			"lg": {
+				Channels: []model.Channel{
+					{Provider: "lg", ID: "a", NormalizedID: "a", Name: "A", StreamURL: "https://a"},
+				},
+				ChannelCount:   1,
+				ProgrammeCount: 1,
+				FetchedAt:      fetchedAt,
+				Programmes: []model.Programme{
+					{
+						ChannelID: "a",
+						Title:     "Show",
+						Start:     fetchedAt,
+						Stop:      guideEnd,
+					},
+				},
+			},
+		},
+	)
+	feed, ok := reg.Feed("lg")
+	if !ok {
+		t.Fatal("missing lg feed")
+	}
+	feed.SetRefreshSchedule(10*time.Hour, 6*time.Hour, true)
+
+	srv := &server.Server{Healthz: server.HealthzHandler(reg)}
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	var body struct {
+		OK        bool `json:"ok"`
+		Providers []struct {
+			ID                            string  `json:"id"`
+			GuideHoursAhead               float64 `json:"guide_hours_ahead"`
+			RefreshIntervalClamped        bool    `json:"refresh_interval_clamped"`
+			RefreshIntervalConfigured     string  `json:"refresh_interval_configured"`
+			RefreshIntervalEffective      string  `json:"refresh_interval_effective"`
+			RefreshIntervalConfiguredSecs float64 `json:"refresh_interval_configured_seconds"`
+			RefreshIntervalEffectiveSecs  float64 `json:"refresh_interval_effective_seconds"`
+		} `json:"providers"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.OK || len(body.Providers) != 1 {
+		t.Fatalf("body = %#v", body)
+	}
+	p := body.Providers[0]
+	if p.ID != "lg" || !p.RefreshIntervalClamped {
+		t.Fatalf("clamp fields = %#v", p)
+	}
+	if p.RefreshIntervalConfigured != "10h0m0s" || p.RefreshIntervalEffective != "6h0m0s" {
+		t.Fatalf("interval strings = %#v", p)
+	}
+	if p.RefreshIntervalConfiguredSecs != (10 * time.Hour).Seconds() {
+		t.Fatalf("configured secs = %v", p.RefreshIntervalConfiguredSecs)
+	}
+	if p.RefreshIntervalEffectiveSecs != (6 * time.Hour).Seconds() {
+		t.Fatalf("effective secs = %v", p.RefreshIntervalEffectiveSecs)
+	}
+	if p.GuideHoursAhead < 4 || p.GuideHoursAhead > 6 {
+		t.Fatalf("guide_hours_ahead = %v", p.GuideHoursAhead)
+	}
+}

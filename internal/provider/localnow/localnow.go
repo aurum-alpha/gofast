@@ -26,6 +26,7 @@ func DefaultSettings() model.ProviderSettings {
 	settings.SynthesizeChannelNumbers = 7000
 	settings.MinChannels = 10
 	settings.RefreshInterval = 6 * time.Hour
+	settings.ExpectedGuideHorizon = 48 * time.Hour
 	settings.UserAgent = browserUserAgent
 	return settings
 }

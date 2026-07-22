@@ -41,7 +41,8 @@ func DefaultSettings() model.ProviderSettings {
 	s.Label = "LG"
 	s.ChannelNumberOffset = 1000
 	s.MinChannels = 50
-	s.RefreshInterval = 6 * time.Hour
+	s.RefreshInterval = 3 * time.Hour
+	s.ExpectedGuideHorizon = 12 * time.Hour
 	s.Exclusions = []string{"dinospluto-lgus"}
 	_ = s.CompileExclusions() // hardcoded patterns; cannot fail
 	return s

@@ -71,6 +71,9 @@ func TestMetricsPrometheusText(t *testing.T) {
 		`gofast_provider_refresh_total{provider="lg",result="success"} 1`,
 		`gofast_provider_refresh_total{provider="lg",result="failure"} 1`,
 		`gofast_provider_refresh_duration_seconds{provider="lg"} 2`,
+		`gofast_provider_guide_hours_ahead{provider="lg"}`,
+		`gofast_provider_refresh_interval_seconds{provider="lg",kind="configured"}`,
+		`gofast_provider_refresh_interval_seconds{provider="lg",kind="effective"}`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in:\n%s", want, text)

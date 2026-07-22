@@ -24,6 +24,7 @@ func DefaultSettings() model.ProviderSettings {
 	settings.ChannelNumberOffset = 2000
 	settings.MinChannels = 50
 	settings.RefreshInterval = 6 * time.Hour
+	settings.ExpectedGuideHorizon = 48 * time.Hour
 	settings.SlugTemplate = source.DefaultSlug
 	return settings
 }
