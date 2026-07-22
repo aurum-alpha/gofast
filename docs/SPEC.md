@@ -247,8 +247,8 @@ When caching is enabled:
   while a refresh is running).
 - A refresh is published only if it passes gates: channel count ≥ per-provider
   `min_channels`, XML re-parses, programme count > 0. Otherwise keep serving
-  the previous good snapshot. Stale marking for `/healthz` is a follow-on
-  issue; `status.json` (`LastError*`, `LastAttemptAt`) is already the input.
+  the previous good snapshot. `/healthz` marks a provider `stale: true` when
+  `status.json` still holds a `LastError` while last-known-good is served.
 - Snapshots are atomic swaps of in-memory objects (RWMutex or atomic.Pointer);
   additionally persist last-good output to `/data/cache/` so a container
   restart serves immediately even if upstreams are down at boot. Per-provider

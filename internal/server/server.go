@@ -10,14 +10,19 @@ import (
 // Server is the HTTP process for fastgen/fastproxy: listen address, route
 // registration, request logging, and graceful shutdown.
 type Server struct {
-	Addr   string
-	Routes func(mux *http.ServeMux) // optional; called after /healthz is registered
+	Addr    string
+	Healthz http.HandlerFunc         // optional; defaults to HealthzHandler(nil)
+	Routes  func(mux *http.ServeMux) // optional; called after /healthz is registered
 }
 
 // Handler returns the HTTP handler for this server.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", Healthz)
+	healthz := s.Healthz
+	if healthz == nil {
+		healthz = HealthzHandler(nil)
+	}
+	mux.HandleFunc("GET /healthz", healthz)
 	if s.Routes != nil {
 		s.Routes(mux)
 	}

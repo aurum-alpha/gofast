@@ -94,7 +94,8 @@ func main() {
 
 	uiHandler := ui.Handler()
 	srv := &server.Server{
-		Addr: cfg.Listen,
+		Addr:    cfg.Listen,
+		Healthz: server.HealthzHandler(reg),
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/status", server.StatusHandler(bootStatus))
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
