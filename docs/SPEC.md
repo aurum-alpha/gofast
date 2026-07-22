@@ -64,11 +64,11 @@ streams). Default remains selective proxying (BEACON only).
 
 - `GET /{provider}.m3u`  — M3U8 playlist for that provider
 - `GET /{provider}.xml`  — XMLTV guide for that provider
-- `GET /all.m3u` and `GET /all.xml` — merged output across enabled providers
+- `GET /playlist.m3u` and `GET /epg.xml` — merged output across enabled providers
 - `GET /logos/{provider}/{channel_id}.png` — locally cached channel logos
   (populated when `cache_logos` is enabled; otherwise unused)
 - `GET /healthz` — JSON: per-provider status, last successful refresh, channel
-  count, programme count, staleness flag
+  count, programme count, staleness flag (rich payload; stub `{"ok":true}` today)
 - `GET /metrics` — Prometheus format (refresh duration, failures, channel counts)
 
 ## Providers (initial set; architecture must make adding more trivial)
@@ -247,16 +247,16 @@ When caching is enabled:
   while a refresh is running).
 - A refresh is published only if it passes gates: channel count ≥ per-provider
   `min_channels`, XML re-parses, programme count > 0. Otherwise keep serving
-  the previous good snapshot. Stale marking for `/healthz` is owned by J27-21;
-  `status.json` (`LastError*`, `LastAttemptAt`) is already the input.
+  the previous good snapshot. Stale marking for `/healthz` is a follow-on
+  issue; `status.json` (`LastError*`, `LastAttemptAt`) is already the input.
 - Snapshots are atomic swaps of in-memory objects (RWMutex or atomic.Pointer);
   additionally persist last-good output to `/data/cache/` so a container
   restart serves immediately even if upstreams are down at boot. Per-provider
   and aggregate artifacts use immutable generations selected by an atomic
   `current` pointer so M3U+EPG publish as a pair.
 - Structured refresh success/failure logs include counts and `duration`.
-- HTTP responses carry `ETag` and `Last-Modified` from the snapshot; honor
-  `If-None-Match`/`If-Modified-Since` with 304s (Jellyfin refetches often).
+- Cache-backed playlist/guide responses carry a strong body `ETag` (SHA-256);
+  honor `If-None-Match` with 304s (Jellyfin refetches often).
 
 ## Config
 

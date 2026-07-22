@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -92,5 +94,78 @@ func TestPlaylistFallsBackToSPA(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing.m3u", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("playlist should not fall through: got %d", rec.Code)
+	}
+}
+
+func TestPlaylistETag304(t *testing.T) {
+	body := []byte("#EXTM3U\n#EXTINF:-1,Test\nhttp://example/stream\n")
+	sum := sha256.Sum256(body)
+	wantETag := `"` + hex.EncodeToString(sum[:]) + `"`
+
+	cc := cache.New(t.TempDir())
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U(body), cache.XMLTV("<tv></tv>"), provider.Meta{}); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(cc, nil))
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/lg.m3u", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first GET: %d", rec.Code)
+	}
+	if got := rec.Header().Get("ETag"); got != wantETag {
+		t.Fatalf("ETag: got %q want %q", got, wantETag)
+	}
+	if rec.Header().Get("Content-Type") != "application/vnd.apple.mpegurl" {
+		t.Fatalf("Content-Type: %q", rec.Header().Get("Content-Type"))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/lg.m3u", nil)
+	req.Header.Set("If-None-Match", wantETag)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotModified {
+		t.Fatalf("If-None-Match: want 304, got %d", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("304 body should be empty, got %q", rec.Body.String())
+	}
+	if got := rec.Header().Get("ETag"); got != wantETag {
+		t.Fatalf("304 ETag: got %q want %q", got, wantETag)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/lg.m3u", nil)
+	req.Header.Set("If-None-Match", `"deadbeef"`)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != string(body) {
+		t.Fatalf("mismatched ETag should return 200 body: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAggregateETag304(t *testing.T) {
+	body := []byte("#EXTM3U\nAGG\n")
+	sum := sha256.Sum256(body)
+	wantETag := `"` + hex.EncodeToString(sum[:]) + `"`
+
+	cc := cache.New(t.TempDir())
+	if err := cc.CommitAggregate(cache.M3U(body), cache.XMLTV("<tv/>")); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	server.AggregatePlaylist(cc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("ETag") != wantETag {
+		t.Fatalf("aggregate: %d etag=%q", rec.Code, rec.Header().Get("ETag"))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil)
+	req.Header.Set("If-None-Match", wantETag)
+	rec = httptest.NewRecorder()
+	server.AggregatePlaylist(cc).ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotModified {
+		t.Fatalf("aggregate If-None-Match: want 304, got %d", rec.Code)
 	}
 }
