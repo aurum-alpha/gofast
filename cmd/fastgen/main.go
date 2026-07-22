@@ -79,7 +79,8 @@ func main() {
 		ProxyBaseURL: cfg.ProxyBaseURL,
 		ProxyAll:     cfg.ProxyAllEnabled(),
 	}
-	refresh.Restore(reg, cc, emissionPolicy, logos)
+	bootStatus := &refresh.Status{}
+	refresh.Restore(reg, cc, emissionPolicy)
 	agg := aggregate.New(reg, cc)
 	if err := agg.Rebuild(); err != nil && !errors.Is(err, aggregate.ErrEmptyAggregate) {
 		slog.Warn("initial aggregate rebuild failed", "err", err)
@@ -87,13 +88,15 @@ func main() {
 	go agg.Run(ctx)
 
 	clf := classifier.New(client, 0)
-	svc := refresh.New(reg, clf, cc, emissionPolicy, logos, agg.Notify)
+	svc := refresh.New(reg, clf, cc, emissionPolicy, logos, agg.Notify, bootStatus)
 	go svc.Run(ctx)
+	go refresh.WarmLogos(ctx, reg, cc, emissionPolicy, logos, agg.Notify, bootStatus)
 
 	uiHandler := ui.Handler()
 	srv := &server.Server{
 		Addr: cfg.Listen,
 		Routes: func(mux *http.ServeMux) {
+			mux.HandleFunc("GET /api/status", server.StatusHandler(bootStatus))
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
 			mux.HandleFunc("GET /api/providers/{id}", server.ProviderDetailHandler(reg))
 			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(reg))

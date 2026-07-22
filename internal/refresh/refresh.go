@@ -40,11 +40,13 @@ type Service struct {
 
 // New builds one Refresher per enabled feed. notify is called after each
 // successful publish (wire it to the aggregator); refresh never imports aggregate.
-// logos may be nil when cache_logos is disabled.
-func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, notify func()) *Service {
+// logos may be nil when cache_logos is disabled — logo rewrite runs in the
+// background after each publish (see rewriteLogosAndRepublish).
+// st may be nil; when set, background logo work updates GET /api/status.
+func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, notify func(), st *Status) *Service {
 	var rs []Refresher
 	for _, f := range reg.Feeds() {
-		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, policy: policy, logos: logos, notify: notify})
+		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, policy: policy, logos: logos, notify: notify, status: st})
 	}
 	return &Service{refreshers: rs}
 }
@@ -54,8 +56,10 @@ func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy
 // persisted classifications from meta.json. So the API and serving work at boot
 // exactly as after a fetch. Providers with no cached raw are left empty (they
 // fetch on boot); unreadable/unparseable entries are skipped.
-// logos may be nil when cache_logos is disabled.
-func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache) {
+//
+// Logo HTTP is not run here — call WarmLogos in the background after listen so
+// /healthz and the UI come up immediately.
+func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy) {
 	for _, f := range reg.Feeds() {
 		raw, meta, _, err := cc.LoadProvider(f.ID())
 		if err != nil {
@@ -68,7 +72,7 @@ func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, log
 			}
 			f.SetStatus(status)
 		}
-		pr := &providerRefresher{feed: f, cache: cc, policy: policy, logos: logos}
+		pr := &providerRefresher{feed: f, cache: cc, policy: policy}
 		if err := pr.rehydrate(raw, meta); err != nil {
 			slog.Warn("cache restore failed", "provider", f.ID(), "err", err)
 			continue
@@ -173,6 +177,7 @@ type providerRefresher struct {
 	policy EmissionPolicy
 	logos  *logocache.Cache
 	notify func()
+	status *Status
 }
 
 func (p *providerRefresher) ID() model.ProviderID    { return p.feed.ID() }
@@ -220,6 +225,9 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 		p.notify()
 	}
 	p.logPublished(lineup, len(m3uData), len(xmlData), time.Since(start))
+	if p.logos != nil {
+		go p.scheduleLogoRewrite(context.WithoutCancel(ctx))
+	}
 	return nil
 }
 
@@ -296,10 +304,6 @@ func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, pr
 			"provider", id,
 			"count", emission.NeedsProxyDropped,
 		)
-	}
-
-	if p.logos != nil {
-		p.logos.Rewrite(ctx, chs)
 	}
 
 	label := s.Label

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -158,7 +159,7 @@ func TestSyntheticNumberPersistsAcrossRefreshAndRestore(t *testing.T) {
 	}
 
 	restored := newRegistry()
-	Restore(restored, cc, EmissionPolicy{}, nil)
+	Restore(restored, cc, EmissionPolicy{})
 	restoredFeed, _ := restored.Feed(model.ProviderXumo)
 	if got := restoredFeed.Channels()[0].OffsetNumber; got != 5000 {
 		t.Fatalf("restored number = %d, want 5000", got)
@@ -260,7 +261,7 @@ func TestPublishedProviderRefreshAndRestore(t *testing.T) {
 		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: restoredReader},
 		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
 	)
-	Restore(restoredRegistry, cc, EmissionPolicy{}, nil)
+	Restore(restoredRegistry, cc, EmissionPolicy{})
 	restoredFeed, _ := restoredRegistry.Feed(model.ProviderDistroTV)
 	if channels := restoredFeed.Channels(); len(channels) != 2 || channels[0].NormalizedID != "dtv_EPGACE_TV" {
 		t.Fatalf("restored channels: %+v", channels)
@@ -422,7 +423,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
 	)
 
-	Restore(reg, cc, EmissionPolicy{}, nil)
+	Restore(reg, cc, EmissionPolicy{})
 
 	f, _ := reg.Feed(model.ProviderLG)
 	if len(f.Channels()) == 0 {
@@ -780,8 +781,15 @@ func TestPrepareRewritesLogosWhenEnabled(t *testing.T) {
 	feed, _ := reg.Feed(model.ProviderLG)
 	cc := cache.New(t.TempDir())
 	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
-	pr := &providerRefresher{feed: feed, cache: cc, logos: logos}
+	pr := &providerRefresher{feed: feed, cache: cc}
 	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 0 {
+		t.Fatalf("refresh should not hit artwork yet, hits=%d", hits)
+	}
+	pr.logos = logos
+	if _, err := pr.rewriteLogosAndRepublish(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
 	m3uData, err := cc.ReadM3U(model.ProviderLG)
@@ -820,5 +828,63 @@ func TestPrepareKeepsUpstreamLogosWhenDisabled(t *testing.T) {
 	}
 	if got := feed.Channels()[0].LogoURL; got != upstream {
 		t.Fatalf("logo_url=%q", got)
+	}
+}
+
+func TestWarmLogosUpdatesStatus(t *testing.T) {
+	var hits atomic.Int32
+	logoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("png"))
+	}))
+	t.Cleanup(logoSrv.Close)
+
+	settings := model.ProviderSettings{ID: model.ProviderLG, Label: "LG", MinChannels: 1}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: logoReader{logoURL: logoSrv.URL + "/a.png"}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	cc := cache.New(t.TempDir())
+	pr := &providerRefresher{feed: feed, cache: cc}
+	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	Restore(reg, cc, EmissionPolicy{})
+	if hits.Load() != 0 {
+		t.Fatalf("restore must not download logos, hits=%d", hits.Load())
+	}
+
+	st := &Status{}
+	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
+	done := make(chan struct{})
+	go func() {
+		WarmLogos(context.Background(), reg, cc, EmissionPolicy{}, logos, nil, st)
+		close(done)
+	}()
+	deadline := time.After(2 * time.Second)
+	sawRunning := false
+	for !sawRunning {
+		if st.Snapshot().Logos.Running {
+			sawRunning = true
+			break
+		}
+		select {
+		case <-done:
+			t.Fatal("WarmLogos finished before status showed running")
+		case <-deadline:
+			t.Fatal("timeout waiting for logos.running")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	<-done
+	snap := st.Snapshot()
+	if snap.Logos.Running || !snap.Ready || snap.Logos.Done != snap.Logos.Total {
+		t.Fatalf("after warm: %+v", snap)
+	}
+	if hits.Load() < 1 {
+		t.Fatalf("expected logo downloads, hits=%d", hits.Load())
 	}
 }

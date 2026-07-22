@@ -52,15 +52,26 @@ func New(store *cache.Cache, client *http.Client, baseURL string, maxAge time.Du
 // original in LogoSourceURL. Failures keep the upstream LogoURL except hard
 // HTTP 403/404, which clear LogoURL and set LogoError (source URL is retained).
 func (c *Cache) Rewrite(ctx context.Context, channels []model.Channel) {
+	c.RewriteProgress(ctx, channels, nil)
+}
+
+// RewriteProgress is Rewrite with an optional per-logo callback (after each Ensure).
+func (c *Cache) RewriteProgress(ctx context.Context, channels []model.Channel, onEach func()) {
 	if c == nil {
 		return
 	}
 	for i := range channels {
+		if err := ctx.Err(); err != nil {
+			return
+		}
 		if channels[i].LogoURL == "" {
 			continue
 		}
 		channels[i].LogoSourceURL = channels[i].LogoURL
 		channels[i].LogoURL, channels[i].LogoError = c.Ensure(ctx, channels[i])
+		if onEach != nil {
+			onEach()
+		}
 	}
 }
 
