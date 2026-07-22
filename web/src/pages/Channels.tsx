@@ -4,8 +4,7 @@ import {
   channelDetailPath,
   classBadge,
   displayNumber,
-  exportBadge,
-  exportKind,
+  lineupBadge,
 } from '../lib/channel'
 import type { Channel } from '../lib/channel'
 
@@ -126,17 +125,20 @@ export function ChannelsPage() {
                 <tr>
                   <th scope="col">#</th>
                   <th scope="col">Prov #</th>
+                  <th scope="col" className="channel-logo-col">
+                    Logo
+                  </th>
                   <th scope="col">Name</th>
                   <th scope="col">Provider</th>
                   <th scope="col">Group</th>
                   <th scope="col">Class</th>
-                  <th scope="col">Export</th>
+                  <th scope="col">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr className="empty">
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       No channels yet — wait for a successful provider refresh
                       (e.g. LG), or clear filters.
                     </td>
@@ -144,7 +146,7 @@ export function ChannelsPage() {
                 ) : (
                   rows.map((ch) => {
                     const cls = classBadge(ch.classification)
-                    const exp = exportBadge(exportKind(ch))
+                    const status = lineupBadge(ch)
                     return (
                       <tr
                         key={`${ch.provider}:${ch.normalized_id}`}
@@ -152,23 +154,27 @@ export function ChannelsPage() {
                       >
                         <td>{displayNumber(ch.offset_number)}</td>
                         <td>{displayNumber(ch.number)}</td>
+                        <td className="channel-logo-col">
+                          {ch.logo_url ? (
+                            <img
+                              className="channel-logo"
+                              src={ch.logo_url}
+                              alt=""
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none'
+                              }}
+                            />
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td>
                           <Link
                             to={channelDetailPath(ch)}
-                            className="channel-name channel-link"
+                            className="channel-link"
                           >
-                            {ch.logo_url && (
-                              <img
-                                className="channel-logo"
-                                src={ch.logo_url}
-                                alt=""
-                                loading="lazy"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none'
-                                }}
-                              />
-                            )}
-                            <span>{ch.name}</span>
+                            {ch.name}
                           </Link>
                         </td>
                         <td>
@@ -179,7 +185,12 @@ export function ChannelsPage() {
                           <span className={`badge badge-${cls.kind}`}>{cls.label}</span>
                         </td>
                         <td>
-                          <span className={`badge ${exp.className}`}>{exp.label}</span>
+                          <span
+                            className={`badge ${status.className}`}
+                            title={status.title}
+                          >
+                            {status.label}
+                          </span>
                         </td>
                       </tr>
                     )

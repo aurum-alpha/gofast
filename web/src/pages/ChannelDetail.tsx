@@ -3,9 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   classBadge,
   displayNumber,
-  exportBadge,
-  exportKind,
-  FILTER_REASON_NEEDS_PROXY,
+  lineupBadge,
 } from '../lib/channel'
 import type { Channel } from '../lib/channel'
 
@@ -93,14 +91,14 @@ export function ChannelDetailPage() {
     )
   }
 
-  const kind = exportKind(channel)
-  const exp = exportBadge(kind)
+  const status = lineupBadge(channel)
   const cls = classBadge(channel.classification)
   const providerLogo = channel.logo_source_url || channel.logo_url
   const exportedPlayback = channel.excluded
     ? undefined
     : channel.emitted_url || channel.stream_url
   const exportedLogo = channel.logo_url || undefined
+  const inLineup = status.kind === 'in-lineup' || status.kind === 'proxied'
 
   return (
     <>
@@ -115,51 +113,37 @@ export function ChannelDetailPage() {
               <code>{channel.provider}</code>
             </Link>
           </p>
+          {channel.description ? (
+            <p className="channel-description">{channel.description}</p>
+          ) : null}
         </div>
-        <div className="badge-row">
-          <span className={`badge badge-${cls.kind}`}>{cls.label}</span>
-          <span className={`badge ${exp.className}`}>{exp.label}</span>
+        <div className="status-block">
+          <div className="badge-row">
+            <span className={`badge badge-${cls.kind}`}>{cls.label}</span>
+            <span className={`badge ${status.className}`} title={status.title}>
+              {status.label}
+            </span>
+          </div>
+          {!inLineup && channel.filter_reason ? (
+            <p className="status-reason">{channel.filter_reason}</p>
+          ) : null}
+          {status.kind === 'needs-proxy' ? (
+            <p className="status-reason">
+              Configure <code>proxy_base_url</code> / FASTProxy so BEACON streams can
+              be emitted.
+            </p>
+          ) : null}
+          {status.kind === 'drm' && channel.license_url ? (
+            <p className="status-reason">
+              DRM license evidence:{' '}
+              <code className="url-break">{channel.license_url}</code>
+            </p>
+          ) : null}
         </div>
       </div>
 
       <section className="detail-section">
-        <h2>Export decision</h2>
-        <p className="meta">
-          {channel.excluded ? (
-            <>
-              Not in the M3U / Jellyfin lineup
-              {channel.filter_reason ? (
-                <>
-                  {' '}
-                  — <strong>{channel.filter_reason}</strong>
-                </>
-              ) : null}
-              .
-            </>
-          ) : (
-            <>Included in export ({exp.label}).</>
-          )}
-        </p>
-        {channel.filter_reason === FILTER_REASON_NEEDS_PROXY && (
-          <p className="meta">
-            Configure <code>proxy_base_url</code> / FASTProxy so BEACON streams can be
-            emitted.
-          </p>
-        )}
-        {channel.license_url && (
-          <p className="meta">
-            DRM license evidence:{' '}
-            <code className="url-break">{channel.license_url}</code>
-          </p>
-        )}
-      </section>
-
-      <section className="detail-section">
         <h2>Provider vs Fastgen</h2>
-        <p className="lead compare-lead">
-          Left is what the provider sent. Right is what Fastgen puts in playlists
-          and guides (after normalize, offset, logo cache, and emission rules).
-        </p>
         <div className="table-wrap">
           <table className="compare-table">
             <thead>

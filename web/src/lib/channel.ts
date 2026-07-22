@@ -1,4 +1,4 @@
-/** Shared channel types and export-status helpers for list + detail pages. */
+/** Shared channel types and lineup-status helpers for list + detail pages. */
 
 export type Channel = {
   provider: string
@@ -24,29 +24,67 @@ export const FILTER_REASON_DRM = 'DRM'
 export const FILTER_REASON_NEEDS_PROXY =
   'needs FASTProxy (proxy_base_url not configured)'
 
-export type ExportKind = 'exported' | 'proxied' | 'filtered' | 'needs-proxy' | 'drm'
+export type LineupStatusKind =
+  | 'in-lineup'
+  | 'proxied'
+  | 'needs-proxy'
+  | 'drm'
+  | 'excluded'
 
-export function exportKind(ch: Channel): ExportKind {
+export type LineupBadge = {
+  kind: LineupStatusKind
+  label: string
+  className: string
+  title: string
+}
+
+export function lineupStatus(ch: Channel): LineupStatusKind {
   if (!ch.excluded) {
-    return ch.emitted_url && ch.emitted_url !== ch.stream_url ? 'proxied' : 'exported'
+    return ch.emitted_url && ch.emitted_url !== ch.stream_url ? 'proxied' : 'in-lineup'
   }
   if (ch.filter_reason === FILTER_REASON_NEEDS_PROXY) return 'needs-proxy'
   if (ch.filter_reason === FILTER_REASON_DRM || ch.classification === 'DRM') return 'drm'
-  return 'filtered'
+  return 'excluded'
 }
 
-export function exportBadge(kind: ExportKind): { label: string; className: string } {
+export function lineupBadge(ch: Channel): LineupBadge {
+  const kind = lineupStatus(ch)
   switch (kind) {
-    case 'exported':
-      return { label: 'exported', className: 'badge-native' }
+    case 'in-lineup':
+      return {
+        kind,
+        label: 'In lineup',
+        className: 'badge-native',
+        title: 'Included in M3U / Jellyfin lineup',
+      }
     case 'proxied':
-      return { label: 'proxied', className: 'badge-beacon' }
+      return {
+        kind,
+        label: 'Via proxy',
+        className: 'badge-beacon',
+        title: 'Included via FASTProxy playback URL',
+      }
     case 'needs-proxy':
-      return { label: 'needs proxy', className: 'badge-drm' }
+      return {
+        kind,
+        label: 'Needs proxy',
+        className: 'badge-drm',
+        title: ch.filter_reason || FILTER_REASON_NEEDS_PROXY,
+      }
     case 'drm':
-      return { label: 'DRM', className: 'badge-drm' }
-    default:
-      return { label: 'filtered', className: 'badge-none' }
+      return {
+        kind,
+        label: 'DRM blocked',
+        className: 'badge-drm',
+        title: ch.filter_reason || FILTER_REASON_DRM,
+      }
+    case 'excluded':
+      return {
+        kind,
+        label: 'Excluded',
+        className: 'badge-none',
+        title: ch.filter_reason || 'Excluded from export',
+      }
   }
 }
 

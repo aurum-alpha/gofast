@@ -236,8 +236,16 @@
   text-decoration: none;
 }
 
-.channel-link:hover span {
+.channel-link:hover {
   text-decoration: underline;
+}
+
+.channels .channel-logo-col {
+  width: 3rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  text-align: center;
+  vertical-align: middle;
 }
 
 .badge-row {
@@ -268,10 +276,6 @@
   background: var(--panel);
   border: 1px solid var(--line);
   padding: 0.5rem;
-}
-
-.compare-lead {
-  margin-bottom: 1rem;
 }
 
 .compare-table {
@@ -344,6 +348,36 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.status-block {
+  flex: 0 1 22rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+  text-align: right;
+}
+
+.status-reason {
+  margin: 0;
+  max-width: 22rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.channel-description {
+  margin: 0.35rem 0 0;
+  max-width: 42rem;
+  color: var(--muted);
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.compare-table .compare-value {
+  white-space: normal;
 }
 
 .error-banner {
@@ -616,17 +650,11 @@
   object-fit: contain;
 }
 
-.channel-name {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.55rem;
-}
-
 .channel-logo {
-  flex: 0 0 auto;
+  display: block;
   width: 2rem;
   height: 2rem;
-  margin-top: 0.1rem;
+  margin: 0 auto;
   object-fit: contain;
 }
 
