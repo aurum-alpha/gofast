@@ -21,6 +21,23 @@ const PROG_PAD_PX = 240
 
 type TimePreset = 'pm6' | 'pm12' | 'today' | 'next24' | 'all'
 
+const DEFAULT_PROVIDER = 'all'
+const DEFAULT_GROUP = 'all'
+const DEFAULT_CLASS = 'all'
+const DEFAULT_HIDE_EXCLUDED = true
+const DEFAULT_TIME: TimePreset = 'pm12'
+
+type ProgDetail = {
+  channelName: string
+  title: string
+  desc: string
+  start: Date
+  stop: Date
+  left: number
+  top: number
+  pinned: boolean
+}
+
 function displayNumber(n: number): string {
   return n > 0 ? String(n) : '—'
 }
@@ -107,13 +124,14 @@ export function GuidePage() {
   const [bootError, setBootError] = useState<string | null>(null)
   const [booting, setBooting] = useState(true)
 
-  const [providerFilter, setProviderFilter] = useState('all')
-  const [groupFilter, setGroupFilter] = useState('all')
-  const [classFilter, setClassFilter] = useState('all')
-  const [hideExcluded, setHideExcluded] = useState(true)
-  const [timePreset, setTimePreset] = useState<TimePreset>('pm12')
+  const [providerFilter, setProviderFilter] = useState(DEFAULT_PROVIDER)
+  const [groupFilter, setGroupFilter] = useState(DEFAULT_GROUP)
+  const [classFilter, setClassFilter] = useState(DEFAULT_CLASS)
+  const [hideExcluded, setHideExcluded] = useState(DEFAULT_HIDE_EXCLUDED)
+  const [timePreset, setTimePreset] = useState<TimePreset>(DEFAULT_TIME)
   const [channelQ, setChannelQ] = useState('')
   const [programmeQ, setProgrammeQ] = useState('')
+  const [detail, setDetail] = useState<ProgDetail | null>(null)
 
   const loadedRef = useRef(new Set<string>())
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -224,11 +242,7 @@ export function GuidePage() {
         if (providerFilter !== 'all' && r.provider !== providerFilter) return false
         if (hideExcluded && r.excluded) return false
         if (groupFilter !== 'all' && r.group !== groupFilter) return false
-        if (classFilter === 'none') {
-          if (r.classification) return false
-        } else if (classFilter !== 'all' && r.classification !== classFilter) {
-          return false
-        }
+        if (classFilter !== 'all' && r.classification !== classFilter) return false
         if (channelNeedle) {
           const hit =
             r.name.toLowerCase().includes(channelNeedle) ||
@@ -288,6 +302,63 @@ export function GuidePage() {
     s.phase === 'pending' || s.phase === 'fetching' || s.phase === 'parsing',
   )
   const hasPaint = allRows.length > 0
+
+  // DRM channels are always excluded — DRM filter is meaningless while hiding excluded.
+  useEffect(() => {
+    if (hideExcluded && classFilter === 'DRM') {
+      setClassFilter(DEFAULT_CLASS)
+    }
+  }, [hideExcluded, classFilter])
+
+  function resetFilters() {
+    setProviderFilter(DEFAULT_PROVIDER)
+    setGroupFilter(DEFAULT_GROUP)
+    setClassFilter(DEFAULT_CLASS)
+    setHideExcluded(DEFAULT_HIDE_EXCLUDED)
+    setTimePreset(DEFAULT_TIME)
+    setChannelQ('')
+    setProgrammeQ('')
+    setDetail(null)
+  }
+
+  function showProgrammeDetail(
+    el: HTMLElement,
+    channelName: string,
+    p: { title: string; desc: string; start: Date; stop: Date },
+    pinned: boolean,
+  ) {
+    const rect = el.getBoundingClientRect()
+    const left = Math.min(rect.left, window.innerWidth - 320)
+    const top = Math.min(rect.bottom + 6, window.innerHeight - 160)
+    setDetail({
+      channelName,
+      title: p.title,
+      desc: p.desc,
+      start: p.start,
+      stop: p.stop,
+      left: Math.max(8, left),
+      top: Math.max(8, top),
+      pinned,
+    })
+  }
+
+  useEffect(() => {
+    if (!detail) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDetail(null)
+    }
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest('.epg-prog') || target?.closest('.epg-detail')) return
+      setDetail(null)
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onPointer)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onPointer)
+    }
+  }, [detail])
 
   // Viewport tracking for lazy DOM.
   useEffect(() => {
@@ -415,8 +486,9 @@ export function GuidePage() {
                 <option value="all">all</option>
                 <option value="NATIVE">NATIVE</option>
                 <option value="BEACON">BEACON</option>
-                <option value="DRM">DRM</option>
-                <option value="none">none</option>
+                <option value="DRM" disabled={hideExcluded}>
+                  DRM
+                </option>
               </select>
             </label>
             <label>
@@ -458,6 +530,9 @@ export function GuidePage() {
                 placeholder="title…"
               />
             </label>
+            <button type="button" className="toolbar-reset" onClick={resetFilters}>
+              Reset filters
+            </button>
             <span className="meta">
               {rows.length} of {allRows.length} channels
               {loading ? ' · loading…' : ''}
@@ -549,11 +624,27 @@ export function GuidePage() {
                         return (
                           <div
                             key={i}
+                            role="button"
+                            tabIndex={0}
                             className={`epg-prog${onNow ? ' now' : ''}`}
                             style={{ left, width: Math.max(width, MIN_PROG_W) }}
-                            title={`${fmtRange(p.start, p.stop)} — ${p.title}${
-                              p.desc ? `\n\n${p.desc}` : ''
-                            }`}
+                            onMouseEnter={(e) => {
+                              if (detail?.pinned) return
+                              showProgrammeDetail(e.currentTarget, r.name, p, false)
+                            }}
+                            onMouseLeave={() => {
+                              setDetail((cur) => (cur && !cur.pinned ? null : cur))
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              showProgrammeDetail(e.currentTarget, r.name, p, true)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                showProgrammeDetail(e.currentTarget, r.name, p, true)
+                              }
+                            }}
                           >
                             <span className="epg-prog-title">{p.title}</span>
                           </div>
@@ -574,6 +665,29 @@ export function GuidePage() {
             </div>
           )}
         </>
+      )}
+
+      {detail && (
+        <div
+          className="epg-detail"
+          role="dialog"
+          aria-label="Programme details"
+          style={{ left: detail.left, top: detail.top }}
+        >
+          <div className="epg-detail-channel">{detail.channelName}</div>
+          <div className="epg-detail-title">{detail.title}</div>
+          <div className="epg-detail-time">{fmtRange(detail.start, detail.stop)}</div>
+          {detail.desc ? <p className="epg-detail-desc">{detail.desc}</p> : null}
+          {detail.pinned ? (
+            <button
+              type="button"
+              className="epg-detail-close"
+              onClick={() => setDetail(null)}
+            >
+              Close
+            </button>
+          ) : null}
+        </div>
       )}
     </>
   )
