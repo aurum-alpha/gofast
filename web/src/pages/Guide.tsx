@@ -1,43 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  combinedId,
-  parseXMLTV,
-  type XmltvProgramme,
-  type Xmltv,
-} from '../lib/xmltv'
+  enabledProviderIds,
+  loadProviderGuides,
+  metaIndex,
+  sortGuideRows,
+  summarizeLoad,
+  type ChannelMeta,
+  type GuideRow,
+  type ProviderStatus,
+} from '../lib/guideLoad'
 
-// Channel-level meta from /api/channels used to augment the XMLTV (non-standard fields).
-type ChannelRow = {
-  provider: string
-  id: string
-  normalized_id: string
-  name: string
-  group: string
-  number: number
-  offset_number: number
-  logo_url?: string
-  classification?: string
-  excluded: boolean
-}
-
-type Row = {
-  id: string // namespaced tvg-id from the aggregate guide
-  name: string
-  number: number
-  logo: string
-  provider: string
-  group: string
-  rawId: string
-  normalizedId: string
-  excluded: boolean
-  programmes: XmltvProgramme[]
-}
-
-const PX_PER_MIN = 4 // 240px per hour
+const PX_PER_MIN = 4
 const LABEL_W = 220
 const ROW_H = 48
+const TIMEBAR_H = 30
 const MIN_PROG_W = 40
 const HOUR_MS = 3_600_000
+const ROW_OVERSCAN = 10
+const PROG_PAD_PX = 240
+
+type TimePreset = 'pm6' | 'pm12' | 'today' | 'next24' | 'all'
 
 function displayNumber(n: number): string {
   return n > 0 ? String(n) : '—'
@@ -69,102 +51,154 @@ function fmtRange(start: Date, stop: Date): string {
   return `${day} ${st}–${et}`
 }
 
+function timeBounds(
+  preset: TimePreset,
+  now: number,
+  dataMin: number,
+  dataMax: number,
+): { start: number; end: number } {
+  switch (preset) {
+    case 'pm6':
+      return { start: now - 6 * HOUR_MS, end: now + 6 * HOUR_MS }
+    case 'pm12':
+      return { start: now - 12 * HOUR_MS, end: now + 12 * HOUR_MS }
+    case 'today': {
+      const d = new Date(now)
+      d.setHours(0, 0, 0, 0)
+      const start = d.getTime()
+      return { start, end: start + 24 * HOUR_MS }
+    }
+    case 'next24':
+      return { start: now, end: now + 24 * HOUR_MS }
+    case 'all': {
+      if (!isFinite(dataMin) || !isFinite(dataMax) || dataMax <= dataMin) {
+        const n = floorHour(now)
+        return { start: n, end: n + 6 * HOUR_MS }
+      }
+      return { start: floorHour(dataMin), end: ceilHour(dataMax) }
+    }
+  }
+}
+
+function overlaps(start: number, stop: number, winStart: number, winEnd: number): boolean {
+  return stop > winStart && start < winEnd
+}
+
+function phaseClass(phase: ProviderStatus['phase']): string {
+  switch (phase) {
+    case 'ready':
+      return 'ready'
+    case 'empty':
+      return 'empty'
+    case 'error':
+      return 'error'
+    case 'fetching':
+    case 'parsing':
+      return 'active'
+    default:
+      return 'pending'
+  }
+}
+
 export function GuidePage() {
-  const [data, setData] = useState<{ channels: ChannelRow[]; guide: Xmltv } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [channels, setChannels] = useState<ChannelMeta[] | null>(null)
+  const [rowsById, setRowsById] = useState<Map<string, GuideRow>>(() => new Map())
+  const [statuses, setStatuses] = useState<ProviderStatus[]>([])
+  const [bootError, setBootError] = useState<string | null>(null)
+  const [booting, setBooting] = useState(true)
+
   const [providerFilter, setProviderFilter] = useState('all')
-  const [q, setQ] = useState('')
+  const [groupFilter, setGroupFilter] = useState('all')
+  const [classFilter, setClassFilter] = useState('all')
+  const [hideExcluded, setHideExcluded] = useState(true)
+  const [timePreset, setTimePreset] = useState<TimePreset>('pm12')
+  const [channelQ, setChannelQ] = useState('')
+  const [programmeQ, setProgrammeQ] = useState('')
+
+  const loadedRef = useRef(new Set<string>())
   const scrollRef = useRef<HTMLDivElement>(null)
   const centered = useRef(false)
+  const [viewport, setViewport] = useState({
+    top: 0,
+    left: 0,
+    height: 480,
+    width: 800,
+  })
 
+  // Bootstrap channels + providers, then load XMLTV per provider.
   useEffect(() => {
+    const ac = new AbortController()
     let cancelled = false
-    Promise.all([
-      fetch('/api/channels').then(async (res) => {
-        if (!res.ok) throw new Error(`channels: ${res.status} ${res.statusText}`)
-        return (await res.json()) as { channels: ChannelRow[] }
-      }),
-      fetch('/api/guide.xml?includeAll=true').then(async (res) => {
-        if (!res.ok) throw new Error(`guide: ${res.status} ${res.statusText}`)
-        return parseXMLTV(await res.text())
-      }),
-    ])
-      .then(([chans, guide]) => {
-        if (!cancelled) {
-          setData({ channels: chans.channels, guide })
-          setError(null)
+
+    ;(async () => {
+      setBooting(true)
+      setBootError(null)
+      try {
+        const [chansRes, provRes] = await Promise.all([
+          fetch('/api/channels', { signal: ac.signal }),
+          fetch('/api/providers', { signal: ac.signal }),
+        ])
+        if (!chansRes.ok) {
+          throw new Error(`channels: ${chansRes.status} ${chansRes.statusText}`)
         }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err))
+        if (!provRes.ok) {
+          throw new Error(`providers: ${provRes.status} ${provRes.statusText}`)
         }
-      })
+        const chansBody = (await chansRes.json()) as { channels: ChannelMeta[] }
+        const provBody = (await provRes.json()) as {
+          providers: { id: string; enabled: boolean; label: string }[]
+        }
+        if (cancelled) return
+        setChannels(chansBody.channels)
+        setBooting(false)
+
+        const ids = enabledProviderIds(provBody.providers, providerFilter)
+        const meta = metaIndex(chansBody.channels)
+        await loadProviderGuides(ids, meta, loadedRef.current, {
+          signal: ac.signal,
+          onStatuses: (next) => {
+            if (!cancelled) setStatuses(next)
+          },
+          onProviderRows: (provider, rows) => {
+            if (cancelled) return
+            loadedRef.current.add(provider)
+            setRowsById((prev) => {
+              const next = new Map(prev)
+              for (const row of rows) next.set(row.id, row)
+              return next
+            })
+          },
+        })
+      } catch (err) {
+        if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return
+        setBootError(err instanceof Error ? err.message : String(err))
+        setBooting(false)
+      }
+    })()
+
     return () => {
       cancelled = true
+      ac.abort()
     }
-  }, [])
+  }, [providerFilter])
 
-  // Merge XMLTV (primary: id, name, number, logo, programmes) with /api/channels
-  // (augment: provider, group, excluded, raw id) joined on the namespaced id.
-  const allRows = useMemo<Row[]>(() => {
-    if (!data) return []
-    const meta = new Map<string, ChannelRow>()
-    for (const c of data.channels) {
-      meta.set(combinedId(c.provider, c.normalized_id), c)
-    }
-    const progs = new Map<string, XmltvProgramme[]>()
-    for (const p of data.guide.programmes) {
-      const arr = progs.get(p.channel)
-      if (arr) arr.push(p)
-      else progs.set(p.channel, [p])
-    }
-    return data.guide.channels.map((xc) => {
-      const m = meta.get(xc.id)
-      const list = (progs.get(xc.id) ?? [])
-        .slice()
-        .sort((a, b) => a.start.getTime() - b.start.getTime())
-      return {
-        id: xc.id,
-        name: xc.displayName,
-        number: xc.number,
-        logo: xc.logo,
-        provider: m?.provider ?? '',
-        group: m?.group ?? '',
-        rawId: m?.id ?? '',
-        normalizedId: m?.normalized_id ?? xc.id,
-        excluded: m?.excluded ?? false,
-        programmes: list,
-      }
-    })
-  }, [data])
+  const allRows = useMemo(() => sortGuideRows([...rowsById.values()]), [rowsById])
 
   const providers = useMemo(() => {
-    return [...new Set(allRows.map((r) => r.provider).filter(Boolean))].sort()
-  }, [allRows])
+    const fromChannels = channels?.map((c) => c.provider) ?? []
+    const fromRows = allRows.map((r) => r.provider)
+    return [...new Set([...fromChannels, ...fromRows].filter(Boolean))].sort()
+  }, [channels, allRows])
 
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase()
-    return allRows.filter((r) => {
-      if (providerFilter !== 'all' && r.provider !== providerFilter) {
-        return false
-      }
-      if (!needle) return true
-      return (
-        r.name.toLowerCase().includes(needle) ||
-        r.rawId.toLowerCase().includes(needle) ||
-        r.normalizedId.toLowerCase().includes(needle) ||
-        r.group.toLowerCase().includes(needle) ||
-        String(r.number).includes(needle)
-      )
-    })
-  }, [allRows, providerFilter, q])
+  const groups = useMemo(() => {
+    const src = channels ?? allRows.map((r) => ({ group: r.group }))
+    return [...new Set(src.map((c) => c.group).filter(Boolean))].sort()
+  }, [channels, allRows])
 
-  // Time window spanning every programme in the filtered rows (snapped to hours).
-  const window = useMemo(() => {
+  const dataExtent = useMemo(() => {
     let min = Infinity
     let max = -Infinity
-    for (const r of rows) {
+    for (const r of allRows) {
       for (const p of r.programmes) {
         const s = p.start.getTime()
         const e = p.stop.getTime()
@@ -172,68 +206,176 @@ export function GuidePage() {
         if (e > max) max = e
       }
     }
-    if (!isFinite(min) || !isFinite(max) || max <= min) {
-      const now = floorHour(Date.now())
-      return { start: now, end: now + 6 * HOUR_MS }
-    }
-    return { start: floorHour(min), end: ceilHour(max) }
-  }, [rows])
+    return { min, max }
+  }, [allRows])
 
-  const totalMin = (window.end - window.start) / 60_000
-  const timelineW = totalMin * PX_PER_MIN
+  const timeWindow = useMemo(() => {
+    const bounds = timeBounds(timePreset, Date.now(), dataExtent.min, dataExtent.max)
+    return { start: floorHour(bounds.start), end: ceilHour(bounds.end) }
+  }, [timePreset, dataExtent.min, dataExtent.max])
+
+  const now = Date.now()
+
+  const rows = useMemo(() => {
+    const channelNeedle = channelQ.trim().toLowerCase()
+    const progNeedle = programmeQ.trim().toLowerCase()
+    return allRows
+      .filter((r) => {
+        if (providerFilter !== 'all' && r.provider !== providerFilter) return false
+        if (hideExcluded && r.excluded) return false
+        if (groupFilter !== 'all' && r.group !== groupFilter) return false
+        if (classFilter === 'none') {
+          if (r.classification) return false
+        } else if (classFilter !== 'all' && r.classification !== classFilter) {
+          return false
+        }
+        if (channelNeedle) {
+          const hit =
+            r.name.toLowerCase().includes(channelNeedle) ||
+            r.rawId.toLowerCase().includes(channelNeedle) ||
+            r.normalizedId.toLowerCase().includes(channelNeedle) ||
+            r.group.toLowerCase().includes(channelNeedle) ||
+            String(r.number).includes(channelNeedle)
+          if (!hit) return false
+        }
+        return true
+      })
+      .map((r) => {
+        let programmes = r.programmes.filter((p) =>
+          overlaps(p.start.getTime(), p.stop.getTime(), timeWindow.start, timeWindow.end),
+        )
+        if (progNeedle) {
+          programmes = programmes.filter((p) =>
+            p.title.toLowerCase().includes(progNeedle),
+          )
+        }
+        return { ...r, programmes }
+      })
+      .filter((r) => !progNeedle || r.programmes.length > 0)
+  }, [
+    allRows,
+    providerFilter,
+    hideExcluded,
+    groupFilter,
+    classFilter,
+    channelQ,
+    programmeQ,
+    timeWindow,
+  ])
+
+  const totalMin = (timeWindow.end - timeWindow.start) / 60_000
+  const timelineW = Math.max(totalMin * PX_PER_MIN, 1)
 
   const ticks = useMemo(() => {
     const out: { x: number; label: string; midnight: boolean }[] = []
-    for (let t = window.start; t <= window.end; t += HOUR_MS) {
+    for (let t = timeWindow.start; t <= timeWindow.end; t += HOUR_MS) {
       out.push({
-        x: ((t - window.start) / 60_000) * PX_PER_MIN,
+        x: ((t - timeWindow.start) / 60_000) * PX_PER_MIN,
         label: tickLabel(t),
         midnight: new Date(t).getHours() === 0,
       })
     }
     return out
-  }, [window])
+  }, [timeWindow])
 
-  const now = Date.now()
   const nowX =
-    now >= window.start && now <= window.end
-      ? ((now - window.start) / 60_000) * PX_PER_MIN
+    now >= timeWindow.start && now <= timeWindow.end
+      ? ((now - timeWindow.start) / 60_000) * PX_PER_MIN
       : null
 
-  // On first load, scroll the timeline so "now" sits near the left edge.
+  const loadSummary = summarizeLoad(statuses)
+  const loading = booting || statuses.some((s) =>
+    s.phase === 'pending' || s.phase === 'fetching' || s.phase === 'parsing',
+  )
+  const hasPaint = allRows.length > 0
+
+  // Viewport tracking for lazy DOM.
   useEffect(() => {
-    if (centered.current) return
+    const el = scrollRef.current
+    if (!el) return
+    let raf = 0
+    const update = () => {
+      setViewport({
+        top: el.scrollTop,
+        left: el.scrollLeft,
+        height: el.clientHeight,
+        width: el.clientWidth,
+      })
+    }
+    const onScroll = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(update)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    const ro = new ResizeObserver(onScroll)
+    ro.observe(el)
+    update()
+    return () => {
+      cancelAnimationFrame(raf)
+      el.removeEventListener('scroll', onScroll)
+      ro.disconnect()
+    }
+  }, [hasPaint])
+
+  // Center on "now" once we have a painted grid.
+  useEffect(() => {
+    if (centered.current || !hasPaint) return
     const el = scrollRef.current
     if (!el) return
     const t = Date.now()
-    if (t < window.start || t > window.end) return
-    const x = ((t - window.start) / 60_000) * PX_PER_MIN
+    if (t < timeWindow.start || t > timeWindow.end) return
+    const x = ((t - timeWindow.start) / 60_000) * PX_PER_MIN
     el.scrollLeft = Math.max(0, x - 30 * PX_PER_MIN)
     centered.current = true
-  }, [data, window])
+  }, [hasPaint, timeWindow])
+
+  const rowScrollTop = Math.max(0, viewport.top - TIMEBAR_H)
+  const startIdx = Math.max(0, Math.floor(rowScrollTop / ROW_H) - ROW_OVERSCAN)
+  const endIdx = Math.min(
+    rows.length,
+    Math.ceil((rowScrollTop + viewport.height) / ROW_H) + ROW_OVERSCAN,
+  )
+  const visibleRows = rows.slice(startIdx, endIdx)
+  const topSpacer = startIdx * ROW_H
+  const bottomSpacer = Math.max(0, (rows.length - endIdx) * ROW_H)
+
+  const viewLeft = viewport.left - LABEL_W - PROG_PAD_PX
+  const viewRight = viewport.left - LABEL_W + viewport.width + PROG_PAD_PX
 
   return (
     <>
       <h1>Guide</h1>
       <p className="lead">
-        Programme schedule parsed from XMLTV (the same artifact served at{' '}
-        <code>/api/guide.xml</code> and <code>/{'{provider}'}.xml</code>). Scroll
-        horizontally to move through time.
+        Programme schedule parsed from per-provider XMLTV (
+        <code>/api/guide/{'{provider}'}.xml</code>). Providers load one at a
+        time; the grid paints as soon as the first guide is ready.
       </p>
 
-      {error && (
-        <div className="empty-panel" role="alert">
-          <p>Failed to load guide: {error}</p>
+      <div className="guide-status" role="status" aria-live="polite">
+        <div className="guide-status-summary">
+          {bootError
+            ? `Failed to load: ${bootError}`
+            : booting
+              ? 'Loading channels…'
+              : loadSummary}
         </div>
-      )}
+        {statuses.length > 0 && (
+          <div className="guide-status-chips">
+            {statuses.map((s) => (
+              <span
+                key={s.id}
+                className={`guide-chip guide-chip-${phaseClass(s.phase)}`}
+                title={s.error ?? s.phase}
+              >
+                {s.id}
+                <span className="guide-chip-phase">{s.phase}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {!error && !data && (
-        <div className="empty-panel" role="status">
-          <p>Loading…</p>
-        </div>
-      )}
-
-      {data && (
+      {(hasPaint || !booting) && !bootError && (
         <>
           <div className="toolbar">
             <label>
@@ -251,30 +393,92 @@ export function GuidePage() {
               </select>
             </label>
             <label>
-              Search{' '}
+              Group{' '}
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+              >
+                <option value="all">all</option>
+                {groups.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Classification{' '}
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+              >
+                <option value="all">all</option>
+                <option value="NATIVE">NATIVE</option>
+                <option value="BEACON">BEACON</option>
+                <option value="DRM">DRM</option>
+                <option value="none">none</option>
+              </select>
+            </label>
+            <label>
+              Time{' '}
+              <select
+                value={timePreset}
+                onChange={(e) => setTimePreset(e.target.value as TimePreset)}
+              >
+                <option value="pm6">Now ±6h</option>
+                <option value="pm12">Now ±12h</option>
+                <option value="today">Today</option>
+                <option value="next24">Next 24h</option>
+                <option value="all">All loaded</option>
+              </select>
+            </label>
+            <label className="toolbar-check">
+              <input
+                type="checkbox"
+                checked={hideExcluded}
+                onChange={(e) => setHideExcluded(e.target.checked)}
+              />
+              Hide excluded
+            </label>
+            <label>
+              Channels{' '}
               <input
                 type="search"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="name, raw/normalized id, group, number…"
+                value={channelQ}
+                onChange={(e) => setChannelQ(e.target.value)}
+                placeholder="name, id, group, number…"
+              />
+            </label>
+            <label>
+              Programmes{' '}
+              <input
+                type="search"
+                value={programmeQ}
+                onChange={(e) => setProgrammeQ(e.target.value)}
+                placeholder="title…"
               />
             </label>
             <span className="meta">
               {rows.length} of {allRows.length} channels
+              {loading ? ' · loading…' : ''}
             </span>
           </div>
 
-          {rows.length === 0 ? (
+          {!hasPaint && loading ? (
+            <div className="empty-panel" role="status">
+              <p>Waiting for the first provider guide…</p>
+            </div>
+          ) : rows.length === 0 ? (
             <div className="empty-panel" role="status">
               <p>
-                No guide data yet — wait for a successful provider refresh (e.g.
-                LG), or clear filters.
+                No guide rows match the current filters
+                {loading ? ' (still loading providers)' : ''}.
               </p>
             </div>
           ) : (
             <div className="epg" ref={scrollRef}>
               <div className="epg-inner" style={{ width: LABEL_W + timelineW }}>
-                <div className="epg-timebar" style={{ height: 30 }}>
+                <div className="epg-timebar" style={{ height: TIMEBAR_H }}>
                   <div className="epg-corner" style={{ width: LABEL_W }}>
                     Channel
                   </div>
@@ -299,7 +503,11 @@ export function GuidePage() {
                   />
                 )}
 
-                {rows.map((r) => (
+                {topSpacer > 0 && (
+                  <div className="epg-spacer" style={{ height: topSpacer }} aria-hidden />
+                )}
+
+                {visibleRows.map((r) => (
                   <div
                     key={r.id}
                     className={`epg-row${r.excluded ? ' excluded' : ''}`}
@@ -326,7 +534,7 @@ export function GuidePage() {
                       {r.programmes.map((p, i) => {
                         const s = p.start.getTime()
                         const e = p.stop.getTime()
-                        let left = ((s - window.start) / 60_000) * PX_PER_MIN
+                        let left = ((s - timeWindow.start) / 60_000) * PX_PER_MIN
                         let width = ((e - s) / 60_000) * PX_PER_MIN
                         if (left < 0) {
                           width += left
@@ -336,6 +544,7 @@ export function GuidePage() {
                           width = timelineW - left
                         }
                         if (width < 1) return null
+                        if (left + width < viewLeft || left > viewRight) return null
                         const onNow = s <= now && now < e
                         return (
                           <div
@@ -353,6 +562,14 @@ export function GuidePage() {
                     </div>
                   </div>
                 ))}
+
+                {bottomSpacer > 0 && (
+                  <div
+                    className="epg-spacer"
+                    style={{ height: bottomSpacer }}
+                    aria-hidden
+                  />
+                )}
               </div>
             </div>
           )}
