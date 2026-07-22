@@ -312,6 +312,21 @@
   margin: 0;
 }
 
+.toolbar-reset {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+
+.toolbar-reset:hover {
+  border-color: var(--accent);
+}
+
 .guide-status {
   margin: 0 0 1rem;
   padding: 0.75rem 1rem;
@@ -503,6 +518,7 @@
   border: 1px solid var(--line);
   color: var(--ink);
   overflow: hidden;
+  cursor: pointer;
 }
 
 .epg-prog.now {
@@ -515,6 +531,58 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.85rem;
+}
+
+.epg-detail {
+  position: fixed;
+  z-index: 40;
+  width: min(22rem, calc(100vw - 1rem));
+  max-height: min(40vh, 20rem);
+  overflow: auto;
+  padding: 0.85rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+
+.epg-detail-channel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.epg-detail-title {
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.epg-detail-time {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.epg-detail-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.epg-detail-close {
+  margin-top: 0.75rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  padding: 0.25rem 0.6rem;
 }
 
 .epg-now {
