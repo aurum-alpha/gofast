@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -444,5 +445,296 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected ch-news in rehydrated lineup")
+	}
+}
+
+type seqReader struct {
+	n     int
+	steps []struct {
+		chs   []model.Channel
+		progs []model.Programme
+	}
+}
+
+func (r *seqReader) Fetch(context.Context) (provider.Raw, error) {
+	return provider.Raw{"fixture": []byte("RAW")}, nil
+}
+
+func (r *seqReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
+	i := r.n
+	if i >= len(r.steps) {
+		i = len(r.steps) - 1
+	}
+	step := r.steps[i]
+	r.n++
+	return step.chs, step.progs, nil
+}
+
+func goodLineup() ([]model.Channel, []model.Programme) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	return []model.Channel{{
+			ID:        "news",
+			Name:      "News",
+			StreamURL: "https://example.test/news.m3u8",
+		}, {
+			ID:        "sports",
+			Name:      "Sports",
+			StreamURL: "https://example.test/sports.m3u8",
+		}}, []model.Programme{{
+			ChannelID: "news",
+			Title:     "News Hour",
+			Start:     start,
+			Stop:      start.Add(time.Hour),
+		}, {
+			ChannelID: "sports",
+			Title:     "Sports Hour",
+			Start:     start,
+			Stop:      start.Add(time.Hour),
+		}}
+}
+
+func TestGuttedLineupKeepsLastGoodHTTPtest(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "provider", "lg", "testdata", "schedulelist.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gutted := []byte(`{"categories":[{"channels":[{
+		"channelId":"ch-only","channelName":"Only","channelNumber":"1",
+		"mediaStaticUrl":"https://stream.example/only.m3u8",
+		"programs":[{"programTitle":"P","startDateTime":"2024-06-01T12:00:00Z","endDateTime":"2024-06-01T13:00:00Z"}]
+	}]}]}`)
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			_, _ = w.Write(body)
+			return
+		}
+		_, _ = w.Write(gutted)
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	cc := cache.New(dir)
+	settings := lg.DefaultSettings().Merge(model.ProviderSettings{MinChannels: 2, ChannelsURL: srv.URL})
+	reader := lg.New(settings, httpx.NewClient(5*time.Second, 0))
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: reader},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	notified := 0
+	pr := &providerRefresher{feed: feed, cache: cc, notify: func() { notified++ }}
+	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	good := feed.Lineup()
+	goodRaw, err := cc.ReadRaw(model.ProviderLG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	goodM3U, _ := cc.ReadM3U(model.ProviderLG)
+	goodXML, _ := cc.ReadXMLTV(model.ProviderLG)
+	currentBefore, err := os.ReadFile(filepath.Join(dir, "lg", "current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := pr.Refresh(context.Background()); err == nil {
+		t.Fatal("expected min_channels gate failure on gutted lineup")
+	}
+	if got := feed.Lineup(); len(got.Channels) != len(good.Channels) || !got.FetchedAt.Equal(good.FetchedAt) {
+		t.Fatalf("last-good lineup changed: %+v", got)
+	}
+	raw, err := cc.ReadRaw(model.ProviderLG)
+	if err != nil || string(raw["schedule.json"]) != string(goodRaw["schedule.json"]) {
+		t.Fatalf("last-good raw changed")
+	}
+	m3uData, _ := cc.ReadM3U(model.ProviderLG)
+	xmlData, _ := cc.ReadXMLTV(model.ProviderLG)
+	if string(m3uData) != string(goodM3U) || string(xmlData) != string(goodXML) {
+		t.Fatalf("last-good artifacts changed")
+	}
+	currentAfter, _ := os.ReadFile(filepath.Join(dir, "lg", "current"))
+	if string(currentAfter) != string(currentBefore) {
+		t.Fatalf("current pointer moved: %q -> %q", currentBefore, currentAfter)
+	}
+	if notified != 1 {
+		t.Fatalf("notify count = %d, want 1", notified)
+	}
+	if status := feed.Status(); !strings.Contains(status.LastError, "min_channels") {
+		t.Fatalf("status error: %+v", status)
+	}
+}
+
+func TestProgrammeCountGateKeepsLastGood(t *testing.T) {
+	chs, progs := goodLineup()
+	reader := &seqReader{steps: []struct {
+		chs   []model.Channel
+		progs []model.Programme
+	}{
+		{chs, progs},
+		{chs, nil},
+	}}
+	settings := model.ProviderSettings{ID: model.ProviderXumo, MinChannels: 1}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderXumo: reader},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderXumo: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderXumo)
+	cc := cache.New(t.TempDir())
+	notified := 0
+	pr := &providerRefresher{feed: feed, cache: cc, notify: func() { notified++ }}
+	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	good := feed.Lineup()
+	goodM3U, _ := cc.ReadM3U(model.ProviderXumo)
+	goodXML, _ := cc.ReadXMLTV(model.ProviderXumo)
+
+	if err := pr.Refresh(context.Background()); err == nil || !strings.Contains(err.Error(), "no exportable programmes") {
+		t.Fatalf("programme gate error: %v", err)
+	}
+	if got := feed.Lineup(); !got.FetchedAt.Equal(good.FetchedAt) || len(got.Channels) != len(good.Channels) {
+		t.Fatalf("last-good changed: %+v", got)
+	}
+	m3uData, _ := cc.ReadM3U(model.ProviderXumo)
+	xmlData, _ := cc.ReadXMLTV(model.ProviderXumo)
+	if string(m3uData) != string(goodM3U) || string(xmlData) != string(goodXML) {
+		t.Fatal("disk last-good changed")
+	}
+	if notified != 1 {
+		t.Fatalf("notify = %d", notified)
+	}
+}
+
+func TestXMLValidateFailureKeepsLastGood(t *testing.T) {
+	chs, progs := goodLineup()
+	badProgs := make([]model.Programme, len(progs))
+	copy(badProgs, progs)
+	far := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := range badProgs {
+		badProgs[i].Start = far
+		badProgs[i].Stop = far.Add(time.Hour)
+	}
+	reader := &seqReader{steps: []struct {
+		chs   []model.Channel
+		progs []model.Programme
+	}{
+		{chs, progs},
+		{chs, badProgs},
+	}}
+	settings := model.ProviderSettings{ID: model.ProviderXumo, MinChannels: 1}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderXumo: reader},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderXumo: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderXumo)
+	cc := cache.New(t.TempDir())
+	notified := 0
+	pr := &providerRefresher{feed: feed, cache: cc, notify: func() { notified++ }}
+	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	good := feed.Lineup()
+	goodM3U, _ := cc.ReadM3U(model.ProviderXumo)
+	goodXML, _ := cc.ReadXMLTV(model.ProviderXumo)
+
+	if err := pr.Refresh(context.Background()); err == nil {
+		t.Fatal("expected xmltv validate failure")
+	}
+	if got := feed.Lineup(); !got.FetchedAt.Equal(good.FetchedAt) {
+		t.Fatalf("last-good changed: %+v", got)
+	}
+	m3uData, _ := cc.ReadM3U(model.ProviderXumo)
+	xmlData, _ := cc.ReadXMLTV(model.ProviderXumo)
+	if string(m3uData) != string(goodM3U) || string(xmlData) != string(goodXML) {
+		t.Fatal("disk last-good changed")
+	}
+	if notified != 1 {
+		t.Fatalf("notify = %d", notified)
+	}
+}
+
+func TestJitterBounds(t *testing.T) {
+	d := 10 * time.Minute
+	lo := d - d/10
+	hi := d + d/10
+	for i := 0; i < 500; i++ {
+		j := jitter(d)
+		if j < lo || j > hi {
+			t.Fatalf("jitter(%v)=%v outside [%v,%v]", d, j, lo, hi)
+		}
+	}
+	for i := 0; i < 50; i++ {
+		if got := jitter(30 * time.Second); got != minInterval {
+			t.Fatalf("jitter below minInterval floor: got %v want %v", got, minInterval)
+		}
+	}
+}
+
+type scheduleStub struct {
+	id        model.ProviderID
+	interval  time.Duration
+	fetchedAt time.Time
+	refresh   func(context.Context) error
+}
+
+func (s scheduleStub) ID() model.ProviderID    { return s.id }
+func (s scheduleStub) Interval() time.Duration { return s.interval }
+func (s scheduleStub) FetchedAt() time.Time    { return s.fetchedAt }
+func (s scheduleStub) Refresh(ctx context.Context) error {
+	if s.refresh != nil {
+		return s.refresh(ctx)
+	}
+	return nil
+}
+
+func TestNextRefreshHeartbeat(t *testing.T) {
+	prev := scheduleHeartbeat
+	scheduleHeartbeat = 25 * time.Millisecond
+	t.Cleanup(func() { scheduleHeartbeat = prev })
+
+	var buf bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
+	stub := scheduleStub{
+		id:        model.ProviderLG,
+		interval:  time.Hour,
+		fetchedAt: time.Now(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		run(ctx, stub)
+		close(done)
+	}()
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		if strings.Contains(buf.String(), `"msg":"refresh schedule"`) &&
+			strings.Contains(buf.String(), `"provider":"lg"`) &&
+			strings.Contains(buf.String(), `"next_refresh_at"`) &&
+			strings.Contains(buf.String(), `"refresh_in"`) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("missing schedule log: %s", buf.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	beforeCancel := buf.Len()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("run did not stop")
+	}
+	time.Sleep(80 * time.Millisecond)
+	if buf.Len() > beforeCancel+200 {
+		t.Fatalf("heartbeat continued after cancel: grew %d bytes", buf.Len()-beforeCancel)
 	}
 }

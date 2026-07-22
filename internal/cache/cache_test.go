@@ -89,7 +89,7 @@ func TestRawAndAggregateRoundTrip(t *testing.T) {
 	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, nil, nil, provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cc.WriteAggregate(cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv/>")); err != nil {
+	if err := cc.CommitAggregate(cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv/>")); err != nil {
 		t.Fatal(err)
 	}
 	if m, err := cc.ReadAggregateM3U(); err != nil || string(m) != "#EXTM3U\n" {
@@ -231,5 +231,63 @@ func TestTraversalRejected(t *testing.T) {
 	}
 	if err := cc.CommitProvider("lg", nil, nil, nil, provider.Meta{}); err == nil {
 		t.Error("empty raw snapshot should be rejected")
+	}
+}
+
+func TestAggregatePairAtomicAndUnselectedInvisible(t *testing.T) {
+	root := t.TempDir()
+	cc := cache.New(root)
+	if err := cc.CommitAggregate(cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML")); err != nil {
+		t.Fatal(err)
+	}
+
+	orphan := filepath.Join(root, "aggregate", "generations", "interrupted")
+	if err := os.MkdirAll(orphan, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		"playlist.m3u": "NEW-M3U",
+		"epg.xml":      "NEW-XML",
+	} {
+		if err := os.WriteFile(filepath.Join(orphan, name), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m3uData, err := cc.ReadAggregateM3U()
+	if err != nil || string(m3uData) != "OLD-M3U" {
+		t.Fatalf("m3u: %q %v", m3uData, err)
+	}
+	xmlData, err := cc.ReadAggregateXMLTV()
+	if err != nil || string(xmlData) != "OLD-XML" {
+		t.Fatalf("xml: %q %v", xmlData, err)
+	}
+
+	if err := cc.CommitAggregate(cache.M3U("PAIR-M3U"), cache.XMLTV("PAIR-XML")); err != nil {
+		t.Fatal(err)
+	}
+	m3uData, _ = cc.ReadAggregateM3U()
+	xmlData, _ = cc.ReadAggregateXMLTV()
+	if string(m3uData) != "PAIR-M3U" || string(xmlData) != "PAIR-XML" {
+		t.Fatalf("committed pair: m3u=%q xml=%q", m3uData, xmlData)
+	}
+}
+
+func TestLegacyAggregateRootFallback(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "playlist.m3u"), []byte("LEGACY-M3U"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "epg.xml"), []byte("LEGACY-XML"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cc := cache.New(root)
+	m3uData, err := cc.ReadAggregateM3U()
+	if err != nil || string(m3uData) != "LEGACY-M3U" {
+		t.Fatalf("legacy m3u: %q %v", m3uData, err)
+	}
+	xmlData, err := cc.ReadAggregateXMLTV()
+	if err != nil || string(xmlData) != "LEGACY-XML" {
+		t.Fatalf("legacy xml: %q %v", xmlData, err)
 	}
 }

@@ -6,13 +6,20 @@ package aggregate
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/m3u"
+	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/xmltv"
 )
+
+// ErrEmptyAggregate is returned when a rebuild would publish zero exportable
+// channels. Callers that want to preserve last-known-good leave the on-disk
+// aggregate untouched.
+var ErrEmptyAggregate = errors.New("aggregate: no exportable channels")
 
 // Aggregator regenerates the combined artifacts on demand.
 type Aggregator struct {
@@ -36,16 +43,23 @@ func (a *Aggregator) Notify() {
 }
 
 // Rebuild regenerates playlist.m3u + epg.xml from the current feeds (namespaced
-// ids) and writes them atomically via the cache.
+// ids) and publishes them as one aggregate generation via the cache.
+// An empty rebuild leaves any existing aggregate generation untouched.
 func (a *Aggregator) Rebuild() error {
 	feeds := a.reg.Feeds()
 	msrcs := make([]m3u.Source, 0, len(feeds))
 	xsrcs := make([]xmltv.Source, 0, len(feeds))
+	exported := 0
 	for _, f := range feeds {
 		lin := f.Lineup()
 		id := f.ID()
 		msrcs = append(msrcs, m3u.Source{Provider: id, Label: f.Label(), Channels: lin.Channels})
 		xsrcs = append(xsrcs, xmltv.Source{Provider: id, Label: f.Label(), Channels: lin.Channels, Programmes: lin.Programmes})
+		exported += len(model.ForExport(lin.Channels))
+	}
+	if exported == 0 {
+		slog.Warn("aggregate rebuild skipped; no exportable channels")
+		return ErrEmptyAggregate
 	}
 
 	m3uData, err := m3u.MarshalAll(msrcs, m3u.Options{NamespaceIDs: true})
@@ -56,7 +70,7 @@ func (a *Aggregator) Rebuild() error {
 	if err != nil {
 		return err
 	}
-	return a.cache.WriteAggregate(cache.M3U(m3uData), cache.XMLTV(xmlData))
+	return a.cache.CommitAggregate(cache.M3U(m3uData), cache.XMLTV(xmlData))
 }
 
 // Run rebuilds on each coalesced signal until ctx is cancelled.
@@ -67,6 +81,9 @@ func (a *Aggregator) Run(ctx context.Context) {
 			return
 		case <-a.dirty:
 			if err := a.Rebuild(); err != nil {
+				if errors.Is(err, ErrEmptyAggregate) {
+					continue
+				}
 				slog.Warn("aggregate rebuild failed", "err", err)
 			}
 		}
