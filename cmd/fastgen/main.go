@@ -63,7 +63,7 @@ func main() {
 	}
 	refresh.Restore(reg, cc, emissionPolicy)
 	agg := aggregate.New(reg, cc)
-	if err := agg.Rebuild(); err != nil {
+	if err := agg.Rebuild(); err != nil && !errors.Is(err, aggregate.ErrEmptyAggregate) {
 		slog.Warn("initial aggregate rebuild failed", "err", err)
 	}
 	go agg.Run(ctx)

@@ -226,13 +226,19 @@ chokes on hostile CDNs. Requirements:
 ## Refresh & cache semantics (last-known-good, always)
 
 - Per-provider refresh interval (default 6h) with ±10% jitter; independent
-  goroutines; one provider failing never blocks others.
+  goroutines; one provider failing never blocks others. Every 5 minutes each
+  provider logs `next_refresh_at` / `refresh_in` (or `refresh_state=in_progress`
+  while a refresh is running).
 - A refresh is published only if it passes gates: channel count ≥ per-provider
   `min_channels`, XML re-parses, programme count > 0. Otherwise keep serving
-  the previous good snapshot and mark the provider stale in `/healthz`.
+  the previous good snapshot. Stale marking for `/healthz` is owned by J27-21;
+  `status.json` (`LastError*`, `LastAttemptAt`) is already the input.
 - Snapshots are atomic swaps of in-memory objects (RWMutex or atomic.Pointer);
   additionally persist last-good output to `/data/cache/` so a container
-  restart serves immediately even if upstreams are down at boot.
+  restart serves immediately even if upstreams are down at boot. Per-provider
+  and aggregate artifacts use immutable generations selected by an atomic
+  `current` pointer so M3U+EPG publish as a pair.
+- Structured refresh success/failure logs include counts and `duration`.
 - HTTP responses carry `ETag` and `Last-Modified` from the snapshot; honor
   `If-None-Match`/`If-Modified-Since` with 304s (Jellyfin refetches often).
 

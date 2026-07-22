@@ -20,6 +20,10 @@ import (
 
 const minInterval = time.Minute
 
+// scheduleHeartbeat is the per-provider next-refresh log interval.
+// Tests may shorten it.
+var scheduleHeartbeat = 5 * time.Minute
+
 // Refresher is the schedulable unit: one provider's full refresh cycle.
 type Refresher interface {
 	ID() model.ProviderID
@@ -63,10 +67,10 @@ func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy) {
 		}
 		pr := &providerRefresher{feed: f, cache: cc, policy: policy}
 		if err := pr.rehydrate(raw, meta); err != nil {
-			slog.Warn("cache restore failed", "id", f.ID(), "err", err)
+			slog.Warn("cache restore failed", "provider", f.ID(), "err", err)
 			continue
 		}
-		slog.Info("restored from cache", "id", f.ID(), "channels", len(f.Channels()), "fetched_at", f.FetchedAt())
+		slog.Info("restored from cache", "provider", f.ID(), "channels", len(f.Channels()), "fetched_at", f.FetchedAt())
 	}
 }
 
@@ -79,7 +83,8 @@ func (s *Service) Run(ctx context.Context) {
 
 // run schedules one Refresher: first fire is derived from the persisted
 // FetchedAt (so a restart mid-interval resumes rather than restarting), then it
-// loops every interval with +/-10% jitter.
+// loops every interval with +/-10% jitter. A local 5-minute ticker logs the
+// next upstream refresh ETA without blocking other providers.
 func run(ctx context.Context, r Refresher) {
 	interval := r.Interval()
 	if interval < minInterval {
@@ -91,19 +96,59 @@ func run(ctx context.Context, r Refresher) {
 			first = remaining
 		}
 	}
+	nextRefreshAt := time.Now().Add(first)
 	t := time.NewTimer(first)
 	defer t.Stop()
+
+	heartbeat := time.NewTicker(scheduleHeartbeat)
+	defer heartbeat.Stop()
+
+	refreshing := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case now := <-heartbeat.C:
+			logRefreshSchedule(r.ID(), now, nextRefreshAt, refreshing)
 		case <-t.C:
-			if err := r.Refresh(ctx); err != nil {
-				slog.Warn("refresh failed; keeping last-good", "id", r.ID(), "err", err)
+			refreshing = true
+			start := time.Now()
+			err := r.Refresh(ctx)
+			refreshing = false
+			if err != nil {
+				slog.Warn("refresh failed; keeping last-good",
+					"provider", r.ID(),
+					"err", err,
+					"duration", time.Since(start),
+				)
 			}
-			t.Reset(jitter(interval))
+			delay := jitter(interval)
+			nextRefreshAt = time.Now().Add(delay)
+			t.Reset(delay)
 		}
 	}
+}
+
+func logRefreshSchedule(id model.ProviderID, now, nextRefreshAt time.Time, refreshing bool) {
+	if refreshing {
+		slog.Info("refresh schedule",
+			"provider", id,
+			"now", now.UTC(),
+			"refresh_in", time.Duration(0),
+			"refresh_state", "in_progress",
+		)
+		return
+	}
+	remaining := nextRefreshAt.Sub(now)
+	if remaining < 0 {
+		remaining = 0
+	}
+	slog.Info("refresh schedule",
+		"provider", id,
+		"now", now.UTC(),
+		"next_refresh_at", nextRefreshAt.UTC(),
+		"refresh_in", remaining.Round(time.Second),
+	)
 }
 
 // jitter returns d +/-10%, floored at minInterval.
@@ -133,6 +178,7 @@ func (p *providerRefresher) FetchedAt() time.Time    { return p.feed.FetchedAt()
 // Refresh runs one full network cycle and publishes only after every stage
 // succeeds. Any failure records status and leaves the last-known-good untouched.
 func (p *providerRefresher) Refresh(ctx context.Context) error {
+	start := time.Now()
 	status := p.feed.Status()
 	status.LastAttemptAt = time.Now()
 	p.setStatus(status)
@@ -169,7 +215,7 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 	if p.notify != nil {
 		p.notify()
 	}
-	p.logPublished(lineup, len(m3uData), len(xmlData))
+	p.logPublished(lineup, len(m3uData), len(xmlData), time.Since(start))
 	return nil
 }
 
@@ -304,13 +350,14 @@ func (p *providerRefresher) fail(err error) error {
 	return err
 }
 
-func (p *providerRefresher) logPublished(lineup provider.Lineup, m3uBytes, xmlBytes int) {
+func (p *providerRefresher) logPublished(lineup provider.Lineup, m3uBytes, xmlBytes int, duration time.Duration) {
 	slog.Info("published",
 		"provider", p.feed.ID(),
 		"channels", lineup.ChannelCount,
 		"programmes", lineup.ProgrammeCount,
 		"m3u_bytes", m3uBytes,
 		"xml_bytes", xmlBytes,
+		"duration", duration,
 	)
 }
 

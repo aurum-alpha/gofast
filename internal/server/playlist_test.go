@@ -55,7 +55,7 @@ func TestAggregateHandlers(t *testing.T) {
 		t.Fatalf("want 503 before generation, got %d", rec.Code)
 	}
 
-	if err := cc.WriteAggregate(cache.M3U("#EXTM3U\nAGG\n"), cache.XMLTV("<tv/>")); err != nil {
+	if err := cc.CommitAggregate(cache.M3U("#EXTM3U\nAGG\n"), cache.XMLTV("<tv/>")); err != nil {
 		t.Fatal(err)
 	}
 	rec = httptest.NewRecorder()

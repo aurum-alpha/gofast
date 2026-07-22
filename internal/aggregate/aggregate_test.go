@@ -3,6 +3,7 @@ package aggregate_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -72,12 +73,41 @@ func TestRebuildWritesNamespacedAggregate(t *testing.T) {
 	}
 }
 
+func TestEmptyRebuildPreservesExistingAggregate(t *testing.T) {
+	cc := cache.New(t.TempDir())
+	if err := cc.CommitAggregate(cache.M3U("KEEP-M3U"), cache.XMLTV("KEEP-XML")); err != nil {
+		t.Fatal(err)
+	}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{"lg": stubReader{}},
+		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg"}},
+	)
+	agg := aggregate.New(reg, cc)
+	if err := agg.Rebuild(); !errors.Is(err, aggregate.ErrEmptyAggregate) {
+		t.Fatalf("Rebuild error = %v, want ErrEmptyAggregate", err)
+	}
+	m, err := cc.ReadAggregateM3U()
+	if err != nil || string(m) != "KEEP-M3U" {
+		t.Fatalf("aggregate m3u overwritten: %q %v", m, err)
+	}
+	x, err := cc.ReadAggregateXMLTV()
+	if err != nil || string(x) != "KEEP-XML" {
+		t.Fatalf("aggregate xml overwritten: %q %v", x, err)
+	}
+}
+
 func TestNotifyCoalesces(t *testing.T) {
 	cc := cache.New(t.TempDir())
 	reg := provider.NewRegistry(
 		map[model.ProviderID]provider.Reader{"lg": stubReader{}},
 		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg"}},
 	)
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	f, _ := reg.Feed("lg")
+	f.Set(provider.Lineup{
+		Channels:   []model.Channel{{Provider: "lg", NormalizedID: "news", Name: "News", StreamURL: "https://s"}},
+		Programmes: []model.Programme{{ChannelID: "news", Title: "Morning", Start: start, Stop: start.Add(time.Hour)}},
+	})
 	agg := aggregate.New(reg, cc)
 	// Many notifies without a running loop collapse into at most one pending.
 	for i := 0; i < 100; i++ {

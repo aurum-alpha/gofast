@@ -10,8 +10,10 @@
 //	<id>/generations/<generation>/*.m3u  per-provider playlist
 //	<id>/generations/<generation>/*.xml  per-provider guide
 //	<id>/generations/<generation>/meta.json
-//	playlist.m3u      aggregate playlist (provider-namespaced ids)
-//	epg.xml           aggregate XMLTV (provider-namespaced ids)
+//	aggregate/current                    selected aggregate generation
+//	aggregate/generations/<generation>/playlist.m3u
+//	aggregate/generations/<generation>/epg.xml
+//	Legacy root playlist.m3u / epg.xml remain readable until the next rebuild.
 package cache
 
 import (
@@ -37,8 +39,9 @@ const (
 	fileCurrent    = "current"
 	dirGenerations = "generations"
 
-	aggM3U = "playlist.m3u"
-	aggXML = "epg.xml"
+	dirAggregate = "aggregate"
+	aggM3U       = "playlist.m3u"
+	aggXML       = "epg.xml"
 )
 
 // M3U is a rendered playlist document.
@@ -162,23 +165,67 @@ func (c *Cache) ReadXMLTV(id model.ProviderID) (XMLTV, error) {
 	return XMLTV(b), err
 }
 
-// WriteAggregate atomically writes the combined playlist + guide.
-func (c *Cache) WriteAggregate(m3u M3U, xml XMLTV) error {
-	if err := atomicWrite(filepath.Join(c.root, aggM3U), m3u); err != nil {
+// CommitAggregate publishes playlist and guide as one immutable generation.
+// Replacing aggregate/current is the sole commit point for the pair.
+func (c *Cache) CommitAggregate(m3u M3U, xml XMLTV) error {
+	aggregateDir := filepath.Join(c.root, dirAggregate)
+	generationsDir := filepath.Join(aggregateDir, dirGenerations)
+	if err := os.MkdirAll(generationsDir, 0o755); err != nil {
+		return fmt.Errorf("cache: mkdir aggregate generations: %w", err)
+	}
+	stage, err := os.MkdirTemp(generationsDir, ".staging-")
+	if err != nil {
+		return fmt.Errorf("cache: staging aggregate generation: %w", err)
+	}
+	defer os.RemoveAll(stage)
+
+	files := []struct {
+		name string
+		data []byte
+	}{
+		{aggM3U, m3u},
+		{aggXML, xml},
+	}
+	for _, file := range files {
+		if err := writeSynced(filepath.Join(stage, file.name), file.data); err != nil {
+			return err
+		}
+	}
+	if err := syncDir(stage); err != nil {
 		return err
 	}
-	return atomicWrite(filepath.Join(c.root, aggXML), xml)
+	name := strings.TrimPrefix(filepath.Base(stage), ".staging-")
+	generationDir := filepath.Join(generationsDir, name)
+	if err := os.Rename(stage, generationDir); err != nil {
+		return fmt.Errorf("cache: publish aggregate generation: %w", err)
+	}
+	if err := syncDir(generationsDir); err != nil {
+		return err
+	}
+	if err := atomicWrite(filepath.Join(aggregateDir, fileCurrent), []byte(name+"\n")); err != nil {
+		return err
+	}
+	c.cleanupGenerations(generationsDir, name)
+	return nil
 }
 
 // ReadAggregateM3U returns the combined playlist (fs.ErrNotExist if not generated).
 func (c *Cache) ReadAggregateM3U() (M3U, error) {
-	b, err := os.ReadFile(filepath.Join(c.root, aggM3U))
+	dir, err := c.selectedAggregateDir()
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(filepath.Join(dir, aggM3U))
 	return M3U(b), err
 }
 
 // ReadAggregateXMLTV returns the combined guide (fs.ErrNotExist if not generated).
 func (c *Cache) ReadAggregateXMLTV() (XMLTV, error) {
-	b, err := os.ReadFile(filepath.Join(c.root, aggXML))
+	dir, err := c.selectedAggregateDir()
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(filepath.Join(dir, aggXML))
 	return XMLTV(b), err
 }
 
@@ -284,6 +331,34 @@ func (c *Cache) selectedDir(id model.ProviderID) (string, bool, error) {
 		return "", false, fs.ErrNotExist
 	}
 	return selected, false, nil
+}
+
+// selectedAggregateDir resolves aggregate/current, falling back to the legacy
+// root-level playlist.m3u / epg.xml pair when no pointer exists.
+func (c *Cache) selectedAggregateDir() (string, error) {
+	aggregateDir := filepath.Join(c.root, dirAggregate)
+	b, err := os.ReadFile(filepath.Join(aggregateDir, fileCurrent))
+	if errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Stat(filepath.Join(c.root, aggM3U)); err != nil {
+			return "", err
+		}
+		if _, err := os.Stat(filepath.Join(c.root, aggXML)); err != nil {
+			return "", err
+		}
+		return c.root, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	name := strings.TrimSpace(string(b))
+	if name == "" || name != filepath.Base(name) || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
+		return "", fs.ErrNotExist
+	}
+	selected := filepath.Join(aggregateDir, dirGenerations, name)
+	if info, err := os.Stat(selected); err != nil || !info.IsDir() {
+		return "", fs.ErrNotExist
+	}
+	return selected, nil
 }
 
 func (c *Cache) cleanupGenerations(dir, current string) {
