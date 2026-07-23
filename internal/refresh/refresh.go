@@ -5,6 +5,7 @@ package refresh
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -48,23 +49,28 @@ type Service struct {
 // successful publish (wire it to the aggregator); refresh never imports aggregate.
 // logos may be nil when cache_logos is disabled — logo rewrite runs in the
 // background after each publish (see rewriteLogosAndRepublish).
-// attrs may be nil; when set, current channel health is Annotate'd before Feed.Set.
+// attrs may be nil; when set, current channel attrs are Annotate'd before Feed.Set.
+// attrBus may be nil; when set with attrs, classification changes are Emitted after classify.
 // st may be nil; when set, background logo work updates GET /api/status.
-func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, attrs *channelattr.Store, notify func(), st *Status) *Service {
+func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, attrs *channelattr.Store, attrBus channelattr.Bus, notify func(), st *Status) *Service {
 	var rs []Refresher
 	for _, f := range reg.Feeds() {
-		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, policy: policy, logos: logos, attrs: attrs, notify: notify, status: st})
+		rs = append(rs, &providerRefresher{
+			feed: f, clf: clf, cache: cc, policy: policy, logos: logos,
+			attrs: attrs, attrBus: attrBus, notify: notify, status: st,
+		})
 	}
 	return &Service{refreshers: rs}
 }
 
 // Restore rebuilds each feed from its cached raw upstream snapshot — re-parsed
-// through the same pipeline as a network fetch (no network) — and overlays the
-// persisted classifications from meta.json. So the API and serving work at boot
-// exactly as after a fetch. Providers with no cached raw are left empty (they
-// fetch on boot); unreadable/unparseable entries are skipped.
+// through the same pipeline as a network fetch (no network). Classifications
+// come from the channel-attr store (Annotate); legacy meta.json maps are seeded
+// into the store once when Current is missing. Providers with no cached raw are
+// left empty (they fetch on boot); unreadable/unparseable entries are skipped.
 //
-// attrs may be nil; when set, current health is painted onto channels before Set.
+// Call Restore before starting channelattr.Receive so meta seed Handle calls
+// do not race the AttrReceiver writer.
 // Logo HTTP is not run here — call WarmLogos in the background after listen so
 // /healthz and the UI come up immediately.
 func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, attrs *channelattr.Store) {
@@ -212,14 +218,15 @@ func jitter(d time.Duration) time.Duration {
 // providerRefresher composes a feed with the shared pipeline (classify, gate,
 // emit, persist, notify). It never lives in the adapter packages.
 type providerRefresher struct {
-	feed   *provider.Feed
-	clf    *classifier.Client
-	cache  *cache.Cache
-	policy EmissionPolicy
-	logos  *logocache.Cache
-	attrs  *channelattr.Store
-	notify func()
-	status *Status
+	feed    *provider.Feed
+	clf     *classifier.Client
+	cache   *cache.Cache
+	policy  EmissionPolicy
+	logos   *logocache.Cache
+	attrs   *channelattr.Store
+	attrBus channelattr.Bus
+	notify  func()
+	status  *Status
 }
 
 func (p *providerRefresher) ID() model.ProviderID    { return p.feed.ID() }
@@ -271,6 +278,7 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 		slog.Info("classifying channels", "provider", p.feed.ID(), "count", len(chs))
 		chs = p.clf.ClassifyChannels(ctx, chs)
 	}
+	p.emitClassifications(ctx, chs)
 	lineup, m3uData, xmlData, err := p.prepare(ctx, chs, progs, assignments, time.Now())
 	if err != nil {
 		return p.fail(err, time.Since(start))
@@ -296,7 +304,7 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 }
 
 // rehydrate rebuilds the feed from a cached raw snapshot (no network): parse ->
-// transform -> apply persisted classifications -> commit (fetch time from meta).
+// transform -> seed legacy meta classifications into attrs -> commit.
 func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) error {
 	chs, progs, err := p.feed.Reader().Parse(raw)
 	if err != nil {
@@ -306,11 +314,7 @@ func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) erro
 	if err != nil {
 		return err
 	}
-	for i := range chs {
-		if c, ok := meta.Classifications[chs[i].NormalizedID]; ok {
-			chs[i].Classification = c
-		}
-	}
+	p.seedClassificationsFromMeta(meta)
 	lineup, m3uData, xmlData, err := p.prepare(context.Background(), chs, progs, assignments, meta.FetchedAt)
 	if err != nil {
 		return err
@@ -328,6 +332,79 @@ func (p *providerRefresher) setLineup(lineup provider.Lineup) {
 		lineup.Channels = p.attrs.Annotate(p.feed.ID(), lineup.Channels)
 	}
 	p.feed.Set(lineup)
+}
+
+// emitClassifications sends KindClassification for channels whose class changed
+// (or was never stored). No-op without a bus.
+func (p *providerRefresher) emitClassifications(ctx context.Context, chs []model.Channel) {
+	if p.attrBus == nil {
+		return
+	}
+	at := time.Now().UTC()
+	for _, ch := range chs {
+		if ch.Classification == "" || ch.NormalizedID == "" {
+			continue
+		}
+		if p.attrs != nil {
+			if raw, ok := p.attrs.Current(p.feed.ID(), ch.NormalizedID, channelattr.KindClassification); ok {
+				var prev model.Classification
+				if err := json.Unmarshal(raw, &prev); err == nil && prev == ch.Classification {
+					continue
+				}
+			}
+		}
+		value, err := json.Marshal(ch.Classification)
+		if err != nil {
+			slog.Warn("classification emit marshal", "provider", p.feed.ID(), "channel", ch.NormalizedID, "err", err)
+			continue
+		}
+		if err := channelattr.Emit(ctx, p.attrBus, channelattr.Event{
+			Provider:  p.feed.ID(),
+			ChannelID: ch.NormalizedID,
+			Kind:      channelattr.KindClassification,
+			Value:     value,
+			At:        at,
+			Source:    "classifier",
+		}); err != nil {
+			slog.Warn("classification emit", "provider", p.feed.ID(), "channel", ch.NormalizedID, "err", err)
+		}
+	}
+}
+
+// seedClassificationsFromMeta copies legacy meta.json classifications into the
+// attr store when Current is missing (upgrade path). Safe only when Receive is
+// not yet running (sole writer).
+func (p *providerRefresher) seedClassificationsFromMeta(meta provider.Meta) {
+	if p.attrs == nil || len(meta.Classifications) == 0 {
+		return
+	}
+	at := meta.FetchedAt
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	ctx := context.Background()
+	for channelID, class := range meta.Classifications {
+		if class == "" || channelID == "" {
+			continue
+		}
+		if _, ok := p.attrs.Current(p.feed.ID(), channelID, channelattr.KindClassification); ok {
+			continue
+		}
+		value, err := json.Marshal(class)
+		if err != nil {
+			continue
+		}
+		if err := p.attrs.Handle(ctx, channelattr.Event{
+			Provider:  p.feed.ID(),
+			ChannelID: channelID,
+			Kind:      channelattr.KindClassification,
+			Value:     value,
+			At:        at,
+			Source:    "meta_seed",
+		}); err != nil {
+			slog.Warn("classification meta seed", "provider", p.feed.ID(), "channel", channelID, "err", err)
+		}
+	}
 }
 
 // transform is the shared decode-time pipeline (identical for the network and

@@ -36,7 +36,7 @@ Implement **one Linear issue at a time**. Do not invent parallel workstreams fro
 Workflow for agents:
 
 1. Implement on a branch; leave changes **uncommitted** or **committed locally only** until the human confirms — ask if unclear.
-2. Post a short handoff: what changed, exact commands to run, expected results.
+2. Post a short handoff: what changed, **exact commands to run**, and **what to look for** (expected logs, files, API fields, UI). Always include this verification block at the end of an implementation turn — do not wait to be asked.
 3. Wait for explicit human sign-off (e.g. “looks good”, “merge it”, “commit and push”).
 4. Only after sign-off: commit (if needed), push, open/update PR, merge if requested, set Linear to **Done**.
 

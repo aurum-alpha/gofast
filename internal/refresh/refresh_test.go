@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/cache"
+	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/httpx"
 	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/model"
@@ -423,7 +425,13 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
 	)
 
-	Restore(reg, cc, EmissionPolicy{}, nil)
+	attrs, err := channelattr.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = attrs.Close() })
+
+	Restore(reg, cc, EmissionPolicy{}, attrs)
 
 	f, _ := reg.Feed(model.ProviderLG)
 	if len(f.Channels()) == 0 {
@@ -435,7 +443,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 	if restored := f.Status(); restored.LastError != status.LastError || !restored.LastAttemptAt.Equal(status.LastAttemptAt) {
 		t.Fatalf("status not restored: %+v", restored)
 	}
-	// Persisted classification was applied (not recomputed).
+	// Legacy meta classification was seeded into attrs and Annotate'd.
 	var found bool
 	for _, ch := range f.Channels() {
 		if ch.NormalizedID == "ch-news" {
@@ -447,6 +455,14 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected ch-news in rehydrated lineup")
+	}
+	raw, ok := attrs.Current(model.ProviderLG, "ch-news", channelattr.KindClassification)
+	if !ok {
+		t.Fatal("expected seeded classification in attr store")
+	}
+	var got model.Classification
+	if err := json.Unmarshal(raw, &got); err != nil || got != model.ClassBeacon {
+		t.Fatalf("attr current: %s err=%v", raw, err)
 	}
 }
 

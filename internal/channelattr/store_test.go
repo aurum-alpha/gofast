@@ -141,6 +141,32 @@ func TestAnnotatePaintsHealth(t *testing.T) {
 	}
 }
 
+func TestAnnotatePaintsClassificationWhenEmpty(t *testing.T) {
+	store := openTestStore(t)
+	v, _ := json.Marshal(model.ClassBeacon)
+	if err := store.Handle(context.Background(), Event{
+		Provider:  model.ProviderLG,
+		ChannelID: "ch-1",
+		Kind:      KindClassification,
+		Value:     v,
+		At:        time.Now().UTC(),
+		Source:    "classifier",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	out := store.Annotate(model.ProviderLG, []model.Channel{
+		{NormalizedID: "ch-1", Name: "One"},
+		{NormalizedID: "ch-2", Name: "Two", Classification: model.ClassNative},
+	})
+	if out[0].Classification != model.ClassBeacon {
+		t.Fatalf("ch-1 class: %q", out[0].Classification)
+	}
+	if out[1].Classification != model.ClassNative {
+		t.Fatalf("ch-2 should keep in-memory class: %q", out[1].Classification)
+	}
+}
+
 func TestEmitReceiveRoundTrip(t *testing.T) {
 	store := openTestStore(t)
 	bus := NewBus(8)
