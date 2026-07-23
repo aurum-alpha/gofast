@@ -26,6 +26,10 @@ func clearDeployEnv(t *testing.T) {
 	t.Setenv("FASTGEN_PROXY_ALL", "")
 	t.Setenv("FASTGEN_CACHE_LOGOS", "")
 	t.Setenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES", "")
+	t.Setenv("FASTGEN_HEALTH_EXCLUDE_UNHEALTHY", "")
+	t.Setenv("FASTGEN_HEALTH_L2_INTERVAL", "")
+	t.Setenv("FASTGEN_HEALTH_L3_ENABLED", "")
+	t.Setenv("FASTGEN_HEALTH_FFPROBE_PATH", "")
 }
 
 func writeConfig(t *testing.T, body string) string {

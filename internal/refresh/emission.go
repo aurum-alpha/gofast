@@ -9,12 +9,14 @@ import (
 
 // EmissionPolicy selects direct upstream versus stable FASTProxy playback URLs.
 type EmissionPolicy struct {
-	ProxyBaseURL string
-	ProxyAll     bool
+	ProxyBaseURL     string
+	ProxyAll         bool
+	ExcludeUnhealthy bool
 }
 
 type emissionStats struct {
 	NeedsProxyDropped int
+	UnhealthyDropped  int
 }
 
 func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]model.Channel, emissionStats) {
@@ -32,6 +34,14 @@ func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]mod
 			if channel.FilterReason == "" {
 				channel.FilterReason = model.FilterReasonDRM
 			}
+			continue
+		}
+		if policy.ExcludeUnhealthy && channel.Health.StatusOrUntested() == model.HealthDown {
+			channel.Excluded = true
+			if channel.FilterReason == "" {
+				channel.FilterReason = model.FilterReasonUnhealthy
+			}
+			stats.UnhealthyDropped++
 			continue
 		}
 		requiresProxy := policy.ProxyAll || channel.Classification == model.ClassBeacon

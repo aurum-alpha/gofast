@@ -446,12 +446,21 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, progs []model.Programme, assignments provider.ChannelNumberAssignments, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
 	id := p.feed.ID()
 	s := p.feed.Settings()
+	if p.attrs != nil {
+		chs = p.attrs.Annotate(id, chs)
+	}
 	var emission emissionStats
 	chs, emission = applyEmissionPolicy(chs, p.policy)
 	if emission.NeedsProxyDropped > 0 {
 		slog.Warn("channels need FASTProxy; dropping from export",
 			"provider", id,
 			"count", emission.NeedsProxyDropped,
+		)
+	}
+	if emission.UnhealthyDropped > 0 {
+		slog.Info("channels excluded as unhealthy",
+			"provider", id,
+			"count", emission.UnhealthyDropped,
 		)
 	}
 

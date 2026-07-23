@@ -13,6 +13,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/config"
+	"github.com/j27-aurum/gofast/internal/health"
 	"github.com/j27-aurum/gofast/internal/httpx"
 	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/model"
@@ -88,14 +89,38 @@ func main() {
 	// Warm feeds from disk (may seed legacy meta classifications into attrs),
 	// regenerate the aggregate, then start AttrReceiver + refresh.
 	emissionPolicy := refresh.EmissionPolicy{
-		ProxyBaseURL: cfg.ProxyBaseURL,
-		ProxyAll:     cfg.ProxyAllEnabled(),
+		ProxyBaseURL:     cfg.ProxyBaseURL,
+		ProxyAll:         cfg.ProxyAllEnabled(),
+		ExcludeUnhealthy: cfg.HealthExcludeUnhealthy(),
 	}
 	bootStatus := &refresh.Status{}
 	refresh.Restore(reg, cc, emissionPolicy, attrs)
 
 	attrBus := channelattr.NewBus(256)
 	go channelattr.Receive(ctx, attrBus, attrs)
+
+	healthEmitter := &health.Emitter{
+		Bus:                 attrBus,
+		Store:               attrs,
+		ConsecutiveFailures: cfg.HealthConsecutiveFailures(),
+	}
+	probeClient := httpx.NewClient(cfg.Timeouts.HTTPClient, 1)
+	sched := &health.Scheduler{
+		Reg:       reg,
+		Emitter:   healthEmitter,
+		Segment:   &health.SegmentProber{HTTP: probeClient},
+		FFProbe:   &health.FFProbe{Path: cfg.HealthFFProbePath(), Timeout: cfg.HealthL3Timeout()},
+		L2Every:   cfg.HealthL2Interval(),
+		L3Every:   cfg.HealthL3Interval(),
+		L3On:      cfg.HealthL3Enabled(),
+		L3Workers: cfg.HealthL3Workers(),
+	}
+	go sched.Run(ctx)
+	if cfg.HealthL3Enabled() {
+		if err := health.EnsureFFProbe(cfg.HealthFFProbePath()); err != nil {
+			slog.Warn("ffprobe unavailable; L3 probes will fail until fixed", "path", cfg.HealthFFProbePath(), "err", err)
+		}
+	}
 
 	agg := aggregate.New(reg, cc)
 	if err := agg.Rebuild(); err != nil && !errors.Is(err, aggregate.ErrEmptyAggregate) {

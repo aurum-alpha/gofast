@@ -4,7 +4,8 @@
 # Deploy-varying values prefer env (see AGENTS.md / 12factor):
 #   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG,
 #   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL, FASTGEN_CACHE_LOGOS,
-#   FASTGEN_HEALTH_CONSECUTIVE_FAILURES
+#   FASTGEN_HEALTH_CONSECUTIVE_FAILURES, FASTGEN_HEALTH_EXCLUDE_UNHEALTHY,
+#   FASTGEN_HEALTH_L2_INTERVAL, FASTGEN_HEALTH_L3_ENABLED, FASTGEN_HEALTH_FFPROBE_PATH
 # Env always wins over this file for overlapping keys.
 #
 # base_url: public origin Jellyfin/browsers use for logos and absolute links.
@@ -48,11 +49,20 @@ timeouts:
 logging:
   level: info
 
-# Channel health FSM (attr store is separate — see internal/channelattr).
-# N consecutive probe/playback failures → status "down". Prefer
-# FASTGEN_HEALTH_CONSECUTIVE_FAILURES in Portainer/stack.env for the deploy.
+# Channel health FSM + probes (attr store is separate — see internal/channelattr).
+# Prefer FASTGEN_HEALTH_* env vars in Portainer/stack.env for the deploy.
 health:
   consecutive_failures: 3
+  # When true, HealthDown channels are pruned from M3U/XMLTV (causes Jellyfin lineup churn).
+  exclude_unhealthy: false
+  # L2: daily NATIVE-only ranged segment GET (never scheduled on BEACON).
+  l2_interval: 1m
+  # L3: ffprobe — OFF by default (bot-fingerprint / ad-impression tradeoff).
+  l3_enabled: false
+  l3_interval: 60m
+  l3_workers: 2
+  l3_timeout: 30s
+  ffprobe_path: /usr/bin/ffprobe
 
 # Provider implementations are code (compiled into the binary). This block only
 # customizes the settings of a known provider — offsets, exclusions, enabled,
