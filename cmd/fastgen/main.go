@@ -10,6 +10,7 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/aggregate"
 	"github.com/j27-aurum/gofast/internal/cache"
+	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/httpx"
@@ -43,6 +44,19 @@ func main() {
 
 	client := httpx.NewClient(cfg.Timeouts.HTTPClient, 0)
 	cc := cache.New(filepath.Join(cfg.DataDir, "cache"))
+
+	attrs, err := channelattr.Open(cfg.DataDir)
+	if err != nil {
+		slog.Error("channelattr open", "err", err)
+		os.Exit(1)
+	}
+	defer attrs.Close()
+	if err := attrs.LoadCurrent(); err != nil {
+		slog.Error("channelattr load current", "err", err)
+		os.Exit(1)
+	}
+	attrBus := channelattr.NewBus(256)
+	go channelattr.Receive(ctx, attrBus, attrs)
 
 	var logos *logocache.Cache
 	if cfg.CacheLogosEnabled() {
@@ -80,7 +94,7 @@ func main() {
 		ProxyAll:     cfg.ProxyAllEnabled(),
 	}
 	bootStatus := &refresh.Status{}
-	refresh.Restore(reg, cc, emissionPolicy)
+	refresh.Restore(reg, cc, emissionPolicy, attrs)
 	agg := aggregate.New(reg, cc)
 	if err := agg.Rebuild(); err != nil && !errors.Is(err, aggregate.ErrEmptyAggregate) {
 		slog.Warn("initial aggregate rebuild failed", "err", err)
@@ -88,7 +102,7 @@ func main() {
 	go agg.Run(ctx)
 
 	clf := classifier.New(client, 0)
-	svc := refresh.New(reg, clf, cc, emissionPolicy, logos, agg.Notify, bootStatus)
+	svc := refresh.New(reg, clf, cc, emissionPolicy, logos, attrs, agg.Notify, bootStatus)
 	go svc.Run(ctx)
 	go refresh.WarmLogos(ctx, reg, cc, emissionPolicy, logos, agg.Notify, bootStatus)
 

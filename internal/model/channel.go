@@ -41,6 +41,9 @@ type Channel struct {
 
 	Classification Classification `json:"classification,omitempty"`
 	LicenseURL     string         `json:"license_url,omitempty"`
+	// Health is the current playability stamp (from channel-attr store Annotate).
+	// Zero / empty status means untested.
+	Health ChannelHealth `json:"health"`
 	// FilterReason is set when the channel is dropped from export (exclusion, DRM, etc.).
 	FilterReason string `json:"filter_reason,omitempty"`
 	Excluded     bool   `json:"excluded"`

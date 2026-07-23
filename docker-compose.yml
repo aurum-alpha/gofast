@@ -17,8 +17,9 @@ services:
     ports:
       - "8180:8180"
     volumes:
-      # Local bind mount so generated artifacts (LKG + logos) are viewable in the repo.
+      # Local bind mounts so generated artifacts are viewable in the repo.
       - ./.cache:/data/cache
+      - ./.channelattr:/data/channelattr
       # Seed providers for local smoke; override by replacing the file on the volume.
       - ./config.example.yaml:/data/config.yaml:ro
     environment:

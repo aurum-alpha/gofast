@@ -25,6 +25,7 @@ func clearDeployEnv(t *testing.T) {
 	t.Setenv("FASTGEN_PROXY_BASE_URL", "")
 	t.Setenv("FASTGEN_PROXY_ALL", "")
 	t.Setenv("FASTGEN_CACHE_LOGOS", "")
+	t.Setenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES", "")
 }
 
 func writeConfig(t *testing.T, body string) string {
@@ -58,6 +59,9 @@ func TestDefaults(t *testing.T) {
 	}
 	if cfg.CacheLogosEnabled() {
 		t.Fatal("cache_logos should default false")
+	}
+	if cfg.HealthConsecutiveFailures() != 3 {
+		t.Fatalf("health consecutive_failures default: got %d", cfg.HealthConsecutiveFailures())
 	}
 }
 
@@ -212,6 +216,40 @@ func TestCacheLogosEnv(t *testing.T) {
 	}
 	if !cfg.CacheLogosEnabled() || cfg.BaseURL != "http://from-env:8180" {
 		t.Fatalf("got enabled=%v base=%q", cfg.CacheLogosEnabled(), cfg.BaseURL)
+	}
+}
+
+func TestHealthConsecutiveFailuresYAML(t *testing.T) {
+	clearDeployEnv(t)
+	cfg, err := New(writeConfig(t, `
+health:
+  consecutive_failures: 5
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HealthConsecutiveFailures() != 5 {
+		t.Fatalf("got %d", cfg.HealthConsecutiveFailures())
+	}
+}
+
+func TestHealthConsecutiveFailuresEnv(t *testing.T) {
+	clearDeployEnv(t)
+	t.Setenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES", "2")
+	cfg, err := New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HealthConsecutiveFailures() != 2 {
+		t.Fatalf("got %d", cfg.HealthConsecutiveFailures())
+	}
+}
+
+func TestHealthConsecutiveFailuresEnvInvalid(t *testing.T) {
+	clearDeployEnv(t)
+	t.Setenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES", "0")
+	if _, err := New(""); err == nil {
+		t.Fatal("expected error for N < 1")
 	}
 }
 
