@@ -3,7 +3,8 @@
 #
 # Deploy-varying values prefer env (see AGENTS.md / 12factor):
 #   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG,
-#   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL, FASTGEN_CACHE_LOGOS
+#   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL, FASTGEN_CACHE_LOGOS,
+#   FASTGEN_HEALTH_CONSECUTIVE_FAILURES
 # Env always wins over this file for overlapping keys.
 #
 # base_url: public origin Jellyfin/browsers use for logos and absolute links.
@@ -46,6 +47,12 @@ timeouts:
 
 logging:
   level: info
+
+# Channel health FSM (attr store is separate — see internal/channelattr).
+# N consecutive probe/playback failures → status "down". Prefer
+# FASTGEN_HEALTH_CONSECUTIVE_FAILURES in Portainer/stack.env for the deploy.
+health:
+  consecutive_failures: 3
 
 # Provider implementations are code (compiled into the binary). This block only
 # customizes the settings of a known provider — offsets, exclusions, enabled,

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/cache"
+	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/m3u"
@@ -47,11 +48,12 @@ type Service struct {
 // successful publish (wire it to the aggregator); refresh never imports aggregate.
 // logos may be nil when cache_logos is disabled — logo rewrite runs in the
 // background after each publish (see rewriteLogosAndRepublish).
+// attrs may be nil; when set, current channel health is Annotate'd before Feed.Set.
 // st may be nil; when set, background logo work updates GET /api/status.
-func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, notify func(), st *Status) *Service {
+func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, attrs *channelattr.Store, notify func(), st *Status) *Service {
 	var rs []Refresher
 	for _, f := range reg.Feeds() {
-		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, policy: policy, logos: logos, notify: notify, status: st})
+		rs = append(rs, &providerRefresher{feed: f, clf: clf, cache: cc, policy: policy, logos: logos, attrs: attrs, notify: notify, status: st})
 	}
 	return &Service{refreshers: rs}
 }
@@ -62,9 +64,10 @@ func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy
 // exactly as after a fetch. Providers with no cached raw are left empty (they
 // fetch on boot); unreadable/unparseable entries are skipped.
 //
+// attrs may be nil; when set, current health is painted onto channels before Set.
 // Logo HTTP is not run here — call WarmLogos in the background after listen so
 // /healthz and the UI come up immediately.
-func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy) {
+func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, attrs *channelattr.Store) {
 	for _, f := range reg.Feeds() {
 		raw, meta, _, err := cc.LoadProvider(f.ID())
 		if err != nil {
@@ -77,7 +80,7 @@ func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy) {
 			}
 			f.SetStatus(status)
 		}
-		pr := &providerRefresher{feed: f, cache: cc, policy: policy}
+		pr := &providerRefresher{feed: f, cache: cc, policy: policy, attrs: attrs}
 		if err := pr.rehydrate(raw, meta); err != nil {
 			slog.Warn("cache restore failed", "provider", f.ID(), "err", err)
 			continue
@@ -214,6 +217,7 @@ type providerRefresher struct {
 	cache  *cache.Cache
 	policy EmissionPolicy
 	logos  *logocache.Cache
+	attrs  *channelattr.Store
 	notify func()
 	status *Status
 }
@@ -274,7 +278,7 @@ func (p *providerRefresher) Refresh(ctx context.Context) error {
 	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
 		return p.fail(err, time.Since(start))
 	}
-	p.feed.Set(lineup)
+	p.setLineup(lineup)
 	status = p.feed.Status()
 	status.LastError = ""
 	status.LastErrorAt = time.Time{}
@@ -314,8 +318,16 @@ func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) erro
 	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
 		return err
 	}
-	p.feed.Set(lineup)
+	p.setLineup(lineup)
 	return nil
+}
+
+// setLineup paints current channel attrs onto the lineup then publishes to the feed.
+func (p *providerRefresher) setLineup(lineup provider.Lineup) {
+	if p.attrs != nil {
+		lineup.Channels = p.attrs.Annotate(p.feed.ID(), lineup.Channels)
+	}
+	p.feed.Set(lineup)
 }
 
 // transform is the shared decode-time pipeline (identical for the network and

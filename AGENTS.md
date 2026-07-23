@@ -68,6 +68,12 @@ Honor Linear **project milestones** M0 → M5. Do not start issues in milestone 
 - **fastproxy** is an optional add-on (separate binary and Docker image).
 - Prefer extending shared `internal/` packages over duplicating logic.
 
+## Persistence design
+
+- Prefer **one persistence pattern per data shape**. Channel labels that change over time (classification, health, …) use a shared **current + history** store keyed by provider and channel — not a new ad-hoc file or generation field per feature.
+- Cache **generations** are for atomic **emit** of playlist/guide/raw, not the system of record for those labels.
+- When a new feature shows an older store was the wrong pattern, **refactor into the shared pattern** rather than bolting on a parallel layer to keep a Linear ticket artificially small.
+
 ## Idiomatic Go
 
 Write Go the way Go is written — not enterprise-layer theater.

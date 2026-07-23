@@ -115,7 +115,7 @@ func (p *providerRefresher) rewriteLogosAndRepublish(ctx context.Context, onEach
 	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(prepared)); err != nil {
 		return targets, err
 	}
-	p.feed.Set(prepared)
+	p.setLineup(prepared)
 	if p.notify != nil {
 		p.notify()
 	}

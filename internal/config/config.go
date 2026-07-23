@@ -38,7 +38,14 @@ type Config struct {
 	ArtworkTLS   map[string]ArtworkTLS                       `yaml:"artwork_tls"`
 	Timeouts     Timeouts                                    `yaml:"timeouts"`
 	Logging      Logging                                     `yaml:"logging"`
+	Health       Health                                      `yaml:"health"`
 	Providers    map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
+}
+
+// Health holds channel-health FSM knobs (attr store is separate).
+type Health struct {
+	// ConsecutiveFailures is N for DOWN (default 3). Zero in YAML means unset.
+	ConsecutiveFailures int `yaml:"consecutive_failures"`
 }
 
 // ArtworkTLS is a per-host TLS exception for logo downloads only.
@@ -99,6 +106,9 @@ func New(path string) (*Config, error) {
 	if err := cfg.validateArtworkTLS(); err != nil {
 		return nil, err
 	}
+	if cfg.Health.ConsecutiveFailures < 0 {
+		return nil, fmt.Errorf("config: health.consecutive_failures must be >= 0")
+	}
 
 	providers, err := compileProviders(cfg.Providers)
 	if err != nil {
@@ -122,6 +132,9 @@ func defaults() *Config {
 		},
 		Logging: Logging{
 			Level: "info",
+		},
+		Health: Health{
+			ConsecutiveFailures: 3,
 		},
 	}
 }
@@ -155,6 +168,16 @@ func envOverlay() (*Config, error) {
 		}
 		o.CacheLogos = &parsed
 	}
+	if v := os.Getenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_CONSECUTIVE_FAILURES: %w", err)
+		}
+		if n < 1 {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_CONSECUTIVE_FAILURES must be >= 1")
+		}
+		o.Health.ConsecutiveFailures = n
+	}
 	return o, nil
 }
 
@@ -174,6 +197,7 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"proxy_all", c.ProxyAllEnabled(),
 		"cache_logos", c.CacheLogosEnabled(),
 		"data_dir", c.DataDir,
+		"health_consecutive_failures", c.HealthConsecutiveFailures(),
 		"provider_overlays", len(c.Providers),
 	)
 }
@@ -213,6 +237,9 @@ func (c *Config) merge(o *Config) {
 	if o.Logging.Level != "" {
 		c.Logging.Level = o.Logging.Level
 	}
+	if o.Health.ConsecutiveFailures != 0 {
+		c.Health.ConsecutiveFailures = o.Health.ConsecutiveFailures
+	}
 	if o.Providers != nil {
 		c.Providers = maps.Clone(o.Providers)
 	}
@@ -226,6 +253,14 @@ func (c *Config) ProxyAllEnabled() bool {
 // CacheLogosEnabled reports whether channel logos should be downloaded and rewritten.
 func (c *Config) CacheLogosEnabled() bool {
 	return c != nil && c.CacheLogos != nil && *c.CacheLogos
+}
+
+// HealthConsecutiveFailures returns N for channel health DOWN (default 3, min 1).
+func (c *Config) HealthConsecutiveFailures() int {
+	if c == nil || c.Health.ConsecutiveFailures < 1 {
+		return 3
+	}
+	return c.Health.ConsecutiveFailures
 }
 
 func normalizeArtworkTLSKeys(in map[string]ArtworkTLS) map[string]ArtworkTLS {

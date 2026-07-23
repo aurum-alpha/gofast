@@ -159,7 +159,7 @@ func TestSyntheticNumberPersistsAcrossRefreshAndRestore(t *testing.T) {
 	}
 
 	restored := newRegistry()
-	Restore(restored, cc, EmissionPolicy{})
+	Restore(restored, cc, EmissionPolicy{}, nil)
 	restoredFeed, _ := restored.Feed(model.ProviderXumo)
 	if got := restoredFeed.Channels()[0].OffsetNumber; got != 5000 {
 		t.Fatalf("restored number = %d, want 5000", got)
@@ -261,7 +261,7 @@ func TestPublishedProviderRefreshAndRestore(t *testing.T) {
 		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: restoredReader},
 		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
 	)
-	Restore(restoredRegistry, cc, EmissionPolicy{})
+	Restore(restoredRegistry, cc, EmissionPolicy{}, nil)
 	restoredFeed, _ := restoredRegistry.Feed(model.ProviderDistroTV)
 	if channels := restoredFeed.Channels(); len(channels) != 2 || channels[0].NormalizedID != "dtv_EPGACE_TV" {
 		t.Fatalf("restored channels: %+v", channels)
@@ -423,7 +423,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
 	)
 
-	Restore(reg, cc, EmissionPolicy{})
+	Restore(reg, cc, EmissionPolicy{}, nil)
 
 	f, _ := reg.Feed(model.ProviderLG)
 	if len(f.Channels()) == 0 {
@@ -857,7 +857,7 @@ func TestWarmLogosUpdatesStatus(t *testing.T) {
 	if err := pr.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	Restore(reg, cc, EmissionPolicy{})
+	Restore(reg, cc, EmissionPolicy{}, nil)
 	if hits.Load() != 0 {
 		t.Fatalf("restore must not download logos, hits=%d", hits.Load())
 	}
