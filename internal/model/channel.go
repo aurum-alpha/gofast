@@ -10,6 +10,7 @@ import (
 const (
 	FilterReasonDRM            = "DRM"
 	FilterReasonNeedsFASTProxy = "needs FASTProxy (proxy_base_url not configured)"
+	FilterReasonUnhealthy      = "unhealthy (exclude_unhealthy)"
 )
 
 // Channel is a lineup entry after provider fetch (+ optional classify).

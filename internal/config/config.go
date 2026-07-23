@@ -42,10 +42,24 @@ type Config struct {
 	Providers    map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
 }
 
-// Health holds channel-health FSM knobs (attr store is separate).
+// Health holds channel-health FSM and probe knobs (attr store is separate).
 type Health struct {
 	// ConsecutiveFailures is N for DOWN (default 3). Zero in YAML means unset.
 	ConsecutiveFailures int `yaml:"consecutive_failures"`
+	// ExcludeUnhealthy prunes HealthDown channels from export (default false).
+	ExcludeUnhealthy *bool `yaml:"exclude_unhealthy"`
+	// L2Interval is how often to run NATIVE segment probes (default 24h).
+	L2Interval time.Duration `yaml:"l2_interval"`
+	// L3Enabled turns on scheduled ffprobe (default false).
+	L3Enabled *bool `yaml:"l3_enabled"`
+	// L3Interval is the jitter window for scheduled L3 (default 60m).
+	L3Interval time.Duration `yaml:"l3_interval"`
+	// L3Workers bounds concurrent L3 probes (default 2).
+	L3Workers int `yaml:"l3_workers"`
+	// L3Timeout is per-probe ffprobe timeout (default 30s).
+	L3Timeout time.Duration `yaml:"l3_timeout"`
+	// FFProbePath is the ffprobe binary (default /usr/bin/ffprobe).
+	FFProbePath string `yaml:"ffprobe_path"`
 }
 
 // ArtworkTLS is a per-host TLS exception for logo downloads only.
@@ -121,6 +135,8 @@ func New(path string) (*Config, error) {
 func defaults() *Config {
 	proxyAll := false
 	cacheLogos := false
+	excludeUnhealthy := false
+	l3Enabled := false
 	return &Config{
 		Listen:     DefaultListen,
 		BaseURL:    "",
@@ -135,6 +151,13 @@ func defaults() *Config {
 		},
 		Health: Health{
 			ConsecutiveFailures: 3,
+			ExcludeUnhealthy:    &excludeUnhealthy,
+			L2Interval:          24 * time.Hour,
+			L3Enabled:           &l3Enabled,
+			L3Interval:          60 * time.Minute,
+			L3Workers:           2,
+			L3Timeout:           30 * time.Second,
+			FFProbePath:         "/usr/bin/ffprobe",
 		},
 	}
 }
@@ -178,6 +201,37 @@ func envOverlay() (*Config, error) {
 		}
 		o.Health.ConsecutiveFailures = n
 	}
+	if v := os.Getenv("FASTGEN_HEALTH_EXCLUDE_UNHEALTHY"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_EXCLUDE_UNHEALTHY: %w", err)
+		}
+		o.Health.ExcludeUnhealthy = &parsed
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_L2_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L2_INTERVAL: %w", err)
+		}
+		o.Health.L2Interval = d
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_L3_ENABLED"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L3_ENABLED: %w", err)
+		}
+		o.Health.L3Enabled = &parsed
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_L3_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L3_INTERVAL: %w", err)
+		}
+		o.Health.L3Interval = d
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_FFPROBE_PATH"); v != "" {
+		o.Health.FFProbePath = v
+	}
 	return o, nil
 }
 
@@ -198,6 +252,10 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"cache_logos", c.CacheLogosEnabled(),
 		"data_dir", c.DataDir,
 		"health_consecutive_failures", c.HealthConsecutiveFailures(),
+		"health_exclude_unhealthy", c.HealthExcludeUnhealthy(),
+		"health_l2_interval", c.HealthL2Interval().String(),
+		"health_l3_enabled", c.HealthL3Enabled(),
+		"health_ffprobe_path", c.HealthFFProbePath(),
 		"provider_overlays", len(c.Providers),
 	)
 }
@@ -240,6 +298,29 @@ func (c *Config) merge(o *Config) {
 	if o.Health.ConsecutiveFailures != 0 {
 		c.Health.ConsecutiveFailures = o.Health.ConsecutiveFailures
 	}
+	if o.Health.ExcludeUnhealthy != nil {
+		v := *o.Health.ExcludeUnhealthy
+		c.Health.ExcludeUnhealthy = &v
+	}
+	if o.Health.L2Interval != 0 {
+		c.Health.L2Interval = o.Health.L2Interval
+	}
+	if o.Health.L3Enabled != nil {
+		v := *o.Health.L3Enabled
+		c.Health.L3Enabled = &v
+	}
+	if o.Health.L3Interval != 0 {
+		c.Health.L3Interval = o.Health.L3Interval
+	}
+	if o.Health.L3Workers != 0 {
+		c.Health.L3Workers = o.Health.L3Workers
+	}
+	if o.Health.L3Timeout != 0 {
+		c.Health.L3Timeout = o.Health.L3Timeout
+	}
+	if o.Health.FFProbePath != "" {
+		c.Health.FFProbePath = o.Health.FFProbePath
+	}
 	if o.Providers != nil {
 		c.Providers = maps.Clone(o.Providers)
 	}
@@ -261,6 +342,56 @@ func (c *Config) HealthConsecutiveFailures() int {
 		return 3
 	}
 	return c.Health.ConsecutiveFailures
+}
+
+// HealthExcludeUnhealthy reports whether DOWN channels are pruned from export.
+func (c *Config) HealthExcludeUnhealthy() bool {
+	return c != nil && c.Health.ExcludeUnhealthy != nil && *c.Health.ExcludeUnhealthy
+}
+
+// HealthL2Interval returns the L2 segment probe interval (default 24h).
+func (c *Config) HealthL2Interval() time.Duration {
+	if c == nil || c.Health.L2Interval <= 0 {
+		return 24 * time.Hour
+	}
+	return c.Health.L2Interval
+}
+
+// HealthL3Enabled reports whether scheduled L3 ffprobe is on.
+func (c *Config) HealthL3Enabled() bool {
+	return c != nil && c.Health.L3Enabled != nil && *c.Health.L3Enabled
+}
+
+// HealthL3Interval returns the L3 jitter window (default 60m).
+func (c *Config) HealthL3Interval() time.Duration {
+	if c == nil || c.Health.L3Interval <= 0 {
+		return 60 * time.Minute
+	}
+	return c.Health.L3Interval
+}
+
+// HealthL3Workers returns L3 concurrency (default 2, min 1).
+func (c *Config) HealthL3Workers() int {
+	if c == nil || c.Health.L3Workers < 1 {
+		return 2
+	}
+	return c.Health.L3Workers
+}
+
+// HealthL3Timeout returns per-probe ffprobe timeout (default 30s).
+func (c *Config) HealthL3Timeout() time.Duration {
+	if c == nil || c.Health.L3Timeout <= 0 {
+		return 30 * time.Second
+	}
+	return c.Health.L3Timeout
+}
+
+// HealthFFProbePath returns the ffprobe binary path.
+func (c *Config) HealthFFProbePath() string {
+	if c == nil || c.Health.FFProbePath == "" {
+		return "/usr/bin/ffprobe"
+	}
+	return c.Health.FFProbePath
 }
 
 func normalizeArtworkTLSKeys(in map[string]ArtworkTLS) map[string]ArtworkTLS {

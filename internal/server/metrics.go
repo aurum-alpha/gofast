@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 )
 
@@ -23,6 +24,10 @@ type metricsRow struct {
 	guideHoursAhead    float64
 	configuredSecs     float64
 	effectiveSecs      float64
+	healthUntested     int
+	healthHealthy      int
+	healthDegraded     int
+	healthDown         int
 }
 
 // MetricsHandler serves GET /metrics in Prometheus text exposition format.
@@ -45,7 +50,7 @@ func MetricsHandler(reg *provider.Registry) http.HandlerFunc {
 			if stats.LastError != "" {
 				stale = 1
 			}
-			rows = append(rows, metricsRow{
+			row := metricsRow{
 				id:                 string(feed.ID()),
 				exportedChannels:   stats.ExportedChannels,
 				exportedProgrammes: stats.ExportedProgrammes,
@@ -56,7 +61,20 @@ func MetricsHandler(reg *provider.Registry) http.HandlerFunc {
 				guideHoursAhead:    stats.GuideHoursAhead,
 				configuredSecs:     configured.Seconds(),
 				effectiveSecs:      effective.Seconds(),
-			})
+			}
+			for _, ch := range feed.Channels() {
+				switch ch.Health.StatusOrUntested() {
+				case model.HealthHealthy:
+					row.healthHealthy++
+				case model.HealthDegraded:
+					row.healthDegraded++
+				case model.HealthDown:
+					row.healthDown++
+				default:
+					row.healthUntested++
+				}
+			}
+			rows = append(rows, row)
 		}
 
 		w.Header().Set("Content-Type", metricsContentType)
@@ -94,6 +112,14 @@ func MetricsHandler(reg *provider.Registry) http.HandlerFunc {
 				row.id, strconv.FormatFloat(row.configuredSecs, 'f', -1, 64))
 			fmt.Fprintf(&b, `gofast_provider_refresh_interval_seconds{provider=%q,kind="effective"} %s`+"\n",
 				row.id, strconv.FormatFloat(row.effectiveSecs, 'f', -1, 64))
+		}
+		b.WriteString("# HELP gofast_provider_channels_health Channel health counts by status.\n")
+		b.WriteString("# TYPE gofast_provider_channels_health gauge\n")
+		for _, row := range rows {
+			fmt.Fprintf(&b, `gofast_provider_channels_health{provider=%q,status="untested"} %d`+"\n", row.id, row.healthUntested)
+			fmt.Fprintf(&b, `gofast_provider_channels_health{provider=%q,status="healthy"} %d`+"\n", row.id, row.healthHealthy)
+			fmt.Fprintf(&b, `gofast_provider_channels_health{provider=%q,status="degraded"} %d`+"\n", row.id, row.healthDegraded)
+			fmt.Fprintf(&b, `gofast_provider_channels_health{provider=%q,status="down"} %d`+"\n", row.id, row.healthDown)
 		}
 		_, _ = w.Write([]byte(b.String()))
 	}

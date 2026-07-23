@@ -82,3 +82,24 @@ func TestApplyEmissionPolicyPreservesEarlierExclusion(t *testing.T) {
 		t.Fatalf("channel=%+v stats=%+v", got[0], stats)
 	}
 }
+
+func TestApplyEmissionPolicyExcludeUnhealthy(t *testing.T) {
+	got, stats := applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderLG,
+		NormalizedID:   "news",
+		StreamURL:      "https://upstream.test/live.m3u8",
+		Classification: model.ClassNative,
+		Health:         model.ChannelHealth{Status: model.HealthDown},
+	}}, EmissionPolicy{ExcludeUnhealthy: true})
+	if !got[0].Excluded || got[0].FilterReason != model.FilterReasonUnhealthy || stats.UnhealthyDropped != 1 {
+		t.Fatalf("channel=%+v stats=%+v", got[0], stats)
+	}
+	got2, stats2 := applyEmissionPolicy([]model.Channel{{
+		Classification: model.ClassNative,
+		StreamURL:      "https://upstream.test/live.m3u8",
+		Health:         model.ChannelHealth{Status: model.HealthDown},
+	}}, EmissionPolicy{})
+	if got2[0].Excluded || stats2.UnhealthyDropped != 0 {
+		t.Fatalf("default must keep DOWN exported: %+v stats=%+v", got2[0], stats2)
+	}
+}

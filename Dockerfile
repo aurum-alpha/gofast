@@ -4,7 +4,8 @@
 # Production/GHCR uses Dockerfile.prod (CI binaries only). Keep image pins in sync:
 #   node:22-bookworm
 #   golang:1.26.5-bookworm
-#   gcr.io/distroless/static-debian12:nonroot
+#   debian:bookworm-slim (fastgen — ships ffprobe)
+#   gcr.io/distroless/static-debian12:nonroot (fastproxy)
 #   busybox:1.36.1-musl
 
 FROM node:22-bookworm AS web
@@ -26,14 +27,18 @@ ENV CGO_ENABLED=0
 RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastgen ./cmd/fastgen
 RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
 
-FROM gcr.io/distroless/static-debian12:nonroot AS fastgen
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# fastgen needs ffprobe (L3 health). Use slim Debian + ffmpeg rather than
+# distroless/static (dynamically linked ffprobe will not run there).
+FROM debian:bookworm-slim AS fastgen
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
 COPY --from=build /out/fastgen /fastgen
-COPY --from=busybox:1.36.1-musl /bin/wget /wget
+USER nonroot:nonroot
 EXPOSE 8180
 ENV PORT=8180
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD ["/wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8180/healthz"]
+  CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8180/healthz"]
 ENTRYPOINT ["/fastgen"]
 
 FROM gcr.io/distroless/static-debian12:nonroot AS fastproxy
