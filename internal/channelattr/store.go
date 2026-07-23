@@ -82,41 +82,65 @@ CREATE INDEX IF NOT EXISTS channel_attr_events_lookup
 	return nil
 }
 
-// LoadCurrent loads channel_attr_current into memory (O(attrs), not history).
-func (s *Store) LoadCurrent() error {
-	rows, err := s.db.Query(`SELECT provider, channel_id, kind, value, at, source FROM channel_attr_current`)
-	if err != nil {
-		return fmt.Errorf("channelattr: load current: %w", err)
+// Annotate copies current health and classification onto channel values.
+// Classification is applied only when the channel field is empty so a fresh
+// classify on the refresh path is not overwritten by a slightly stale Current.
+func (s *Store) Annotate(provider model.ProviderID, chs []model.Channel) []model.Channel {
+	if s == nil || len(chs) == 0 {
+		return chs
 	}
-	defer rows.Close()
-
-	next := make(map[string]entry)
-	for rows.Next() {
-		var provider, channelID, kind, value, atStr, source string
-		if err := rows.Scan(&provider, &channelID, &kind, &value, &atStr, &source); err != nil {
-			return fmt.Errorf("channelattr: scan current: %w", err)
-		}
-		at, err := time.Parse(time.RFC3339Nano, atStr)
-		if err != nil {
-			at, err = time.Parse(time.RFC3339, atStr)
-			if err != nil {
-				slog.Warn("channelattr: bad current at", "provider", provider, "channel", channelID, "err", err)
-				continue
+	out := make([]model.Channel, len(chs))
+	copy(out, chs)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i := range out {
+		if e, ok := s.byKey[key(provider, out[i].NormalizedID, KindHealth)]; ok {
+			var h model.ChannelHealth
+			if err := json.Unmarshal(e.value, &h); err != nil {
+				slog.Warn("channelattr: bad health json", "provider", provider, "channel", out[i].NormalizedID, "err", err)
+			} else {
+				out[i].Health = h
 			}
 		}
-		next[key(model.ProviderID(provider), channelID, Kind(kind))] = entry{
-			value:  json.RawMessage(value),
-			at:     at,
-			source: source,
+		if out[i].Classification != "" {
+			continue
+		}
+		if e, ok := s.byKey[key(provider, out[i].NormalizedID, KindClassification)]; ok {
+			var c model.Classification
+			if err := json.Unmarshal(e.value, &c); err != nil {
+				slog.Warn("channelattr: bad classification json", "provider", provider, "channel", out[i].NormalizedID, "err", err)
+				continue
+			}
+			out[i].Classification = c
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return err
+	return out
+}
+
+// Close closes the database.
+func (s *Store) Close() error {
+	if s == nil || s.db == nil {
+		return nil
 	}
-	s.mu.Lock()
-	s.byKey = next
-	s.mu.Unlock()
-	return nil
+	return s.db.Close()
+}
+
+// Current returns the latest JSON value for a channel attribute.
+func (s *Store) Current(provider model.ProviderID, channelID string, kind Kind) (json.RawMessage, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	e, ok := s.byKey[key(provider, channelID, kind)]
+	if !ok {
+		return nil, false
+	}
+	return append(json.RawMessage(nil), e.value...), true
+}
+
+// EventCount returns how many history rows exist (tests / ops).
+func (s *Store) EventCount(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channel_attr_events`).Scan(&n)
+	return n, err
 }
 
 // Handle appends history and upserts current for one event.
@@ -167,52 +191,41 @@ ON CONFLICT(provider, channel_id, kind) DO UPDATE SET
 	return nil
 }
 
-// Current returns the latest JSON value for a channel attribute.
-func (s *Store) Current(provider model.ProviderID, channelID string, kind Kind) (json.RawMessage, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	e, ok := s.byKey[key(provider, channelID, kind)]
-	if !ok {
-		return nil, false
+// LoadCurrent loads channel_attr_current into memory (O(attrs), not history).
+func (s *Store) LoadCurrent() error {
+	rows, err := s.db.Query(`SELECT provider, channel_id, kind, value, at, source FROM channel_attr_current`)
+	if err != nil {
+		return fmt.Errorf("channelattr: load current: %w", err)
 	}
-	return append(json.RawMessage(nil), e.value...), true
-}
+	defer rows.Close()
 
-// Annotate copies current health (and later other kinds) onto channel values.
-func (s *Store) Annotate(provider model.ProviderID, chs []model.Channel) []model.Channel {
-	if s == nil || len(chs) == 0 {
-		return chs
-	}
-	out := make([]model.Channel, len(chs))
-	copy(out, chs)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for i := range out {
-		if e, ok := s.byKey[key(provider, out[i].NormalizedID, KindHealth)]; ok {
-			var h model.ChannelHealth
-			if err := json.Unmarshal(e.value, &h); err != nil {
-				slog.Warn("channelattr: bad health json", "provider", provider, "channel", out[i].NormalizedID, "err", err)
+	next := make(map[string]entry)
+	for rows.Next() {
+		var provider, channelID, kind, value, atStr, source string
+		if err := rows.Scan(&provider, &channelID, &kind, &value, &atStr, &source); err != nil {
+			return fmt.Errorf("channelattr: scan current: %w", err)
+		}
+		at, err := time.Parse(time.RFC3339Nano, atStr)
+		if err != nil {
+			at, err = time.Parse(time.RFC3339, atStr)
+			if err != nil {
+				slog.Warn("channelattr: bad current at", "provider", provider, "channel", channelID, "err", err)
 				continue
 			}
-			out[i].Health = h
+		}
+		next[key(model.ProviderID(provider), channelID, Kind(kind))] = entry{
+			value:  json.RawMessage(value),
+			at:     at,
+			source: source,
 		}
 	}
-	return out
-}
-
-// EventCount returns how many history rows exist (tests / ops).
-func (s *Store) EventCount(ctx context.Context) (int, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channel_attr_events`).Scan(&n)
-	return n, err
-}
-
-// Close closes the database.
-func (s *Store) Close() error {
-	if s == nil || s.db == nil {
-		return nil
+	if err := rows.Err(); err != nil {
+		return err
 	}
-	return s.db.Close()
+	s.mu.Lock()
+	s.byKey = next
+	s.mu.Unlock()
+	return nil
 }
 
 func key(provider model.ProviderID, channelID string, kind Kind) string {

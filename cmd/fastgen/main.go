@@ -55,8 +55,6 @@ func main() {
 		slog.Error("channelattr load current", "err", err)
 		os.Exit(1)
 	}
-	attrBus := channelattr.NewBus(256)
-	go channelattr.Receive(ctx, attrBus, attrs)
 
 	var logos *logocache.Cache
 	if cfg.CacheLogosEnabled() {
@@ -87,14 +85,18 @@ func main() {
 	reg := provider.NewRegistry(readers, settings)
 	reg.LogLoaded()
 
-	// Warm feeds from disk, regenerate the aggregate for consistency, then start
-	// the aggregator and the per-provider refresh scheduler.
+	// Warm feeds from disk (may seed legacy meta classifications into attrs),
+	// regenerate the aggregate, then start AttrReceiver + refresh.
 	emissionPolicy := refresh.EmissionPolicy{
 		ProxyBaseURL: cfg.ProxyBaseURL,
 		ProxyAll:     cfg.ProxyAllEnabled(),
 	}
 	bootStatus := &refresh.Status{}
 	refresh.Restore(reg, cc, emissionPolicy, attrs)
+
+	attrBus := channelattr.NewBus(256)
+	go channelattr.Receive(ctx, attrBus, attrs)
+
 	agg := aggregate.New(reg, cc)
 	if err := agg.Rebuild(); err != nil && !errors.Is(err, aggregate.ErrEmptyAggregate) {
 		slog.Warn("initial aggregate rebuild failed", "err", err)
@@ -102,7 +104,7 @@ func main() {
 	go agg.Run(ctx)
 
 	clf := classifier.New(client, 0)
-	svc := refresh.New(reg, clf, cc, emissionPolicy, logos, attrs, agg.Notify, bootStatus)
+	svc := refresh.New(reg, clf, cc, emissionPolicy, logos, attrs, attrBus, agg.Notify, bootStatus)
 	go svc.Run(ctx)
 	go refresh.WarmLogos(ctx, reg, cc, emissionPolicy, logos, agg.Notify, bootStatus)
 

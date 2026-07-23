@@ -27,4 +27,7 @@ func TestMetaOfRetainsHistoricalAssignments(t *testing.T) {
 	if lineup.SyntheticChannelNumbers["current"] != 5000 {
 		t.Fatal("MetaOf returned an aliased assignment map")
 	}
+	if meta.Classifications != nil {
+		t.Fatalf("MetaOf must not write classifications: %+v", meta.Classifications)
+	}
 }
