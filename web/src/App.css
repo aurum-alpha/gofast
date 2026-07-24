@@ -240,6 +240,65 @@
   text-decoration: underline;
 }
 
+.host-expand {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.host-expand:hover {
+  text-decoration: underline;
+}
+
+.host-tree {
+  padding: 0.75rem 1rem 1rem;
+}
+
+.host-tree-header,
+.host-tree-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+}
+
+.host-tree-header {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.35rem;
+}
+
+.host-tree-count {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 4rem;
+}
+
+.host-leaf {
+  color: var(--ink);
+}
+
+.hosts-detail > td {
+  padding-top: 0.35rem;
+  padding-bottom: 0.85rem;
+  background: color-mix(in srgb, var(--panel, #fff) 92%, #000 8%);
+}
+
+.hosts-detail .table-wrap {
+  margin: 0;
+  box-shadow: none;
+}
+
 .channels .channel-logo-col {
   width: 3rem;
   padding-left: 0.75rem;

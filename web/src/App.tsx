@@ -4,6 +4,7 @@ import { ChannelDetailPage } from './pages/ChannelDetail'
 import { ChannelsPage } from './pages/Channels'
 import { ConfigPage } from './pages/Config'
 import { GuidePage } from './pages/Guide'
+import { HostsPage } from './pages/Hosts'
 import { ProvidersPage } from './pages/Providers'
 import { ProviderDetailPage } from './pages/ProviderDetail'
 import './App.css'
@@ -76,6 +77,7 @@ export default function App() {
           <NavLink to="/" end>
             Channels
           </NavLink>
+          <NavLink to="/hosts">Hosts</NavLink>
           <NavLink to="/guide">Guide</NavLink>
           <NavLink to="/config">Config</NavLink>
         </nav>
@@ -90,6 +92,7 @@ export default function App() {
             element={<ChannelDetailPage />}
           />
           <Route path="/guide" element={<GuidePage />} />
+          <Route path="/hosts" element={<HostsPage />} />
           <Route path="/providers" element={<ProvidersPage />} />
           <Route path="/providers/:id" element={<ProviderDetailPage />} />
           <Route path="/config" element={<ConfigPage />} />
