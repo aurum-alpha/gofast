@@ -404,7 +404,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 	fetchedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
 	meta := provider.Meta{
 		FetchedAt:       fetchedAt,
-		Classifications: map[string]model.Classification{"ch-news": model.ClassBeacon},
+		Classifications: map[string]model.Classification{"ch-news": "BEACON"}, // legacy wire
 	}
 	// Channels/programmes are not persisted; Restore re-parses raw.
 	if err := cc.CommitProvider(model.ProviderLG, provider.Raw{"schedule.json": fixture}, nil, nil, meta); err != nil {
@@ -448,7 +448,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 	for _, ch := range f.Channels() {
 		if ch.NormalizedID == "ch-news" {
 			found = true
-			if ch.Classification != model.ClassBeacon {
+			if ch.Classification != model.ClassAmagiSSAI {
 				t.Fatalf("classification not applied: %+v", ch)
 			}
 		}
@@ -461,7 +461,57 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 		t.Fatal("expected seeded classification in attr store")
 	}
 	var got model.Classification
-	if err := json.Unmarshal(raw, &got); err != nil || got != model.ClassBeacon {
+	if err := json.Unmarshal(raw, &got); err != nil || got != model.ClassAmagiSSAI {
+		t.Fatalf("attr current: %s err=%v", raw, err)
+	}
+}
+
+func TestApplyURLDialectHintsOverridesStaleNative(t *testing.T) {
+	attrs, err := channelattr.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = attrs.Close() })
+
+	native, _ := json.Marshal(model.ClassNative)
+	if err := attrs.Handle(context.Background(), channelattr.Event{
+		Provider:  model.ProviderLG,
+		ChannelID: "99992260",
+		Kind:      channelattr.KindClassification,
+		Value:     native,
+		At:        time.Now().UTC(),
+		Source:    "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	settings := lg.DefaultSettings().Merge(model.ProviderSettings{MinChannels: 1})
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: lg.New(settings, nil)},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	pr := &providerRefresher{feed: feed, attrs: attrs, policy: EmissionPolicy{}}
+	lineup := provider.Lineup{
+		Channels: []model.Channel{{
+			Provider:     model.ProviderLG,
+			NormalizedID: "99992260",
+			StreamURL:    "https://d1bl6tskrpq9ze.cloudfront.net/hls/master.m3u8?ads.xumo_channelId=99992260&ads.channelId=99992260",
+		}},
+		FetchedAt: time.Now().UTC(),
+	}
+	pr.setLineup(lineup)
+
+	chs := feed.Channels()
+	if len(chs) != 1 || chs[0].Classification != model.ClassXumoSSAI {
+		t.Fatalf("want XUMO_SSAI after URL hint, got %+v", chs)
+	}
+	raw, ok := attrs.Current(model.ProviderLG, "99992260", channelattr.KindClassification)
+	if !ok {
+		t.Fatal("expected persisted classification")
+	}
+	var got model.Classification
+	if err := json.Unmarshal(raw, &got); err != nil || got != model.ClassXumoSSAI {
 		t.Fatalf("attr current: %s err=%v", raw, err)
 	}
 }

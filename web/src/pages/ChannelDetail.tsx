@@ -257,7 +257,7 @@ export function ChannelDetailPage() {
           ) : null}
           {status.kind === 'needs-proxy' ? (
             <p className="status-reason">
-              Configure <code>proxy_base_url</code> / FASTProxy so BEACON streams can
+              Configure <code>proxy_base_url</code> / FASTProxy so Amagi SSAI streams can
               be emitted.
             </p>
           ) : null}

@@ -4,6 +4,7 @@ import {
   channelDetailPath,
   classBadge,
   CLASS_FILTERS,
+  canonicalClassification,
   displayNumber,
   formatHealthWhen,
   healthBadge,
@@ -93,8 +94,7 @@ export function ChannelsPage() {
         return false
       }
       if (classFilter !== 'all') {
-        const classification = ch.classification || ''
-        if (classification !== classFilter) return false
+        if (canonicalClassification(ch.classification) !== classFilter) return false
       }
       if (statusFilter !== 'all' && lineupStatus(ch) !== statusFilter) {
         return false
@@ -119,8 +119,9 @@ export function ChannelsPage() {
       <h1>Channels</h1>
       <p className="lead">
         Live lineup from the last successful refresh. Click a row for export
-        status, reasons, URLs, health history, and identity. Class is probed at
-        refresh (NATIVE / BEACON / DRM); Health comes from segment/ffprobe checks.
+        status, reasons, URLs, health history, and identity. Class is the stream
+        dialect (NATIVE / Amagi SSAI / SESSION / Xumo SSAI / DRM); Health comes from
+        segment/ffprobe checks.
       </p>
 
       {error && (
@@ -175,7 +176,7 @@ export function ChannelsPage() {
                 <option value="all">all</option>
                 {CLASS_FILTERS.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {classBadge(c).label}
                   </option>
                 ))}
               </select>

@@ -16,7 +16,7 @@ func TestChannelsAPI(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg", Label: "LG"}},
 		map[model.ProviderID]provider.Lineup{
 			"lg": {Channels: []model.Channel{
-				{Provider: "lg", ID: "a", NormalizedID: "a", Name: "Alpha", Number: 1, OffsetNumber: 1001, StreamURL: "https://upstream/a", EmittedURL: "https://proxy/stream/lg/a.m3u8", Classification: model.ClassBeacon},
+				{Provider: "lg", ID: "a", NormalizedID: "a", Name: "Alpha", Number: 1, OffsetNumber: 1001, StreamURL: "https://upstream/a", EmittedURL: "https://proxy/stream/lg/a.m3u8", Classification: model.ClassAmagiSSAI},
 				{Provider: "lg", ID: "b", NormalizedID: "b", Name: "Bad", Excluded: true, FilterReason: "exclusion", StreamURL: "https://b"},
 			}},
 		},

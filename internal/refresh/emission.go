@@ -25,6 +25,7 @@ func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]mod
 	stats := emissionStats{}
 	for index := range out {
 		channel := &out[index]
+		channel.Classification = channel.Classification.Canonical()
 		channel.EmittedURL = ""
 		if channel.Excluded {
 			continue
@@ -44,7 +45,7 @@ func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]mod
 			stats.UnhealthyDropped++
 			continue
 		}
-		requiresProxy := policy.ProxyAll || channel.Classification == model.ClassBeacon
+		requiresProxy := policy.ProxyAll || channel.Classification.RequiresAmagiProxy()
 		if requiresProxy && policy.ProxyBaseURL == "" {
 			channel.Excluded = true
 			if channel.FilterReason == "" {

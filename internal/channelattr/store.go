@@ -121,7 +121,7 @@ func (s *Store) Annotate(provider model.ProviderID, chs []model.Channel) []model
 				slog.Warn("channelattr: bad classification json", "provider", provider, "channel", out[i].NormalizedID, "err", err)
 				continue
 			}
-			out[i].Classification = c
+			out[i].Classification = c.Canonical()
 		}
 	}
 	return out

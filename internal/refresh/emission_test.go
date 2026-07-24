@@ -28,17 +28,39 @@ func TestApplyEmissionPolicy(t *testing.T) {
 			wantURL:        "https://proxy.test/stream/lg/news.m3u8",
 		},
 		{
-			name:           "beacon through selective proxy",
-			classification: model.ClassBeacon,
+			name:           "amagi through selective proxy",
+			classification: model.ClassAmagiSSAI,
 			policy:         EmissionPolicy{ProxyBaseURL: "https://proxy.test"},
 			wantURL:        "https://proxy.test/stream/lg/news.m3u8",
 		},
 		{
-			name:           "beacon without proxy",
-			classification: model.ClassBeacon,
+			name:           "legacy BEACON through selective proxy",
+			classification: "BEACON",
+			policy:         EmissionPolicy{ProxyBaseURL: "https://proxy.test"},
+			wantURL:        "https://proxy.test/stream/lg/news.m3u8",
+		},
+		{
+			name:           "amagi without proxy",
+			classification: model.ClassAmagiSSAI,
 			wantExcluded:   true,
 			wantReason:     model.FilterReasonNeedsFASTProxy,
 			wantDropped:    1,
+		},
+		{
+			name:           "session direct (not Amagi proxy)",
+			classification: model.ClassSession,
+			wantURL:        "https://upstream.test/live.m3u8",
+		},
+		{
+			name:           "session does not need Amagi proxy",
+			classification: model.ClassSession,
+			policy:         EmissionPolicy{},
+			wantURL:        "https://upstream.test/live.m3u8",
+		},
+		{
+			name:           "xumo ssai direct",
+			classification: model.ClassXumoSSAI,
+			wantURL:        "https://upstream.test/live.m3u8",
 		},
 		{
 			name:           "drm always excluded",
@@ -74,7 +96,7 @@ func TestApplyEmissionPolicy(t *testing.T) {
 
 func TestApplyEmissionPolicyPreservesEarlierExclusion(t *testing.T) {
 	got, stats := applyEmissionPolicy([]model.Channel{{
-		Classification: model.ClassBeacon,
+		Classification: model.ClassAmagiSSAI,
 		Excluded:       true,
 		FilterReason:   "configured exclusion",
 	}}, EmissionPolicy{})

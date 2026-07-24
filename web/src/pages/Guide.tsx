@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { CLASS_FILTERS, canonicalClassification, classBadge } from '../lib/channel'
 import {
   enabledProviderIds,
   loadProviderGuides,
@@ -242,7 +243,8 @@ export function GuidePage() {
         if (providerFilter !== 'all' && r.provider !== providerFilter) return false
         if (hideExcluded && r.excluded) return false
         if (groupFilter !== 'all' && r.group !== groupFilter) return false
-        if (classFilter !== 'all' && r.classification !== classFilter) return false
+        if (classFilter !== 'all' && canonicalClassification(r.classification) !== classFilter)
+          return false
         if (channelNeedle) {
           const hit =
             r.name.toLowerCase().includes(channelNeedle) ||
@@ -484,11 +486,11 @@ export function GuidePage() {
                 onChange={(e) => setClassFilter(e.target.value)}
               >
                 <option value="all">all</option>
-                <option value="NATIVE">NATIVE</option>
-                <option value="BEACON">BEACON</option>
-                <option value="DRM" disabled={hideExcluded}>
-                  DRM
-                </option>
+                {CLASS_FILTERS.map((c) => (
+                  <option key={c} value={c} disabled={hideExcluded && c === 'DRM'}>
+                    {classBadge(c).label}
+                  </option>
+                ))}
               </select>
             </label>
             <label>

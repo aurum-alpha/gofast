@@ -193,7 +193,7 @@ func TestSuccessRate(t *testing.T) {
 
 func TestAnnotatePaintsClassificationWhenEmpty(t *testing.T) {
 	store := openTestStore(t)
-	v, _ := json.Marshal(model.ClassBeacon)
+	v, _ := json.Marshal(model.Classification("BEACON")) // legacy wire value
 	if err := store.Handle(context.Background(), Event{
 		Provider:  model.ProviderLG,
 		ChannelID: "ch-1",
@@ -209,8 +209,8 @@ func TestAnnotatePaintsClassificationWhenEmpty(t *testing.T) {
 		{NormalizedID: "ch-1", Name: "One"},
 		{NormalizedID: "ch-2", Name: "Two", Classification: model.ClassNative},
 	})
-	if out[0].Classification != model.ClassBeacon {
-		t.Fatalf("ch-1 class: %q", out[0].Classification)
+	if out[0].Classification != model.ClassAmagiSSAI {
+		t.Fatalf("ch-1 class: %q want AMAGI_SSAI (canonicalized from BEACON)", out[0].Classification)
 	}
 	if out[1].Classification != model.ClassNative {
 		t.Fatalf("ch-2 should keep in-memory class: %q", out[1].Classification)

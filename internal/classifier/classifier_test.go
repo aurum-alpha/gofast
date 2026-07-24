@@ -13,7 +13,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
-func TestClassifyAmagiBeacon(t *testing.T) {
+func TestClassifyAmagiSSAI(t *testing.T) {
 	var sawHEAD atomic.Bool
 	mux := http.NewServeMux()
 	mux.HandleFunc("/master.m3u8", func(w http.ResponseWriter, r *http.Request) {
@@ -45,8 +45,8 @@ https://cdn.example/beacon/track?x=3
 
 	c := New(httpx.NewClient(0, 1), 2)
 	got := c.Classify(context.Background(), srv.URL+"/master.m3u8")
-	if got != model.ClassBeacon {
-		t.Fatalf("got %q want BEACON", got)
+	if got != model.ClassAmagiSSAI {
+		t.Fatalf("got %q want AMAGI_SSAI", got)
 	}
 	if sawHEAD.Load() {
 		t.Fatal("HEAD must never be used")
@@ -126,7 +126,7 @@ func TestClassifyFetchErrorKeepsNative(t *testing.T) {
 }
 
 func TestClassifyExtensionlessWithoutBeaconPath(t *testing.T) {
-	// Missing media extension before ? → BEACON even without /beacon/.
+	// Missing media extension before ? → AMAGI_SSAI even without /beacon/.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		assertRangeGET(t, r)
@@ -147,8 +147,47 @@ media.m3u8
 
 	c := New(httpx.NewClient(0, 1), 1)
 	got := c.Classify(context.Background(), srv.URL+"/master.m3u8")
-	if got != model.ClassBeacon {
-		t.Fatalf("got %q want BEACON", got)
+	if got != model.ClassAmagiSSAI {
+		t.Fatalf("got %q want AMAGI_SSAI", got)
+	}
+}
+
+func TestClassifyByURLSession(t *testing.T) {
+	c := New(httpx.NewClient(0, 1), 1)
+	url := "https://dai.google.com/linear/hls/event/abc123/master.m3u8"
+	got := c.Classify(context.Background(), url)
+	if got != model.ClassSession {
+		t.Fatalf("got %q want SESSION", got)
+	}
+}
+
+func TestClassifyByURLSession404StillSession(t *testing.T) {
+	// Heuristic must win without probing; DistroTV masters often 404.
+	var gets atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gets.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := New(httpx.NewClient(0, 1), 1)
+	// Use real DAI host shape (not httptest) so classifyByURL matches.
+	got := c.Classify(context.Background(), "https://dai.google.com/linear/hls/event/x/master.m3u8")
+	if got != model.ClassSession {
+		t.Fatalf("got %q want SESSION", got)
+	}
+	if gets.Load() != 0 {
+		t.Fatalf("SESSION must not probe, gets=%d", gets.Load())
+	}
+	_ = srv
+}
+
+func TestClassifyByURLXumoSSAI(t *testing.T) {
+	c := New(httpx.NewClient(0, 1), 1)
+	url := "https://d1bl6tskrpq9ze.cloudfront.net/hls/master.m3u8?ads.xumo_channelId=99992260&ads.channelId=ch1"
+	got := c.Classify(context.Background(), url)
+	if got != model.ClassXumoSSAI {
+		t.Fatalf("got %q want XUMO_SSAI", got)
 	}
 }
 
@@ -202,7 +241,7 @@ func TestClassifyChannelsSendsProviderHeaders(t *testing.T) {
 	}
 }
 
-func TestIsBeaconURI(t *testing.T) {
+func TestIsAmagiSSAIURI(t *testing.T) {
 	tests := []struct {
 		in   string
 		want bool
@@ -216,8 +255,30 @@ func TestIsBeaconURI(t *testing.T) {
 		{"seg.m4s", false},
 	}
 	for _, tt := range tests {
-		if got := isBeaconURI(tt.in); got != tt.want {
-			t.Errorf("isBeaconURI(%q)=%v want %v", tt.in, got, tt.want)
+		if got := isAmagiSSAIURI(tt.in); got != tt.want {
+			t.Errorf("isAmagiSSAIURI(%q)=%v want %v", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestClassifyByURLTable(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    model.Classification
+		matched bool
+	}{
+		{"https://dai.google.com/linear/hls/event/e1/master.m3u8", model.ClassSession, true},
+		{"https://foo.dai.google.com/linear/hls/event/e1/master.m3u8", model.ClassSession, true},
+		{"https://dai.google.com/other/path.m3u8", "", false},
+		{"https://cdn.example/hls/master.m3u8?ads.channelId=1", model.ClassXumoSSAI, true},
+		{"https://cdn.example/hls/master.m3u8?ADS.XUMO_CHANNELID=1", model.ClassXumoSSAI, true},
+		{"https://cdn.example/hls/master.m3u8?token=1", "", false},
+		{"not-a-url", "", false},
+	}
+	for _, tt := range tests {
+		got, ok := classifyByURL(tt.in)
+		if ok != tt.matched || got != tt.want {
+			t.Errorf("classifyByURL(%q)=(%q,%v) want (%q,%v)", tt.in, got, ok, tt.want, tt.matched)
 		}
 	}
 }
