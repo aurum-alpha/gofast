@@ -7,10 +7,14 @@ import (
 	"time"
 )
 
-// scheduleFile is the on-disk shape under StatePath (restart-safe L2/L3 anchors).
+// scheduleFile is the on-disk shape under StatePath (restart-safe L1/L2 anchors).
 type scheduleFile struct {
+	Version  int       `json:"version"`
+	LastL1At time.Time `json:"last_l1_at,omitempty"`
+	NextL1At time.Time `json:"next_l1_at,omitempty"`
 	LastL2At time.Time `json:"last_l2_at,omitempty"`
 	NextL2At time.Time `json:"next_l2_at,omitempty"`
+	// LastL3At and NextL3At are read-only compatibility fields for v1 files.
 	LastL3At time.Time `json:"last_l3_at,omitempty"`
 	NextL3At time.Time `json:"next_l3_at,omitempty"`
 }
@@ -29,10 +33,17 @@ func (s *Scheduler) loadState() {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.lastL2At = f.LastL2At
-	s.nextL2At = f.NextL2At
-	s.lastL3At = f.LastL3At
-	s.nextL3At = f.NextL3At
+	if f.Version < 2 {
+		s.lastL2At = f.LastL2At
+		s.nextL2At = f.NextL2At
+		s.lastL3At = f.LastL3At
+		s.nextL3At = f.NextL3At
+		return
+	}
+	s.lastL2At = f.LastL1At
+	s.nextL2At = f.NextL1At
+	s.lastL3At = f.LastL2At
+	s.nextL3At = f.NextL2At
 }
 
 func (s *Scheduler) saveState() {
@@ -41,10 +52,11 @@ func (s *Scheduler) saveState() {
 	}
 	s.mu.Lock()
 	f := scheduleFile{
-		LastL2At: s.lastL2At,
-		NextL2At: s.nextL2At,
-		LastL3At: s.lastL3At,
-		NextL3At: s.nextL3At,
+		Version:  2,
+		LastL1At: s.lastL2At,
+		NextL1At: s.nextL2At,
+		LastL2At: s.lastL3At,
+		NextL2At: s.nextL3At,
 	}
 	s.mu.Unlock()
 	if err := os.MkdirAll(filepath.Dir(s.StatePath), 0o755); err != nil {

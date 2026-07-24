@@ -27,8 +27,14 @@ func clearDeployEnv(t *testing.T) {
 	t.Setenv("FASTGEN_CACHE_LOGOS", "")
 	t.Setenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES", "")
 	t.Setenv("FASTGEN_HEALTH_EXCLUDE_UNHEALTHY", "")
+	t.Setenv("FASTGEN_HEALTH_L1_INTERVAL", "")
+	t.Setenv("FASTGEN_HEALTH_L1_WORKERS", "")
 	t.Setenv("FASTGEN_HEALTH_L2_INTERVAL", "")
+	t.Setenv("FASTGEN_HEALTH_L2_ENABLED", "")
+	t.Setenv("FASTGEN_HEALTH_L2_WORKERS", "")
 	t.Setenv("FASTGEN_HEALTH_L3_ENABLED", "")
+	t.Setenv("FASTGEN_HEALTH_L3_INTERVAL", "")
+	t.Setenv("FASTGEN_HEALTH_L3_HEALTHY_SAMPLE", "")
 	t.Setenv("FASTGEN_HEALTH_FFPROBE_PATH", "")
 }
 
@@ -234,6 +240,52 @@ health:
 	}
 	if cfg.HealthConsecutiveFailures() != 5 {
 		t.Fatalf("got %d", cfg.HealthConsecutiveFailures())
+	}
+}
+
+func TestHealthTierYAMLAliases(t *testing.T) {
+	clearDeployEnv(t)
+	cfg, err := New(writeConfig(t, `
+health:
+  l2_interval: 12h
+  l2_workers: 7
+  l3_enabled: true
+  l3_interval: 15m
+  l3_workers: 3
+  l3_timeout: 20s
+  l3_healthy_sample: 0.4
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HealthL1Interval() != 12*time.Hour || cfg.HealthL1Workers() != 7 ||
+		!cfg.HealthL2Enabled() || cfg.HealthL2Interval() != 15*time.Minute ||
+		cfg.HealthL2Workers() != 3 || cfg.HealthL2Timeout() != 20*time.Second ||
+		cfg.HealthL2HealthySample() != 0.4 {
+		t.Fatalf("legacy aliases not applied: %+v", cfg.Health)
+	}
+}
+
+func TestHealthTierNewYAMLKeys(t *testing.T) {
+	clearDeployEnv(t)
+	cfg, err := New(writeConfig(t, `
+health:
+  l1_interval: 12h
+  l1_workers: 7
+  l2_enabled: true
+  l2_interval: 15m
+  l2_workers: 3
+  l2_timeout: 20s
+  l2_healthy_sample: 0.4
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HealthL1Interval() != 12*time.Hour || cfg.HealthL1Workers() != 7 ||
+		!cfg.HealthL2Enabled() || cfg.HealthL2Interval() != 15*time.Minute ||
+		cfg.HealthL2Workers() != 3 || cfg.HealthL2Timeout() != 20*time.Second ||
+		cfg.HealthL2HealthySample() != 0.4 {
+		t.Fatalf("new keys not applied: %+v", cfg.Health)
 	}
 }
 

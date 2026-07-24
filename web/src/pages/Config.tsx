@@ -33,27 +33,27 @@ type ActiveConfig = {
   health: {
     consecutive_failures: number
     exclude_unhealthy: boolean
+    l1_interval: string
+    l1_workers: number
+    l2_enabled: boolean
     l2_interval: string
     l2_workers: number
-    l3_enabled: boolean
-    l3_interval: string
-    l3_workers: number
-    l3_timeout: string
-    l3_healthy_sample: number
+    l2_timeout: string
+    l2_healthy_sample: number
     max_per_host: number
     soft_retries: number
     ffprobe_path: string
   }
   probe_schedule?: {
-    l2_interval: string
+    l1_interval: string
+    last_l1_at?: string
+    next_l1_at?: string
+    l1_running?: boolean
+    l2_enabled?: boolean
+    l2_interval?: string
     last_l2_at?: string
     next_l2_at?: string
     l2_running?: boolean
-    l3_enabled?: boolean
-    l3_interval?: string
-    last_l3_at?: string
-    next_l3_at?: string
-    l3_running?: boolean
   }
   artwork_tls: ArtworkTLS[]
   providers: ProviderSettings[]
@@ -218,12 +218,12 @@ export function ConfigPage() {
             </dd>
           </div>
           <div>
-            <dt>L2 interval</dt>
-            <dd>{health.l2_interval}</dd>
+            <dt>Health L1 interval</dt>
+            <dd>{health.l1_interval}</dd>
           </div>
           <div>
-            <dt>L2 workers</dt>
-            <dd>{health.l2_workers}</dd>
+            <dt>Health L1 workers</dt>
+            <dd>{health.l1_workers}</dd>
           </div>
           <div>
             <dt>Soft retries</dt>
@@ -234,26 +234,26 @@ export function ConfigPage() {
             <dd>{health.max_per_host}</dd>
           </div>
           <div>
-            <dt>L3 enabled</dt>
+            <dt>Health L2 enabled</dt>
             <dd>
-              <Bool value={health.l3_enabled} />
+              <Bool value={health.l2_enabled} />
             </dd>
           </div>
           <div>
-            <dt>L3 interval</dt>
-            <dd>{health.l3_interval}</dd>
+            <dt>Health L2 interval</dt>
+            <dd>{health.l2_interval}</dd>
           </div>
           <div>
-            <dt>L3 workers</dt>
-            <dd>{health.l3_workers}</dd>
+            <dt>Health L2 workers</dt>
+            <dd>{health.l2_workers}</dd>
           </div>
           <div>
-            <dt>L3 timeout</dt>
-            <dd>{health.l3_timeout}</dd>
+            <dt>Health L2 timeout</dt>
+            <dd>{health.l2_timeout}</dd>
           </div>
           <div>
-            <dt>L3 healthy sample</dt>
-            <dd>{health.l3_healthy_sample}</dd>
+            <dt>Health L2 healthy sample</dt>
+            <dd>{health.l2_healthy_sample}</dd>
           </div>
           <div>
             <dt>ffprobe path</dt>
@@ -264,29 +264,29 @@ export function ConfigPage() {
           {data.probe_schedule ? (
             <>
               <div>
-                <dt>Last L2 sweep</dt>
-                <dd>{formatHealthWhen(data.probe_schedule.last_l2_at)}</dd>
+                <dt>Last L1 sweep</dt>
+                <dd>{formatHealthWhen(data.probe_schedule.last_l1_at)}</dd>
               </div>
               <div>
-                <dt>Next L2 sweep</dt>
+                <dt>Next L1 sweep</dt>
                 <dd>
-                  {data.probe_schedule.l2_running
+                  {data.probe_schedule.l1_running
                     ? 'running now'
-                    : formatHealthWhen(data.probe_schedule.next_l2_at)}
+                    : formatHealthWhen(data.probe_schedule.next_l1_at)}
                 </dd>
               </div>
-              {data.probe_schedule.l3_enabled ? (
+              {data.probe_schedule.l2_enabled ? (
                 <>
                   <div>
-                    <dt>Last L3 sweep</dt>
-                    <dd>{formatHealthWhen(data.probe_schedule.last_l3_at)}</dd>
+                    <dt>Last L2 sweep</dt>
+                    <dd>{formatHealthWhen(data.probe_schedule.last_l2_at)}</dd>
                   </div>
                   <div>
-                    <dt>Next L3 sweep</dt>
+                    <dt>Next L2 sweep</dt>
                     <dd>
-                      {data.probe_schedule.l3_running
+                      {data.probe_schedule.l2_running
                         ? 'running now'
-                        : formatHealthWhen(data.probe_schedule.next_l3_at)}
+                        : formatHealthWhen(data.probe_schedule.next_l2_at)}
                     </dd>
                   </div>
                 </>

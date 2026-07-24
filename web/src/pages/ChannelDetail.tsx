@@ -37,15 +37,15 @@ type ProbeResponse = {
 }
 
 type ProbeSchedule = {
-  l2_interval: string
+  l1_interval: string
+  last_l1_at?: string
+  next_l1_at?: string
+  l1_running?: boolean
+  l2_enabled?: boolean
+  l2_interval?: string
   last_l2_at?: string
   next_l2_at?: string
   l2_running?: boolean
-  l3_enabled?: boolean
-  l3_interval?: string
-  last_l3_at?: string
-  next_l3_at?: string
-  l3_running?: boolean
 }
 
 function CellValue({ children }: { children: ReactNode }) {
@@ -107,7 +107,7 @@ export function ChannelDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryResponse | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
-  const [probeBusy, setProbeBusy] = useState<'l2' | 'l3' | null>(null)
+  const [probeBusy, setProbeBusy] = useState<'l1' | 'l2' | null>(null)
   const [probeError, setProbeError] = useState<string | null>(null)
   const [probeNote, setProbeNote] = useState<string | null>(null)
   const [schedule, setSchedule] = useState<ProbeSchedule | null>(null)
@@ -173,11 +173,11 @@ export function ChannelDetailPage() {
     }
   }, [])
 
-  async function runProbe(kind: 'l2' | 'l3') {
+  async function runProbe(kind: 'l1' | 'l2') {
     setProbeBusy(kind)
     setProbeError(null)
     setProbeNote(null)
-    const suffix = kind === 'l2' ? '/health/probe/l2' : '/health/probe'
+    const suffix = kind === 'l1' ? '/health/probe/l1' : '/health/probe'
     const path = `/api/channels/${encodeURIComponent(provider)}/${encodeURIComponent(normalizedId)}${suffix}`
     try {
       const res = await fetch(path, { method: 'POST' })
@@ -187,7 +187,7 @@ export function ChannelDetailPage() {
       }
       const body = (await res.json()) as ProbeResponse
       setChannel((prev) => (prev ? { ...prev, health: body.health } : prev))
-      const label = kind === 'l2' ? 'L2' : 'L3'
+      const label = kind === 'l1' ? 'L1' : 'L2'
       const http =
         body.check.http_status != null && body.check.http_status > 0
           ? ` (HTTP ${body.check.http_status})`
@@ -475,63 +475,63 @@ export function ChannelDetailPage() {
               </dd>
             </div>
             <div>
-              <dt>Next L2 sweep</dt>
+              <dt>Next L1 sweep</dt>
               <dd>
                 {channel.classification === 'NATIVE'
-                  ? schedule?.l2_running
+                  ? schedule?.l1_running
                     ? 'running now'
-                    : formatHealthWhen(schedule?.next_l2_at)
-                  : 'not scheduled (L2 is NATIVE-only)'}
+                    : formatHealthWhen(schedule?.next_l1_at)
+                  : 'not scheduled (L1 is NATIVE-only)'}
               </dd>
             </div>
             <div>
-              <dt>Last L2 sweep</dt>
+              <dt>Last L1 sweep</dt>
               <dd>
                 {channel.classification === 'NATIVE'
-                  ? formatHealthWhen(schedule?.last_l2_at)
+                  ? formatHealthWhen(schedule?.last_l1_at)
                   : '—'}
               </dd>
             </div>
-            {schedule?.l3_enabled ? (
+            {schedule?.l2_enabled ? (
               <>
                 <div>
-                  <dt>Next L3 sweep</dt>
+                  <dt>Next L2 sweep</dt>
                   <dd>
-                    {schedule.l3_running
+                    {schedule.l2_running
                       ? 'running now'
-                      : formatHealthWhen(schedule.next_l3_at)}
+                      : formatHealthWhen(schedule.next_l2_at)}
                   </dd>
                 </div>
                 <div>
-                  <dt>Last L3 sweep</dt>
-                  <dd>{formatHealthWhen(schedule.last_l3_at)}</dd>
+                  <dt>Last L2 sweep</dt>
+                  <dd>{formatHealthWhen(schedule.last_l2_at)}</dd>
                 </div>
               </>
             ) : (
               <div>
-                <dt>Scheduled L3</dt>
-                <dd>off (Test now still runs one L3)</dd>
+                <dt>Scheduled L2</dt>
+                <dd>off (Test now still runs one L2)</dd>
               </div>
             )}
           </dl>
           <p className="probe-actions">
             <button
               type="button"
-              onClick={() => runProbe('l2')}
+              onClick={() => runProbe('l1')}
               disabled={probeBusy !== null}
             >
-              {probeBusy === 'l2' ? 'Probing L2…' : 'Probe L2'}
+              {probeBusy === 'l1' ? 'Probing L1…' : 'Probe L1'}
             </button>
             <button
               type="button"
-              onClick={() => runProbe('l3')}
+              onClick={() => runProbe('l2')}
               disabled={probeBusy !== null}
             >
-              {probeBusy === 'l3' ? 'Probing L3…' : 'Test now (L3)'}
+              {probeBusy === 'l2' ? 'Probing L2…' : 'Test now (L2)'}
             </button>
             <span className="meta">
               {' '}
-              L2 = first media segment; L3 = ffprobe decode.
+              Health L1 = first media segment; Health L2 = ffprobe decode.
             </span>
           </p>
           {probeNote ? <p className="meta" role="status">{probeNote}</p> : null}

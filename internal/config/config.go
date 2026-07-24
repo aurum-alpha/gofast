@@ -48,26 +48,106 @@ type Health struct {
 	ConsecutiveFailures int `yaml:"consecutive_failures"`
 	// ExcludeUnhealthy prunes HealthDown channels from export (default false).
 	ExcludeUnhealthy *bool `yaml:"exclude_unhealthy"`
-	// L2Interval is how often to run NATIVE segment probes (default 24h).
+	// L1Interval is how often to run NATIVE segment probes (default 24h).
+	L1Interval time.Duration `yaml:"l1_interval"`
+	// L1Workers bounds concurrent L1 probes (default 4).
+	L1Workers int `yaml:"l1_workers"`
+	// L2Enabled turns on scheduled ffprobe (default false).
+	L2Enabled *bool `yaml:"l2_enabled"`
+	// L2Interval is the jitter window for scheduled L2 (default 60m).
 	L2Interval time.Duration `yaml:"l2_interval"`
-	// L2Workers bounds concurrent L2 probes (default 4).
+	// L2Workers bounds concurrent L2 probes (default 2).
 	L2Workers int `yaml:"l2_workers"`
-	// L3Enabled turns on scheduled ffprobe (default false).
-	L3Enabled *bool `yaml:"l3_enabled"`
-	// L3Interval is the jitter window for scheduled L3 (default 60m).
-	L3Interval time.Duration `yaml:"l3_interval"`
-	// L3Workers bounds concurrent L3 probes (default 2).
-	L3Workers int `yaml:"l3_workers"`
-	// L3Timeout is per-probe ffprobe timeout (default 30s).
-	L3Timeout time.Duration `yaml:"l3_timeout"`
-	// L3HealthySample is fraction of healthy channels probed each L3 sweep (default 0.1).
-	L3HealthySample *float64 `yaml:"l3_healthy_sample"`
+	// L2Timeout is per-probe ffprobe timeout (default 30s).
+	L2Timeout time.Duration `yaml:"l2_timeout"`
+	// L2HealthySample is fraction of healthy channels probed each L2 sweep (default 0.1).
+	L2HealthySample *float64 `yaml:"l2_healthy_sample"`
 	// MaxPerHost caps concurrent probes per CDN hostname (default 2).
 	MaxPerHost int `yaml:"max_per_host"`
 	// SoftRetries is extra attempts on timeout/5xx (default 1; 0 disables).
 	SoftRetries *int `yaml:"soft_retries"`
 	// FFProbePath is the ffprobe binary (default /usr/bin/ffprobe).
 	FFProbePath string `yaml:"ffprobe_path"`
+}
+
+// UnmarshalYAML accepts the prior L2/L3 health keys for one release. An old
+// l2_interval/l2_workers pair is distinguishable because l1_* is absent; l3_*
+// always maps to Health L2.
+func (h *Health) UnmarshalYAML(value *yaml.Node) error {
+	var raw struct {
+		ConsecutiveFailures int            `yaml:"consecutive_failures"`
+		ExcludeUnhealthy    *bool          `yaml:"exclude_unhealthy"`
+		L1Interval          *time.Duration `yaml:"l1_interval"`
+		L1Workers           *int           `yaml:"l1_workers"`
+		L2Enabled           *bool          `yaml:"l2_enabled"`
+		L2Interval          *time.Duration `yaml:"l2_interval"`
+		L2Workers           *int           `yaml:"l2_workers"`
+		L2Timeout           *time.Duration `yaml:"l2_timeout"`
+		L2HealthySample     *float64       `yaml:"l2_healthy_sample"`
+		L3Enabled           *bool          `yaml:"l3_enabled"`
+		L3Interval          *time.Duration `yaml:"l3_interval"`
+		L3Workers           *int           `yaml:"l3_workers"`
+		L3Timeout           *time.Duration `yaml:"l3_timeout"`
+		L3HealthySample     *float64       `yaml:"l3_healthy_sample"`
+		MaxPerHost          int            `yaml:"max_per_host"`
+		SoftRetries         *int           `yaml:"soft_retries"`
+		FFProbePath         string         `yaml:"ffprobe_path"`
+	}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	h.ConsecutiveFailures = raw.ConsecutiveFailures
+	h.ExcludeUnhealthy = raw.ExcludeUnhealthy
+	h.MaxPerHost = raw.MaxPerHost
+	h.SoftRetries = raw.SoftRetries
+	h.FFProbePath = raw.FFProbePath
+	if raw.L2Enabled != nil {
+		h.L2Enabled = raw.L2Enabled
+	}
+	if raw.L2Timeout != nil {
+		h.L2Timeout = *raw.L2Timeout
+	}
+	if raw.L2HealthySample != nil {
+		h.L2HealthySample = raw.L2HealthySample
+	}
+	newL1Set := raw.L1Interval != nil || raw.L1Workers != nil
+	if newL1Set {
+		if raw.L1Interval != nil {
+			h.L1Interval = *raw.L1Interval
+		}
+		if raw.L1Workers != nil {
+			h.L1Workers = *raw.L1Workers
+		}
+		if raw.L2Interval != nil {
+			h.L2Interval = *raw.L2Interval
+		}
+		if raw.L2Workers != nil {
+			h.L2Workers = *raw.L2Workers
+		}
+	} else {
+		if raw.L2Interval != nil {
+			h.L1Interval = *raw.L2Interval
+		}
+		if raw.L2Workers != nil {
+			h.L1Workers = *raw.L2Workers
+		}
+	}
+	if raw.L3Enabled != nil && raw.L2Enabled == nil {
+		h.L2Enabled = raw.L3Enabled
+	}
+	if raw.L3Interval != nil && !(newL1Set && raw.L2Interval != nil) {
+		h.L2Interval = *raw.L3Interval
+	}
+	if raw.L3Workers != nil && !(newL1Set && raw.L2Workers != nil) {
+		h.L2Workers = *raw.L3Workers
+	}
+	if raw.L3Timeout != nil && raw.L2Timeout == nil {
+		h.L2Timeout = *raw.L3Timeout
+	}
+	if raw.L3HealthySample != nil && raw.L2HealthySample == nil {
+		h.L2HealthySample = raw.L3HealthySample
+	}
+	return nil
 }
 
 // ArtworkTLS is a per-host TLS exception for logo downloads only.
@@ -131,10 +211,10 @@ func New(path string) (*Config, error) {
 	if cfg.Health.ConsecutiveFailures < 0 {
 		return nil, fmt.Errorf("config: health.consecutive_failures must be >= 0")
 	}
-	if cfg.Health.L3HealthySample != nil {
-		v := *cfg.Health.L3HealthySample
+	if cfg.Health.L2HealthySample != nil {
+		v := *cfg.Health.L2HealthySample
 		if v < 0 || v > 1 {
-			return nil, fmt.Errorf("config: health.l3_healthy_sample must be between 0 and 1")
+			return nil, fmt.Errorf("config: health.l2_healthy_sample must be between 0 and 1")
 		}
 	}
 	if cfg.Health.SoftRetries != nil && *cfg.Health.SoftRetries < 0 {
@@ -153,7 +233,7 @@ func defaults() *Config {
 	proxyAll := false
 	cacheLogos := false
 	excludeUnhealthy := false
-	l3Enabled := false
+	l2Enabled := false
 	return &Config{
 		Listen:     DefaultListen,
 		BaseURL:    "",
@@ -169,13 +249,13 @@ func defaults() *Config {
 		Health: Health{
 			ConsecutiveFailures: 3,
 			ExcludeUnhealthy:    &excludeUnhealthy,
-			L2Interval:          24 * time.Hour,
-			L2Workers:           4,
-			L3Enabled:           &l3Enabled,
-			L3Interval:          60 * time.Minute,
-			L3Workers:           2,
-			L3Timeout:           30 * time.Second,
-			L3HealthySample:     floatPtr(0.1),
+			L1Interval:          24 * time.Hour,
+			L1Workers:           4,
+			L2Enabled:           &l2Enabled,
+			L2Interval:          60 * time.Minute,
+			L2Workers:           2,
+			L2Timeout:           30 * time.Second,
+			L2HealthySample:     floatPtr(0.1),
 			MaxPerHost:          2,
 			SoftRetries:         intPtr(1),
 			FFProbePath:         "/usr/bin/ffprobe",
@@ -232,26 +312,40 @@ func envOverlay() (*Config, error) {
 		}
 		o.Health.ExcludeUnhealthy = &parsed
 	}
-	if v := os.Getenv("FASTGEN_HEALTH_L2_INTERVAL"); v != "" {
+	if v := os.Getenv("FASTGEN_HEALTH_L1_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L1_INTERVAL: %w", err)
+		}
+		o.Health.L1Interval = d
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_L2_INTERVAL"); v != "" && os.Getenv("FASTGEN_HEALTH_L1_INTERVAL") == "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
 			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L2_INTERVAL: %w", err)
 		}
-		o.Health.L2Interval = d
+		o.Health.L1Interval = d
 	}
-	if v := os.Getenv("FASTGEN_HEALTH_L3_ENABLED"); v != "" {
+	if v := os.Getenv("FASTGEN_HEALTH_L2_ENABLED"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L2_ENABLED: %w", err)
+		}
+		o.Health.L2Enabled = &parsed
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_L3_ENABLED"); v != "" && os.Getenv("FASTGEN_HEALTH_L2_ENABLED") == "" {
 		parsed, err := strconv.ParseBool(v)
 		if err != nil {
 			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L3_ENABLED: %w", err)
 		}
-		o.Health.L3Enabled = &parsed
+		o.Health.L2Enabled = &parsed
 	}
 	if v := os.Getenv("FASTGEN_HEALTH_L3_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
 			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L3_INTERVAL: %w", err)
 		}
-		o.Health.L3Interval = d
+		o.Health.L2Interval = d
 	}
 	if v := os.Getenv("FASTGEN_HEALTH_FFPROBE_PATH"); v != "" {
 		o.Health.FFProbePath = v
@@ -274,7 +368,7 @@ func envOverlay() (*Config, error) {
 		if f < 0 || f > 1 {
 			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L3_HEALTHY_SAMPLE must be between 0 and 1")
 		}
-		o.Health.L3HealthySample = &f
+		o.Health.L2HealthySample = &f
 	}
 	if v := os.Getenv("FASTGEN_HEALTH_MAX_PER_HOST"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -286,7 +380,17 @@ func envOverlay() (*Config, error) {
 		}
 		o.Health.MaxPerHost = n
 	}
-	if v := os.Getenv("FASTGEN_HEALTH_L2_WORKERS"); v != "" {
+	if v := os.Getenv("FASTGEN_HEALTH_L1_WORKERS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L1_WORKERS: %w", err)
+		}
+		if n < 1 {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L1_WORKERS must be >= 1")
+		}
+		o.Health.L1Workers = n
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_L2_WORKERS"); v != "" && os.Getenv("FASTGEN_HEALTH_L1_WORKERS") == "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
 			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L2_WORKERS: %w", err)
@@ -294,7 +398,7 @@ func envOverlay() (*Config, error) {
 		if n < 1 {
 			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L2_WORKERS must be >= 1")
 		}
-		o.Health.L2Workers = n
+		o.Health.L1Workers = n
 	}
 	return o, nil
 }
@@ -317,8 +421,8 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"data_dir", c.DataDir,
 		"health_consecutive_failures", c.HealthConsecutiveFailures(),
 		"health_exclude_unhealthy", c.HealthExcludeUnhealthy(),
-		"health_l2_interval", c.HealthL2Interval().String(),
-		"health_l3_enabled", c.HealthL3Enabled(),
+		"health_l1_interval", c.HealthL1Interval().String(),
+		"health_l2_enabled", c.HealthL2Enabled(),
 		"health_ffprobe_path", c.HealthFFProbePath(),
 		"provider_overlays", len(c.Providers),
 	)
@@ -366,28 +470,28 @@ func (c *Config) merge(o *Config) {
 		v := *o.Health.ExcludeUnhealthy
 		c.Health.ExcludeUnhealthy = &v
 	}
+	if o.Health.L1Interval != 0 {
+		c.Health.L1Interval = o.Health.L1Interval
+	}
 	if o.Health.L2Interval != 0 {
 		c.Health.L2Interval = o.Health.L2Interval
 	}
-	if o.Health.L3Enabled != nil {
-		v := *o.Health.L3Enabled
-		c.Health.L3Enabled = &v
-	}
-	if o.Health.L3Interval != 0 {
-		c.Health.L3Interval = o.Health.L3Interval
-	}
-	if o.Health.L3Workers != 0 {
-		c.Health.L3Workers = o.Health.L3Workers
+	if o.Health.L2Enabled != nil {
+		v := *o.Health.L2Enabled
+		c.Health.L2Enabled = &v
 	}
 	if o.Health.L2Workers != 0 {
 		c.Health.L2Workers = o.Health.L2Workers
 	}
-	if o.Health.L3Timeout != 0 {
-		c.Health.L3Timeout = o.Health.L3Timeout
+	if o.Health.L1Workers != 0 {
+		c.Health.L1Workers = o.Health.L1Workers
 	}
-	if o.Health.L3HealthySample != nil {
-		v := *o.Health.L3HealthySample
-		c.Health.L3HealthySample = &v
+	if o.Health.L2Timeout != 0 {
+		c.Health.L2Timeout = o.Health.L2Timeout
+	}
+	if o.Health.L2HealthySample != nil {
+		v := *o.Health.L2HealthySample
+		c.Health.L2HealthySample = &v
 	}
 	if o.Health.MaxPerHost != 0 {
 		c.Health.MaxPerHost = o.Health.MaxPerHost
@@ -427,57 +531,57 @@ func (c *Config) HealthExcludeUnhealthy() bool {
 	return c != nil && c.Health.ExcludeUnhealthy != nil && *c.Health.ExcludeUnhealthy
 }
 
-// HealthL2Interval returns the L2 segment probe interval (default 24h).
+// HealthL1Interval returns the L1 segment probe interval (default 24h).
+func (c *Config) HealthL1Interval() time.Duration {
+	if c == nil || c.Health.L1Interval <= 0 {
+		return 24 * time.Hour
+	}
+	return c.Health.L1Interval
+}
+
+// HealthL2Enabled reports whether scheduled L2 ffprobe is on.
+func (c *Config) HealthL2Enabled() bool {
+	return c != nil && c.Health.L2Enabled != nil && *c.Health.L2Enabled
+}
+
+// HealthL2Interval returns the L2 ffprobe jitter window (default 60m).
 func (c *Config) HealthL2Interval() time.Duration {
 	if c == nil || c.Health.L2Interval <= 0 {
-		return 24 * time.Hour
+		return 60 * time.Minute
 	}
 	return c.Health.L2Interval
 }
 
-// HealthL3Enabled reports whether scheduled L3 ffprobe is on.
-func (c *Config) HealthL3Enabled() bool {
-	return c != nil && c.Health.L3Enabled != nil && *c.Health.L3Enabled
-}
-
-// HealthL3Interval returns the L3 jitter window (default 60m).
-func (c *Config) HealthL3Interval() time.Duration {
-	if c == nil || c.Health.L3Interval <= 0 {
-		return 60 * time.Minute
-	}
-	return c.Health.L3Interval
-}
-
-// HealthL3Workers returns L3 concurrency (default 2, min 1).
-func (c *Config) HealthL3Workers() int {
-	if c == nil || c.Health.L3Workers < 1 {
-		return 2
-	}
-	return c.Health.L3Workers
-}
-
-// HealthL2Workers returns L2 concurrency (default 4, min 1).
+// HealthL2Workers returns L2 concurrency (default 2, min 1).
 func (c *Config) HealthL2Workers() int {
 	if c == nil || c.Health.L2Workers < 1 {
-		return 4
+		return 2
 	}
 	return c.Health.L2Workers
 }
 
-// HealthL3Timeout returns per-probe ffprobe timeout (default 30s).
-func (c *Config) HealthL3Timeout() time.Duration {
-	if c == nil || c.Health.L3Timeout <= 0 {
-		return 30 * time.Second
+// HealthL1Workers returns L1 concurrency (default 4, min 1).
+func (c *Config) HealthL1Workers() int {
+	if c == nil || c.Health.L1Workers < 1 {
+		return 4
 	}
-	return c.Health.L3Timeout
+	return c.Health.L1Workers
 }
 
-// HealthL3HealthySample returns fraction of healthy channels for L3 (default 0.1).
-func (c *Config) HealthL3HealthySample() float64 {
-	if c == nil || c.Health.L3HealthySample == nil {
+// HealthL2Timeout returns per-probe ffprobe timeout (default 30s).
+func (c *Config) HealthL2Timeout() time.Duration {
+	if c == nil || c.Health.L2Timeout <= 0 {
+		return 30 * time.Second
+	}
+	return c.Health.L2Timeout
+}
+
+// HealthL2HealthySample returns fraction of healthy channels for L2 (default 0.1).
+func (c *Config) HealthL2HealthySample() float64 {
+	if c == nil || c.Health.L2HealthySample == nil {
 		return 0.1
 	}
-	v := *c.Health.L3HealthySample
+	v := *c.Health.L2HealthySample
 	if v < 0 {
 		return 0
 	}

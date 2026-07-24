@@ -17,7 +17,7 @@ func TestConfigHandler(t *testing.T) {
 	proxyAll := false
 	cacheLogos := true
 	exclude := false
-	l3 := true
+	l2 := true
 	cfg := &config.Config{
 		Listen:       ":8180",
 		BaseURL:      "http://localhost:8180",
@@ -30,11 +30,11 @@ func TestConfigHandler(t *testing.T) {
 		Health: config.Health{
 			ConsecutiveFailures: 4,
 			ExcludeUnhealthy:    &exclude,
-			L2Interval:          12 * time.Hour,
-			L3Enabled:           &l3,
-			L3Interval:          30 * time.Minute,
-			L3Workers:           3,
-			L3Timeout:           20 * time.Second,
+			L1Interval:          12 * time.Hour,
+			L2Enabled:           &l2,
+			L2Interval:          30 * time.Minute,
+			L2Workers:           3,
+			L2Timeout:           20 * time.Second,
 			FFProbePath:         "/usr/bin/ffprobe",
 		},
 		ArtworkTLS: map[string]config.ArtworkTLS{
@@ -67,7 +67,7 @@ func TestConfigHandler(t *testing.T) {
 	if got.HTTPTimeout != "45s" || got.LogLevel != "debug" {
 		t.Fatalf("timeout/log = %q %q", got.HTTPTimeout, got.LogLevel)
 	}
-	if got.Health.ConsecutiveFailures != 4 || !got.Health.L3Enabled || got.Health.L2Interval != "12h0m0s" {
+	if got.Health.ConsecutiveFailures != 4 || !got.Health.L2Enabled || got.Health.L1Interval != "12h0m0s" {
 		t.Fatalf("health = %+v", got.Health)
 	}
 	if len(got.ArtworkTLS) != 1 || got.ArtworkTLS[0].Host != "cdn.example" || !got.ArtworkTLS[0].CAPemSet {

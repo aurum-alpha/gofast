@@ -110,20 +110,20 @@ func main() {
 		Reg:             reg,
 		Emitter:         healthEmitter,
 		Segment:         &health.SegmentProber{HTTP: probeClient, SoftRetries: softRetries},
-		FFProbe:         &health.FFProbe{Path: cfg.HealthFFProbePath(), Timeout: cfg.HealthL3Timeout(), SoftRetries: softRetries},
-		L2Every:         cfg.HealthL2Interval(),
-		L3Every:         cfg.HealthL3Interval(),
-		L3On:            cfg.HealthL3Enabled(),
-		L2Workers:       cfg.HealthL2Workers(),
-		L3Workers:       cfg.HealthL3Workers(),
-		L3HealthySample: cfg.HealthL3HealthySample(),
+		FFProbe:         &health.FFProbe{Path: cfg.HealthFFProbePath(), Timeout: cfg.HealthL2Timeout(), SoftRetries: softRetries},
+		L2Every:         cfg.HealthL1Interval(),
+		L3Every:         cfg.HealthL2Interval(),
+		L3On:            cfg.HealthL2Enabled(),
+		L2Workers:       cfg.HealthL1Workers(),
+		L3Workers:       cfg.HealthL2Workers(),
+		L3HealthySample: cfg.HealthL2HealthySample(),
 		Hosts:           health.NewHostLimiter(cfg.HealthMaxPerHost()),
 		StatePath:       filepath.Join(cfg.DataDir, "channelattr", "health_schedule.json"),
 	}
 	go sched.Run(ctx)
-	if cfg.HealthL3Enabled() {
+	if cfg.HealthL2Enabled() {
 		if err := health.EnsureFFProbe(cfg.HealthFFProbePath()); err != nil {
-			slog.Warn("ffprobe unavailable; L3 probes will fail until fixed", "path", cfg.HealthFFProbePath(), "err", err)
+			slog.Warn("ffprobe unavailable; Health L2 probes will fail until fixed", "path", cfg.HealthFFProbePath(), "err", err)
 		}
 	}
 
@@ -152,6 +152,7 @@ func main() {
 			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}", server.ChannelHandler(reg))
 			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}/health/history", server.ChannelHealthHistoryHandler(reg, attrs))
 			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe", server.ChannelHealthProbeHandler(reg, sched))
+			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe/l1", server.ChannelHealthProbeL1Handler(reg, sched))
 			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe/l2", server.ChannelHealthProbeL2Handler(reg, sched))
 			mux.HandleFunc("GET /api/guide.xml", server.GuideXML(reg))
 			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(reg))

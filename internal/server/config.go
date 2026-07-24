@@ -21,13 +21,13 @@ type ConfigSource struct {
 type ConfigHealth struct {
 	ConsecutiveFailures int     `json:"consecutive_failures"`
 	ExcludeUnhealthy    bool    `json:"exclude_unhealthy"`
+	L1Interval          string  `json:"l1_interval"`
+	L1Workers           int     `json:"l1_workers"`
+	L2Enabled           bool    `json:"l2_enabled"`
 	L2Interval          string  `json:"l2_interval"`
 	L2Workers           int     `json:"l2_workers"`
-	L3Enabled           bool    `json:"l3_enabled"`
-	L3Interval          string  `json:"l3_interval"`
-	L3Workers           int     `json:"l3_workers"`
-	L3Timeout           string  `json:"l3_timeout"`
-	L3HealthySample     float64 `json:"l3_healthy_sample"`
+	L2Timeout           string  `json:"l2_timeout"`
+	L2HealthySample     float64 `json:"l2_healthy_sample"`
 	MaxPerHost          int     `json:"max_per_host"`
 	SoftRetries         int     `json:"soft_retries"`
 	FFProbePath         string  `json:"ffprobe_path"`
@@ -81,13 +81,13 @@ func ConfigHandler(cfg *config.Config, path string, fromFile bool, reg *provider
 			Health: ConfigHealth{
 				ConsecutiveFailures: cfg.HealthConsecutiveFailures(),
 				ExcludeUnhealthy:    cfg.HealthExcludeUnhealthy(),
+				L1Interval:          cfg.HealthL1Interval().String(),
+				L1Workers:           cfg.HealthL1Workers(),
+				L2Enabled:           cfg.HealthL2Enabled(),
 				L2Interval:          cfg.HealthL2Interval().String(),
 				L2Workers:           cfg.HealthL2Workers(),
-				L3Enabled:           cfg.HealthL3Enabled(),
-				L3Interval:          cfg.HealthL3Interval().String(),
-				L3Workers:           cfg.HealthL3Workers(),
-				L3Timeout:           cfg.HealthL3Timeout().String(),
-				L3HealthySample:     cfg.HealthL3HealthySample(),
+				L2Timeout:           cfg.HealthL2Timeout().String(),
+				L2HealthySample:     cfg.HealthL2HealthySample(),
 				MaxPerHost:          cfg.HealthMaxPerHost(),
 				SoftRetries:         cfg.HealthSoftRetries(),
 				FFProbePath:         cfg.HealthFFProbePath(),

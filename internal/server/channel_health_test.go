@@ -54,7 +54,7 @@ func TestChannelHealthHistory(t *testing.T) {
 		Kind:      channelattr.KindHealth,
 		Value:     v,
 		At:        time.Now().UTC(),
-		Source:    "probe_l2",
+		Source:    "health_l1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -99,14 +99,14 @@ func TestChannelHealthProbeUnavailable(t *testing.T) {
 		t.Fatalf("status %d", rec.Code)
 	}
 
-	h2 := server.ChannelHealthProbeL2Handler(reg, nil)
+	h2 := server.ChannelHealthProbeL1Handler(reg, nil)
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/channels/lg/news/health/probe/l2", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/channels/lg/news/health/probe/l1", nil)
 	req.SetPathValue("provider", "lg")
 	req.SetPathValue("normalizedId", "news")
 	h2.ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("l2 status %d", rec.Code)
+		t.Fatalf("l1 status %d", rec.Code)
 	}
 }
 

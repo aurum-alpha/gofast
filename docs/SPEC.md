@@ -419,29 +419,36 @@ kind of stream is this" and decides export. Health answers "does it actually
 play right now" and is a per-channel time-series. Keep them separate: health
 annotates by default and gates export only by explicit opt-in.
 
-**Probe depths (tiered):**
-1. *Shape* — the classifier's playlist inspection (cheap, runs every refresh).
-2. *Segment* — fetch the first media segment via GET on ProbeURL (emitted/export
+**Mental model:** classifier and health are independent labels: a channel can be
+`NATIVE` and down at the same time. Classifier inspection is not a health probe
+and does not drive the health FSM.
+
+**Health probe levels:**
+1. **Health L1 — segment** — fetch the first media segment via GET on ProbeURL (emitted/export
    URL when set): prefer Range; plain GET on HTTP 416; soft-retry timeout/5xx;
    accept AES-encrypted segments. Persist HTTP status, duration, final URL,
    bytes, range flags. Catches dead playouts, 403s, geo-blocks, empty segments.
-3. *Decode* — run ffprobe against ProbeURL; PASS requires a **video** stream
-   plus non-null format. Pass channel RequestHeaders. Scheduled L3 (when on)
-   always probes degraded/down/untested and samples healthy (`l3_healthy_sample`);
+2. **Health L2 — decode** — run ffprobe against ProbeURL; PASS requires a **video** stream
+   plus non-null format. Pass channel RequestHeaders. Scheduled Health L2 (when on)
+   always probes degraded/down/untested and samples healthy (`l2_healthy_sample`);
    concurrent probes capped per host.
 
 **Default posture — passive first, active minimal.** Design constraint: many
 installs must not collectively generate bot-fingerprint probe traffic or fake
 ad impressions against free services. Therefore:
-- Level 1 (shape): every refresh, all channels. No media fetched, no views.
-- Level 2 (segment): daily for dialects that emit a direct upstream URL
+- The classifier runs every refresh. It inspects stream dialect and fetches no
+  media; it is not part of the health ladder.
+- Health L1 (segment): daily for dialects that emit a direct upstream URL
   (`NATIVE`, `SESSION`, `XUMO_SSAI`) — a plain segment GET fires no Amagi ad
-  beacon. Never schedule L2 on `AMAGI_SSAI` without an emitted proxy URL
+  beacon. Never schedule Health L1 on `AMAGI_SSAI` without an emitted proxy URL
   (probing through the proxy fires impression beacons = fake views).
-- Level 3 (ffprobe): OFF by default; opt-in config for users who accept the
+- Health L2 (ffprobe): OFF by default; opt-in config for users who accept the
   tradeoff. Bounded worker pool, per-probe timeout, jitter over a configurable
   window (default 60m), randomized order — never a clockwork fingerprint.
   Skip `AMAGI_SSAI` when `EmittedURL` is empty.
+- Migration: the former health L2 segment name is now Health L1; the former
+  health L3 ffprobe name is now Health L2. Old YAML aliases are accepted for
+  one release.
 - **Passive health (primary signal):** FASTProxy records the outcome of every
   REAL playback session (upstream playlist fetch result, segment flow,
   failure class) and feeds the health state machine. Watched channels are

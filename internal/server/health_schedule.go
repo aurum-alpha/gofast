@@ -7,7 +7,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/health"
 )
 
-// HealthScheduleHandler serves GET /api/health/schedule (global L2/L3 next/last).
+// HealthScheduleHandler serves GET /api/health/schedule (global Health L1/L2 next/last).
 func HealthScheduleHandler(sched *health.Scheduler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

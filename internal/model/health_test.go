@@ -45,7 +45,7 @@ func TestChannelHealthApply(t *testing.T) {
 		{
 			name:  "success records http status",
 			prev:  ChannelHealth{},
-			check: HealthCheck{Result: HealthCheckSuccess, At: at, Source: "probe_l2", HTTPStatus: 206},
+			check: HealthCheck{Result: HealthCheckSuccess, At: at, Source: "health_l1", HTTPStatus: 206},
 			n:     3,
 			want: ChannelHealth{
 				Status:              HealthHealthy,

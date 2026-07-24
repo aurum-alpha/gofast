@@ -28,14 +28,14 @@ type HealthCheck struct {
 	// Detail is the human-readable cause (HTTP status line, net error, ffprobe
 	// stderr). Kept short; omitted on success.
 	Detail string `json:"detail,omitempty"`
-	// HTTPStatus is the final HTTP status from an L2 (segment) probe when the
+	// HTTPStatus is the final HTTP status from a Health L1 (segment) probe when the
 	// check involved an HTTP response (success or failure). Zero if N/A.
 	HTTPStatus int `json:"http_status,omitempty"`
 	// DurationMs is wall time for the check (all attempts including soft retry).
 	DurationMs int64 `json:"duration_ms,omitempty"`
-	// FinalURL is the URL after redirects (L2 segment or probe target).
+	// FinalURL is the URL after redirects (Health L1 segment or probe target).
 	FinalURL string `json:"final_url,omitempty"`
-	// BytesRead is response body bytes for the decisive L2 GET.
+	// BytesRead is response body bytes for the decisive Health L1 GET.
 	BytesRead int `json:"bytes_read,omitempty"`
 	// RangeUsed is true when the decisive request used a Range header.
 	RangeUsed bool `json:"range_used,omitempty"`
@@ -53,7 +53,7 @@ type ChannelHealth struct {
 	LastCheck           HealthCheckResult `json:"last_check,omitempty"`
 	LastFailureClass    string            `json:"last_failure_class,omitempty"`
 	LastFailureDetail   string            `json:"last_failure_detail,omitempty"`
-	// LastHTTPStatus is from the latest check that recorded one (L2 HTTP).
+	// LastHTTPStatus is from the latest check that recorded one (Health L1 HTTP).
 	LastHTTPStatus int `json:"last_http_status,omitempty"`
 	// Probe metadata from the latest check (mirrored from HealthCheck).
 	LastDurationMs   int64  `json:"last_duration_ms,omitempty"`

@@ -63,17 +63,22 @@ func ChannelHealthHistoryHandler(reg *provider.Registry, attrs *channelattr.Stor
 	}
 }
 
-// ChannelHealthProbeHandler serves POST .../health/probe (L3 Test now).
+// ChannelHealthProbeHandler serves POST .../health/probe (Health L2 Test now).
 func ChannelHealthProbeHandler(reg *provider.Registry, sched *health.Scheduler) http.HandlerFunc {
 	return channelHealthProbe(reg, sched, true)
 }
 
-// ChannelHealthProbeL2Handler serves POST .../health/probe/l2 (on-demand L2).
-func ChannelHealthProbeL2Handler(reg *provider.Registry, sched *health.Scheduler) http.HandlerFunc {
+// ChannelHealthProbeL1Handler serves POST .../health/probe/l1 (on-demand Health L1).
+func ChannelHealthProbeL1Handler(reg *provider.Registry, sched *health.Scheduler) http.HandlerFunc {
 	return channelHealthProbe(reg, sched, false)
 }
 
-func channelHealthProbe(reg *provider.Registry, sched *health.Scheduler, l3 bool) http.HandlerFunc {
+// ChannelHealthProbeL2Handler is a deprecated route-handler alias for Health L1.
+func ChannelHealthProbeL2Handler(reg *provider.Registry, sched *health.Scheduler) http.HandlerFunc {
+	return ChannelHealthProbeL1Handler(reg, sched)
+}
+
+func channelHealthProbe(reg *provider.Registry, sched *health.Scheduler, l2 bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -95,10 +100,10 @@ func channelHealthProbe(reg *provider.Registry, sched *health.Scheduler, l3 bool
 			next  model.ChannelHealth
 			err   error
 		)
-		if l3 {
+		if l2 {
 			check, next, err = sched.ProbeNow(r.Context(), ch)
 		} else {
-			check, next, err = sched.ProbeL2Now(r.Context(), ch)
+			check, next, err = sched.ProbeL1Now(r.Context(), ch)
 		}
 		if err != nil {
 			if errors.Is(err, health.ErrNoProber) || errors.Is(err, health.ErrNoSegmentProber) {

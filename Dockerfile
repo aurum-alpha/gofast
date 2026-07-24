@@ -27,7 +27,7 @@ ENV CGO_ENABLED=0
 RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastgen ./cmd/fastgen
 RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
 
-# fastgen needs ffprobe (L3 health). Use slim Debian + ffmpeg rather than
+# fastgen needs ffprobe (Health L2). Use slim Debian + ffmpeg rather than
 # distroless/static (dynamically linked ffprobe will not run there).
 FROM debian:bookworm-slim AS fastgen
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
