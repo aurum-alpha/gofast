@@ -30,8 +30,8 @@ func NewRegistry(readers map[model.ProviderID]Reader, settings map[model.Provide
 	return &Registry{feeds: feeds, settings: settings, ids: ids}
 }
 
-// Channels returns every enabled feed's channels merged, sorted by provider then
-// export number (unnumbered last) then normalized id.
+// Channels returns every enabled feed's channels merged, sorted by export
+// channel number (unnumbered last), then provider, then normalized id.
 func (r *Registry) Channels() []model.Channel {
 	out := make([]model.Channel, 0)
 	for _, f := range r.Feeds() {
@@ -110,12 +110,9 @@ func (r *Registry) Settings(id model.ProviderID) model.ProviderSettings {
 	return r.settings[id]
 }
 
-// lineupLess orders lineup rows by provider, then export channel number
-// (unnumbered last), then normalized id.
+// lineupLess orders lineup rows by export channel number (unnumbered last),
+// then provider, then normalized id.
 func lineupLess(provI, provJ string, numI, numJ int, idI, idJ string) bool {
-	if provI != provJ {
-		return provI < provJ
-	}
 	if numI == 0 {
 		numI = 1 << 30
 	}
@@ -124,6 +121,9 @@ func lineupLess(provI, provJ string, numI, numJ int, idI, idJ string) bool {
 	}
 	if numI != numJ {
 		return numI < numJ
+	}
+	if provI != provJ {
+		return provI < provJ
 	}
 	return idI < idJ
 }

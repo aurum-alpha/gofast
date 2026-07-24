@@ -77,17 +77,43 @@ func TestFeedStats(t *testing.T) {
 }
 
 func TestRegistryChannelsMergeAndSort(t *testing.T) {
-	settings := map[model.ProviderID]model.ProviderSettings{"lg": {ID: "lg"}}
-	reg := NewRegistry(map[model.ProviderID]Reader{"lg": fakeReader{}}, settings)
-	f, _ := reg.Feed("lg")
-	f.Set(Lineup{Channels: []model.Channel{
-		{Provider: "lg", NormalizedID: "b", OffsetNumber: 2},
-		{Provider: "lg", NormalizedID: "a", OffsetNumber: 1},
+	settings := map[model.ProviderID]model.ProviderSettings{
+		"lg":    {ID: "lg"},
+		"pluto": {ID: "pluto"},
+	}
+	reg := NewRegistry(map[model.ProviderID]Reader{
+		"lg":    fakeReader{},
+		"pluto": fakeReader{},
+	}, settings)
+	lg, _ := reg.Feed("lg")
+	lg.Set(Lineup{Channels: []model.Channel{
+		{Provider: "lg", NormalizedID: "b", OffsetNumber: 2002},
+		{Provider: "lg", NormalizedID: "a", OffsetNumber: 1001},
+	}})
+	pluto, _ := reg.Feed("pluto")
+	pluto.Set(Lineup{Channels: []model.Channel{
+		{Provider: "pluto", NormalizedID: "p", OffsetNumber: 1500},
+		{Provider: "pluto", NormalizedID: "z", OffsetNumber: 0},
 	}})
 
 	chs := reg.Channels()
-	if len(chs) != 2 || chs[0].NormalizedID != "a" || chs[1].NormalizedID != "b" {
-		t.Fatalf("merged+sorted channels: %+v", chs)
+	want := []struct {
+		provider string
+		id       string
+		num      int
+	}{
+		{"lg", "a", 1001},
+		{"pluto", "p", 1500},
+		{"lg", "b", 2002},
+		{"pluto", "z", 0},
+	}
+	if len(chs) != len(want) {
+		t.Fatalf("len=%d want %d: %+v", len(chs), len(want), chs)
+	}
+	for i, w := range want {
+		if string(chs[i].Provider) != w.provider || chs[i].NormalizedID != w.id || chs[i].OffsetNumber != w.num {
+			t.Fatalf("chs[%d]=%+v want provider=%s id=%s num=%d", i, chs[i], w.provider, w.id, w.num)
+		}
 	}
 }
 
