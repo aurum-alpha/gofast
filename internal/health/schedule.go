@@ -2,12 +2,14 @@ package health
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 )
@@ -26,7 +28,11 @@ type Scheduler struct {
 	L2Every   time.Duration
 	L3Every   time.Duration // interval between L3 sweeps when L3On
 	L3On      bool
+	L2Workers int // global L2 concurrency (default 4)
 	L3Workers int
+	// L3HealthySample is fraction of healthy channels probed each L3 sweep (0–1; default 0.1).
+	L3HealthySample float64
+	Hosts           *HostLimiter
 	// StatePath is optional JSON for last/next L2/L3 (e.g. {data_dir}/channelattr/health_schedule.json).
 	StatePath string
 
@@ -105,6 +111,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			"last_l3_at", nullTime(s.lastL3Locked()),
 			"next_l3_at", now.Add(l3Delay).UTC(),
 			"interval", s.l3Interval().String(),
+			"healthy_sample", s.l3HealthySample(),
 		)
 	}
 
@@ -145,9 +152,6 @@ func l3Fire(t *time.Timer) <-chan time.Time {
 	return t.C
 }
 
-// delayUntilNext returns how long to wait before the next sweep.
-// Anchored on lastCompleted + interval (like refresh from FetchedAt). Cold start
-// (no last) or overdue uses a short settle delay, not a full interval from boot.
 func (s *Scheduler) delayUntilNext(now, last time.Time, interval time.Duration, settle bool) time.Duration {
 	if interval <= 0 {
 		interval = 24 * time.Hour
@@ -179,6 +183,32 @@ func (s *Scheduler) l3Interval() time.Duration {
 		return s.L3Every
 	}
 	return 60 * time.Minute
+}
+
+func (s *Scheduler) l2Workers() int {
+	if s.L2Workers < 1 {
+		return 4
+	}
+	return s.L2Workers
+}
+
+func (s *Scheduler) l3Workers() int {
+	if s.L3Workers < 1 {
+		return 2
+	}
+	return s.L3Workers
+}
+
+func (s *Scheduler) l3HealthySample() float64 {
+	if s.L3HealthySample < 0 {
+		return 0.1
+	}
+	if s.L3HealthySample > 1 {
+		return 1
+	}
+	// Zero is a valid "never sample healthy" — but unset default is 0.1.
+	// Callers must set L3HealthySample from config (default 0.1). Negative means use default.
+	return s.L3HealthySample
 }
 
 func (s *Scheduler) lastL2Locked() time.Time {
@@ -225,23 +255,23 @@ func (s *Scheduler) runL2(ctx context.Context) {
 	if s.Segment == nil {
 		return
 	}
-	slog.Info("health L2 sweep start")
-	n := 0
+	var jobs []model.Channel
 	for _, feed := range s.Reg.Feeds() {
 		for _, ch := range feed.Channels() {
-			if ctx.Err() != nil {
-				return
-			}
-			if ch.Excluded || ch.Classification != model.ClassNative || ch.StreamURL == "" {
+			if ch.Excluded || ch.Classification != model.ClassNative || ProbeURL(ch) == "" {
 				continue
 			}
-			check := s.Segment.Check(ctx, ch)
-			if _, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check); err != nil {
-				slog.Warn("health L2 emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
-			}
-			n++
+			jobs = append(jobs, ch)
 		}
 	}
+	workers := s.l2Workers()
+	slog.Info("health L2 sweep start", "candidates", len(jobs), "workers", workers)
+	n := s.runJobs(ctx, jobs, workers, func(ctx context.Context, ch model.Channel) {
+		check := s.probeL2(ctx, ch)
+		if _, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check); err != nil {
+			slog.Warn("health L2 emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
+		}
+	})
 	slog.Info("health L2 sweep done", "probed", n)
 }
 
@@ -249,14 +279,9 @@ func (s *Scheduler) runL3(ctx context.Context) {
 	if s.FFProbe == nil {
 		return
 	}
-	workers := s.L3Workers
-	if workers < 1 {
-		workers = 2
-	}
-	type job struct {
-		ch model.Channel
-	}
-	var jobs []job
+	sample := s.l3HealthySample()
+	var jobs []model.Channel
+	skippedHealthy := 0
 	for _, feed := range s.Reg.Feeds() {
 		for _, ch := range feed.Channels() {
 			if ch.Excluded || ch.Classification == model.ClassDRM {
@@ -268,16 +293,69 @@ func (s *Scheduler) runL3(ctx context.Context) {
 			if ch.Classification == model.ClassBeacon && ch.EmittedURL == "" {
 				continue
 			}
-			jobs = append(jobs, job{ch: ch})
+			st := s.priorHealth(ch)
+			if !l3ShouldProbe(st, sample, rand.Float64()) {
+				if st == model.HealthHealthy {
+					skippedHealthy++
+				}
+				continue
+			}
+			jobs = append(jobs, ch)
 		}
 	}
 	rand.Shuffle(len(jobs), func(i, j int) { jobs[i], jobs[j] = jobs[j], jobs[i] })
-	slog.Info("health L3 sweep start", "candidates", len(jobs), "workers", workers)
+	workers := s.l3Workers()
+	slog.Info("health L3 sweep start",
+		"candidates", len(jobs), "skipped_healthy", skippedHealthy, "workers", workers, "healthy_sample", sample)
 
+	n := s.runJobs(ctx, jobs, workers, func(ctx context.Context, ch model.Channel) {
+		check := s.probeL3(ctx, ch)
+		if _, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check); err != nil {
+			slog.Warn("health L3 emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
+		}
+	})
+	slog.Info("health L3 sweep done", "probed", n)
+}
+
+// l3ShouldProbe decides whether a channel is included in a scheduled L3 sweep.
+// roll is in [0,1); tests pass a fixed value.
+func l3ShouldProbe(status model.Health, healthySample, roll float64) bool {
+	switch status {
+	case model.HealthDegraded, model.HealthDown, model.HealthUntested, "":
+		return true
+	case model.HealthHealthy:
+		if healthySample >= 1 {
+			return true
+		}
+		if healthySample <= 0 {
+			return false
+		}
+		return roll < healthySample
+	default:
+		return true
+	}
+}
+
+func (s *Scheduler) priorHealth(ch model.Channel) model.Health {
+	if s.Emitter != nil && s.Emitter.Store != nil {
+		if raw, ok := s.Emitter.Store.Current(ch.Provider, ch.NormalizedID, channelattr.KindHealth); ok {
+			var h model.ChannelHealth
+			if json.Unmarshal(raw, &h) == nil {
+				return h.StatusOrUntested()
+			}
+		}
+	}
+	return ch.Health.StatusOrUntested()
+}
+
+func (s *Scheduler) runJobs(ctx context.Context, jobs []model.Channel, workers int, fn func(context.Context, model.Channel)) int {
+	if workers < 1 {
+		workers = 1
+	}
 	sem := make(chan struct{}, workers)
 	done := make(chan struct{})
 	var pending int
-	for _, j := range jobs {
+	for _, ch := range jobs {
 		if ctx.Err() != nil {
 			break
 		}
@@ -285,20 +363,42 @@ func (s *Scheduler) runL3(ctx context.Context) {
 		sem <- struct{}{}
 		go func(ch model.Channel) {
 			defer func() { <-sem; done <- struct{}{} }()
-			check := s.FFProbe.Check(ctx, WithProbeURL(ch))
-			if _, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check); err != nil {
-				slog.Warn("health L3 emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
-			}
-		}(j.ch)
+			fn(ctx, ch)
+		}(ch)
 	}
 	for i := 0; i < pending; i++ {
 		select {
 		case <-ctx.Done():
-			return
+			return pending
 		case <-done:
 		}
 	}
-	slog.Info("health L3 sweep done", "probed", pending)
+	return pending
+}
+
+func (s *Scheduler) probeL2(ctx context.Context, ch model.Channel) model.HealthCheck {
+	release, err := s.acquireHost(ctx, ch)
+	if err != nil {
+		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "probe_l2"}, "timeout", err.Error())
+	}
+	defer release()
+	return s.Segment.Check(ctx, ch)
+}
+
+func (s *Scheduler) probeL3(ctx context.Context, ch model.Channel) model.HealthCheck {
+	release, err := s.acquireHost(ctx, ch)
+	if err != nil {
+		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "probe_l3", FinalURL: ProbeURL(ch)}, "timeout", err.Error())
+	}
+	defer release()
+	return s.FFProbe.Check(ctx, ch)
+}
+
+func (s *Scheduler) acquireHost(ctx context.Context, ch model.Channel) (func(), error) {
+	if s.Hosts == nil {
+		return func() {}, nil
+	}
+	return s.Hosts.Acquire(ctx, ProbeURL(ch))
 }
 
 // ProbeL2Now runs one L2 segment check and emits (on-demand; any class).
@@ -306,17 +406,17 @@ func (s *Scheduler) ProbeL2Now(ctx context.Context, ch model.Channel) (model.Hea
 	if s == nil || s.Segment == nil || s.Emitter == nil {
 		return model.HealthCheck{}, model.ChannelHealth{}, ErrNoSegmentProber
 	}
-	check := s.Segment.Check(ctx, ch)
+	check := s.probeL2(ctx, ch)
 	health, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check)
 	return check, health, err
 }
 
-// ProbeNow runs one L3 check and emits (for J27-26 "Test now").
+// ProbeNow runs one L3 check and emits (for "Test now").
 func (s *Scheduler) ProbeNow(ctx context.Context, ch model.Channel) (model.HealthCheck, model.ChannelHealth, error) {
 	if s == nil || s.FFProbe == nil || s.Emitter == nil {
 		return model.HealthCheck{}, model.ChannelHealth{}, ErrNoProber
 	}
-	check := s.FFProbe.Check(ctx, WithProbeURL(ch))
+	check := s.probeL3(ctx, ch)
 	health, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check)
 	return check, health, err
 }

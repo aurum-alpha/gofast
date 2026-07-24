@@ -8,6 +8,11 @@ export type ChannelHealth = {
   last_failure_class?: string
   last_failure_detail?: string
   last_http_status?: number
+  last_duration_ms?: number
+  last_final_url?: string
+  last_bytes_read?: number
+  last_range_used?: boolean
+  last_range_retried?: boolean
 }
 
 export type Channel = {

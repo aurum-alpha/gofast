@@ -55,13 +55,20 @@ health:
   consecutive_failures: 3
   # When true, HealthDown channels are pruned from M3U/XMLTV (causes Jellyfin lineup churn).
   exclude_unhealthy: false
-  # L2: daily NATIVE-only ranged segment GET (never scheduled on BEACON).
+  # L2: daily NATIVE-only segment GET (never scheduled on BEACON). Prefer Range; retry plain GET on 416.
   l2_interval: 24h
+  l2_workers: 4
+  # Soft-retry timeout/5xx once before counting a hard failure (0 disables).
+  soft_retries: 1
+  # Cap concurrent L2/L3 probes per CDN hostname.
+  max_per_host: 2
   # L3: ffprobe — OFF by default (bot-fingerprint / ad-impression tradeoff).
   l3_enabled: false
   l3_interval: 60m
   l3_workers: 2
   l3_timeout: 30s
+  # When L3 is on: always probe degraded/down/untested; sample this fraction of healthy (1.0 = all).
+  l3_healthy_sample: 0.1
   ffprobe_path: /usr/bin/ffprobe
 
 # Provider implementations are code (compiled into the binary). This block only

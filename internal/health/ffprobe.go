@@ -14,13 +14,16 @@ import (
 
 // FFProbe is L3: decode check via ffprobe (opt-in / on-demand).
 type FFProbe struct {
-	Path    string
-	Timeout time.Duration
+	Path        string
+	Timeout     time.Duration
+	SoftRetries int
 }
 
-// Check runs ffprobe -show_format -show_streams -of json against the probe URL.
+// Check runs ffprobe -show_format -show_streams -of json against ProbeURL(ch).
+// Requires at least one video stream. Passes RequestHeaders via -headers.
 func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck {
-	at := time.Now().UTC()
+	start := time.Now()
+	at := start.UTC()
 	check := model.HealthCheck{At: at, Source: "probe_l3"}
 	path := p.Path
 	if path == "" {
@@ -30,24 +33,58 @@ func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	streamURL := ch.EmittedURL
+	streamURL := ProbeURL(ch)
 	if streamURL == "" {
-		streamURL = ch.StreamURL
+		return finishCheck(failCheck(check, "no_url", "channel has no stream_url or emitted_url"), start)
 	}
-	if streamURL == "" {
-		return failCheck(check, "no_url", "channel has no emitted_url or stream_url")
-	}
+	check.FinalURL = streamURL
 
+	retries := p.SoftRetries
+	if retries < 0 {
+		retries = 0
+	}
+	var last model.HealthCheck
+	for attempt := 0; attempt <= retries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				out := failCheck(check, "timeout", "soft retry aborted: "+ctx.Err().Error())
+				out.FinalURL = streamURL
+				return finishCheck(out, start)
+			case <-time.After(softRetryDelay):
+			}
+		}
+		last = p.checkOnce(ctx, check, path, timeout, streamURL, ch.RequestHeaders)
+		if last.Result == model.HealthCheckSuccess {
+			return finishCheck(last, start)
+		}
+		if !isSoftFailure(last) || attempt == retries {
+			if attempt > 0 && last.Detail != "" {
+				last.Detail = fmt.Sprintf("retried after %s\n\n%s", softFailLabel(last), last.Detail)
+			}
+			return finishCheck(last, start)
+		}
+	}
+	return finishCheck(last, start)
+}
+
+func (p *FFProbe) checkOnce(ctx context.Context, base model.HealthCheck, path string, timeout time.Duration, streamURL string, headers map[string]string) model.HealthCheck {
+	check := base
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, path,
+	args := []string{
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
-		streamURL,
-	)
+	}
+	if hdr := ffprobeHeaders(headers); hdr != "" {
+		args = append(args, "-headers", hdr)
+	}
+	args = append(args, streamURL)
+
+	cmd := exec.CommandContext(ctx, path, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -66,8 +103,10 @@ func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck
 	}
 
 	var report struct {
-		Streams []json.RawMessage `json:"streams"`
-		Format  json.RawMessage   `json:"format"`
+		Streams []struct {
+			CodecType string `json:"codec_type"`
+		} `json:"streams"`
+		Format json.RawMessage `json:"format"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		return failCheck(check, "ffprobe_parse",
@@ -77,22 +116,47 @@ func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck
 		return failCheck(check, "ffprobe_empty",
 			fmt.Sprintf("ffprobe %s returned no streams/format\n\n%s", detailURL(streamURL), bodyForDetail(stdout.Bytes())))
 	}
+	hasVideo := false
+	for _, s := range report.Streams {
+		if strings.EqualFold(s.CodecType, "video") {
+			hasVideo = true
+			break
+		}
+	}
+	if !hasVideo {
+		return failCheck(check, "ffprobe_no_video",
+			fmt.Sprintf("ffprobe %s: no video stream\n\n%s", detailURL(streamURL), bodyForDetail(stdout.Bytes())))
+	}
 	check.Result = model.HealthCheckSuccess
 	return check
 }
 
-// ProbeURL picks the URL for L3: BEACON via EmittedURL (proxy) when set; else stream.
-func ProbeURL(ch model.Channel) string {
-	if ch.Classification == model.ClassBeacon && ch.EmittedURL != "" {
-		return ch.EmittedURL
+func ffprobeHeaders(headers map[string]string) string {
+	if len(headers) == 0 {
+		return ""
 	}
+	var b strings.Builder
+	for k, v := range headers {
+		if k == "" {
+			continue
+		}
+		b.WriteString(k)
+		b.WriteString(": ")
+		b.WriteString(v)
+		b.WriteString("\r\n")
+	}
+	return b.String()
+}
+
+// ProbeURL picks the URL for probes: EmittedURL when set (export/proxy path), else StreamURL.
+func ProbeURL(ch model.Channel) string {
 	if ch.EmittedURL != "" {
 		return ch.EmittedURL
 	}
 	return ch.StreamURL
 }
 
-// WithProbeURL returns a copy of ch with StreamURL/EmittedURL set for Check.
+// WithProbeURL returns a copy of ch with StreamURL/EmittedURL set to ProbeURL(ch).
 func WithProbeURL(ch model.Channel) model.Channel {
 	u := ProbeURL(ch)
 	out := ch

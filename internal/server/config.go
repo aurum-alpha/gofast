@@ -19,14 +19,18 @@ type ConfigSource struct {
 
 // ConfigHealth is the effective health probe / FSM settings.
 type ConfigHealth struct {
-	ConsecutiveFailures int    `json:"consecutive_failures"`
-	ExcludeUnhealthy    bool   `json:"exclude_unhealthy"`
-	L2Interval          string `json:"l2_interval"`
-	L3Enabled           bool   `json:"l3_enabled"`
-	L3Interval          string `json:"l3_interval"`
-	L3Workers           int    `json:"l3_workers"`
-	L3Timeout           string `json:"l3_timeout"`
-	FFProbePath         string `json:"ffprobe_path"`
+	ConsecutiveFailures int     `json:"consecutive_failures"`
+	ExcludeUnhealthy    bool    `json:"exclude_unhealthy"`
+	L2Interval          string  `json:"l2_interval"`
+	L2Workers           int     `json:"l2_workers"`
+	L3Enabled           bool    `json:"l3_enabled"`
+	L3Interval          string  `json:"l3_interval"`
+	L3Workers           int     `json:"l3_workers"`
+	L3Timeout           string  `json:"l3_timeout"`
+	L3HealthySample     float64 `json:"l3_healthy_sample"`
+	MaxPerHost          int     `json:"max_per_host"`
+	SoftRetries         int     `json:"soft_retries"`
+	FFProbePath         string  `json:"ffprobe_path"`
 }
 
 // ConfigArtworkTLS is a redacted per-host logo TLS policy (CA PEM not exposed).
@@ -78,10 +82,14 @@ func ConfigHandler(cfg *config.Config, path string, fromFile bool, reg *provider
 				ConsecutiveFailures: cfg.HealthConsecutiveFailures(),
 				ExcludeUnhealthy:    cfg.HealthExcludeUnhealthy(),
 				L2Interval:          cfg.HealthL2Interval().String(),
+				L2Workers:           cfg.HealthL2Workers(),
 				L3Enabled:           cfg.HealthL3Enabled(),
 				L3Interval:          cfg.HealthL3Interval().String(),
 				L3Workers:           cfg.HealthL3Workers(),
 				L3Timeout:           cfg.HealthL3Timeout().String(),
+				L3HealthySample:     cfg.HealthL3HealthySample(),
+				MaxPerHost:          cfg.HealthMaxPerHost(),
+				SoftRetries:         cfg.HealthSoftRetries(),
 				FFProbePath:         cfg.HealthFFProbePath(),
 			},
 			ArtworkTLS: artworkTLSView(cfg),

@@ -399,12 +399,14 @@ gates export only by explicit opt-in.
 
 **Probe depths (tiered):**
 1. *Shape* — the classifier's playlist inspection (cheap, runs every refresh).
-2. *Segment* — fetch the first media segment via GET (prefer Range; plain GET on
-   HTTP 416), verify real video (MPEG-TS sync byte 0x47 / fMP4 box header, size
-   above a floor). Persist HTTP status on each check. Catches dead playouts,
-   403s, geo-blocks, empty segments.
-3. *Decode* — run ffprobe against the stream URL; PASS requires non-null
-   streams and format (the exact check Jellyfin performs). Ground truth.
+2. *Segment* — fetch the first media segment via GET on ProbeURL (emitted/export
+   URL when set): prefer Range; plain GET on HTTP 416; soft-retry timeout/5xx;
+   accept AES-encrypted segments. Persist HTTP status, duration, final URL,
+   bytes, range flags. Catches dead playouts, 403s, geo-blocks, empty segments.
+3. *Decode* — run ffprobe against ProbeURL; PASS requires a **video** stream
+   plus non-null format. Pass channel RequestHeaders. Scheduled L3 (when on)
+   always probes degraded/down/untested and samples healthy (`l3_healthy_sample`);
+   concurrent probes capped per host.
 
 **Default posture — passive first, active minimal.** Design constraint: many
 installs must not collectively generate bot-fingerprint probe traffic or fake
