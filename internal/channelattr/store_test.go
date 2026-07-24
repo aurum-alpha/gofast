@@ -149,8 +149,8 @@ func TestHistoryNewestFirst(t *testing.T) {
 	v1, _ := json.Marshal(model.ChannelHealth{Status: model.HealthDegraded, LastCheck: model.HealthCheckFailure})
 	v2, _ := json.Marshal(model.ChannelHealth{Status: model.HealthHealthy, LastCheck: model.HealthCheckSuccess})
 	for _, ev := range []Event{
-		{Provider: model.ProviderLG, ChannelID: "news", Kind: KindHealth, Value: v1, At: at1, Source: "probe_l2"},
-		{Provider: model.ProviderLG, ChannelID: "news", Kind: KindHealth, Value: v2, At: at2, Source: "probe_l3"},
+		{Provider: model.ProviderLG, ChannelID: "news", Kind: KindHealth, Value: v1, At: at1, Source: "health_l1"},
+		{Provider: model.ProviderLG, ChannelID: "news", Kind: KindHealth, Value: v2, At: at2, Source: "health_l2"},
 	} {
 		if err := store.Handle(ctx, ev); err != nil {
 			t.Fatal(err)
@@ -163,7 +163,7 @@ func TestHistoryNewestFirst(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("len=%d", len(got))
 	}
-	if !got[0].At.Equal(at2) || got[0].Source != "probe_l3" {
+	if !got[0].At.Equal(at2) || got[0].Source != "health_l2" {
 		t.Fatalf("first=%+v", got[0])
 	}
 	if !got[1].At.Equal(at1) {

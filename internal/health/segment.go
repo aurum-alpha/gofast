@@ -20,7 +20,7 @@ const (
 	softRetryDelay   = time.Second
 )
 
-// SegmentProber is L2: GET of the first media segment (NATIVE only on schedule).
+// SegmentProber is Health L1: GET of the first media segment (NATIVE only on schedule).
 // Prefers a ranged GET; on HTTP 416 retries without Range. Soft-retries
 // timeout/5xx once when SoftRetries > 0. Uses ProbeURL (Emitted when set).
 type SegmentProber struct {
@@ -34,7 +34,7 @@ type SegmentProber struct {
 func (p *SegmentProber) Check(ctx context.Context, ch model.Channel) model.HealthCheck {
 	start := time.Now()
 	at := start.UTC()
-	check := model.HealthCheck{At: at, Source: "probe_l2"}
+	check := model.HealthCheck{At: at, Source: "health_l1"}
 	if p == nil || p.HTTP == nil {
 		return finishCheck(failCheck(check, "no_client", "segment prober has no HTTP client"), start)
 	}
@@ -160,7 +160,7 @@ func failHTTP(check model.HealthCheck, status int, err error) model.HealthCheck 
 	return out
 }
 
-// probeHTTPError carries an HTTP status for L2 failures (playlist/segment).
+// probeHTTPError carries an HTTP status for Health L1 failures (playlist/segment).
 type probeHTTPError struct {
 	Status int
 	Msg    string

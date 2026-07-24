@@ -28,7 +28,7 @@ func (c Classification) RequiresAmagiProxy() bool {
 	return c.Canonical() == ClassAmagiSSAI
 }
 
-// ScheduleSegmentHealth reports whether scheduled L2 segment probes apply.
+// ScheduleSegmentHealth reports whether scheduled Health L1 segment probes apply.
 // Amagi SSAI is excluded (avoid firing impression beacons); DRM is never probed.
 func (c Classification) ScheduleSegmentHealth() bool {
 	switch c.Canonical() {

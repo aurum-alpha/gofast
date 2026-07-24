@@ -14,10 +14,10 @@ import (
 	"github.com/j27-aurum/gofast/internal/provider"
 )
 
-var ErrNoProber = errors.New("health: L3 prober not configured")
-var ErrNoSegmentProber = errors.New("health: L2 segment prober not configured")
+var ErrNoProber = errors.New("health: L2 ffprobe prober not configured")
+var ErrNoSegmentProber = errors.New("health: L1 segment prober not configured")
 
-// Scheduler runs L2 (NATIVE segment) and optional L3 (ffprobe) loops.
+// Scheduler runs L1 (NATIVE segment) and optional L2 (ffprobe) loops.
 // Timing is anchored on the last completed sweep (persisted under StatePath),
 // not process start — same idea as provider refresh from FetchedAt.
 type Scheduler struct {
@@ -26,14 +26,14 @@ type Scheduler struct {
 	Segment   *SegmentProber
 	FFProbe   *FFProbe
 	L2Every   time.Duration
-	L3Every   time.Duration // interval between L3 sweeps when L3On
+	L3Every   time.Duration // interval between Health L2 sweeps when L3On
 	L3On      bool
 	L2Workers int // global L2 concurrency (default 4)
 	L3Workers int
-	// L3HealthySample is fraction of healthy channels probed each L3 sweep (0–1; default 0.1).
+	// L3HealthySample is fraction of healthy channels probed each Health L2 sweep (0–1; default 0.1).
 	L3HealthySample float64
 	Hosts           *HostLimiter
-	// StatePath is optional JSON for last/next L2/L3 (e.g. {data_dir}/channelattr/health_schedule.json).
+	// StatePath is optional JSON for last/next Health L1/L2 (e.g. {data_dir}/channelattr/health_schedule.json).
 	StatePath string
 
 	mu       sync.Mutex
@@ -45,20 +45,20 @@ type Scheduler struct {
 	l3Busy   bool
 }
 
-// Schedule is a read-only snapshot for APIs / UI.
+// Schedule is a read-only Health L1/L2 snapshot for APIs / UI.
 type Schedule struct {
-	L2Interval string    `json:"l2_interval"`
+	L1Interval string    `json:"l1_interval"`
+	LastL1At   time.Time `json:"last_l1_at,omitempty"`
+	NextL1At   time.Time `json:"next_l1_at,omitempty"`
+	L1Running  bool      `json:"l1_running"`
+	L2Enabled  bool      `json:"l2_enabled"`
+	L2Interval string    `json:"l2_interval,omitempty"`
 	LastL2At   time.Time `json:"last_l2_at,omitempty"`
 	NextL2At   time.Time `json:"next_l2_at,omitempty"`
 	L2Running  bool      `json:"l2_running"`
-	L3Enabled  bool      `json:"l3_enabled"`
-	L3Interval string    `json:"l3_interval,omitempty"`
-	LastL3At   time.Time `json:"last_l3_at,omitempty"`
-	NextL3At   time.Time `json:"next_l3_at,omitempty"`
-	L3Running  bool      `json:"l3_running"`
 }
 
-// Snapshot returns the current L2/L3 schedule for display.
+// Snapshot returns the current L1/L2 schedule for display.
 func (s *Scheduler) Snapshot() Schedule {
 	if s == nil {
 		return Schedule{}
@@ -66,17 +66,17 @@ func (s *Scheduler) Snapshot() Schedule {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := Schedule{
-		L2Interval: s.l2Interval().String(),
-		LastL2At:   s.lastL2At,
-		NextL2At:   s.nextL2At,
-		L2Running:  s.l2Busy,
-		L3Enabled:  s.L3On,
-		L3Running:  s.l3Busy,
+		L1Interval: s.l2Interval().String(),
+		LastL1At:   s.lastL2At,
+		NextL1At:   s.nextL2At,
+		L1Running:  s.l2Busy,
+		L2Enabled:  s.L3On,
+		L2Running:  s.l3Busy,
 	}
 	if s.L3On {
-		out.L3Interval = s.l3Interval().String()
-		out.LastL3At = s.lastL3At
-		out.NextL3At = s.nextL3At
+		out.L2Interval = s.l3Interval().String()
+		out.LastL2At = s.lastL3At
+		out.NextL2At = s.nextL3At
 	}
 	return out
 }
@@ -94,9 +94,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 	s.saveState()
 	l2Timer := time.NewTimer(l2Delay)
 	defer l2Timer.Stop()
-	slog.Info("health L2 schedule",
-		"last_l2_at", nullTime(s.lastL2Locked()),
-		"next_l2_at", now.Add(l2Delay).UTC(),
+	slog.Info("health L1 schedule",
+		"last_l1_at", nullTime(s.lastL2Locked()),
+		"next_l1_at", now.Add(l2Delay).UTC(),
 		"interval", s.l2Interval().String(),
 	)
 
@@ -107,9 +107,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 		s.saveState()
 		l3Timer = time.NewTimer(l3Delay)
 		defer l3Timer.Stop()
-		slog.Info("health L3 schedule",
-			"last_l3_at", nullTime(s.lastL3Locked()),
-			"next_l3_at", now.Add(l3Delay).UTC(),
+		slog.Info("health L2 schedule",
+			"last_l2_at", nullTime(s.lastL3Locked()),
+			"next_l2_at", now.Add(l3Delay).UTC(),
 			"interval", s.l3Interval().String(),
 			"healthy_sample", s.l3HealthySample(),
 		)
@@ -265,14 +265,14 @@ func (s *Scheduler) runL2(ctx context.Context) {
 		}
 	}
 	workers := s.l2Workers()
-	slog.Info("health L2 sweep start", "candidates", len(jobs), "workers", workers)
+	slog.Info("health L1 sweep start", "candidates", len(jobs), "workers", workers)
 	n := s.runJobs(ctx, jobs, workers, func(ctx context.Context, ch model.Channel) {
 		check := s.probeL2(ctx, ch)
 		if _, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check); err != nil {
-			slog.Warn("health L2 emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
+			slog.Warn("health L1 emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
 		}
 	})
-	slog.Info("health L2 sweep done", "probed", n)
+	slog.Info("health L1 sweep done", "probed", n)
 }
 
 func (s *Scheduler) runL3(ctx context.Context) {
@@ -305,19 +305,19 @@ func (s *Scheduler) runL3(ctx context.Context) {
 	}
 	rand.Shuffle(len(jobs), func(i, j int) { jobs[i], jobs[j] = jobs[j], jobs[i] })
 	workers := s.l3Workers()
-	slog.Info("health L3 sweep start",
+	slog.Info("health L2 sweep start",
 		"candidates", len(jobs), "skipped_healthy", skippedHealthy, "workers", workers, "healthy_sample", sample)
 
 	n := s.runJobs(ctx, jobs, workers, func(ctx context.Context, ch model.Channel) {
 		check := s.probeL3(ctx, ch)
 		if _, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check); err != nil {
-			slog.Warn("health L3 emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
+			slog.Warn("health L2 emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
 		}
 	})
-	slog.Info("health L3 sweep done", "probed", n)
+	slog.Info("health L2 sweep done", "probed", n)
 }
 
-// l3ShouldProbe decides whether a channel is included in a scheduled L3 sweep.
+// l3ShouldProbe decides whether a channel is included in a scheduled Health L2 sweep.
 // roll is in [0,1); tests pass a fixed value.
 func l3ShouldProbe(status model.Health, healthySample, roll float64) bool {
 	switch status {
@@ -379,7 +379,7 @@ func (s *Scheduler) runJobs(ctx context.Context, jobs []model.Channel, workers i
 func (s *Scheduler) probeL2(ctx context.Context, ch model.Channel) model.HealthCheck {
 	release, err := s.acquireHost(ctx, ch)
 	if err != nil {
-		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "probe_l2"}, "timeout", err.Error())
+		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "health_l1"}, "timeout", err.Error())
 	}
 	defer release()
 	return s.Segment.Check(ctx, ch)
@@ -388,7 +388,7 @@ func (s *Scheduler) probeL2(ctx context.Context, ch model.Channel) model.HealthC
 func (s *Scheduler) probeL3(ctx context.Context, ch model.Channel) model.HealthCheck {
 	release, err := s.acquireHost(ctx, ch)
 	if err != nil {
-		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "probe_l3", FinalURL: ProbeURL(ch)}, "timeout", err.Error())
+		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "health_l2", FinalURL: ProbeURL(ch)}, "timeout", err.Error())
 	}
 	defer release()
 	return s.FFProbe.Check(ctx, ch)
@@ -401,8 +401,8 @@ func (s *Scheduler) acquireHost(ctx context.Context, ch model.Channel) (func(), 
 	return s.Hosts.Acquire(ctx, ProbeURL(ch))
 }
 
-// ProbeL2Now runs one L2 segment check and emits (on-demand; any class).
-func (s *Scheduler) ProbeL2Now(ctx context.Context, ch model.Channel) (model.HealthCheck, model.ChannelHealth, error) {
+// ProbeL1Now runs one L1 segment check and emits (on-demand; any class).
+func (s *Scheduler) ProbeL1Now(ctx context.Context, ch model.Channel) (model.HealthCheck, model.ChannelHealth, error) {
 	if s == nil || s.Segment == nil || s.Emitter == nil {
 		return model.HealthCheck{}, model.ChannelHealth{}, ErrNoSegmentProber
 	}
@@ -411,7 +411,12 @@ func (s *Scheduler) ProbeL2Now(ctx context.Context, ch model.Channel) (model.Hea
 	return check, health, err
 }
 
-// ProbeNow runs one L3 check and emits (for "Test now").
+// ProbeL2Now is a deprecated compatibility wrapper for ProbeL1Now.
+func (s *Scheduler) ProbeL2Now(ctx context.Context, ch model.Channel) (model.HealthCheck, model.ChannelHealth, error) {
+	return s.ProbeL1Now(ctx, ch)
+}
+
+// ProbeNow runs one L2 check and emits (for "Test now").
 func (s *Scheduler) ProbeNow(ctx context.Context, ch model.Channel) (model.HealthCheck, model.ChannelHealth, error) {
 	if s == nil || s.FFProbe == nil || s.Emitter == nil {
 		return model.HealthCheck{}, model.ChannelHealth{}, ErrNoProber

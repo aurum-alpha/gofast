@@ -12,7 +12,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
-// FFProbe is L3: decode check via ffprobe (opt-in / on-demand).
+// FFProbe is Health L2: decode check via ffprobe (opt-in / on-demand).
 type FFProbe struct {
 	Path        string
 	Timeout     time.Duration
@@ -24,7 +24,7 @@ type FFProbe struct {
 func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck {
 	start := time.Now()
 	at := start.UTC()
-	check := model.HealthCheck{At: at, Source: "probe_l3"}
+	check := model.HealthCheck{At: at, Source: "health_l2"}
 	path := p.Path
 	if path == "" {
 		path = "/usr/bin/ffprobe"

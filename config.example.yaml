@@ -5,7 +5,9 @@
 #   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG,
 #   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL, FASTGEN_CACHE_LOGOS,
 #   FASTGEN_HEALTH_CONSECUTIVE_FAILURES, FASTGEN_HEALTH_EXCLUDE_UNHEALTHY,
-#   FASTGEN_HEALTH_L2_INTERVAL, FASTGEN_HEALTH_L3_ENABLED, FASTGEN_HEALTH_FFPROBE_PATH
+#   FASTGEN_HEALTH_L1_INTERVAL, FASTGEN_HEALTH_L2_ENABLED, FASTGEN_HEALTH_FFPROBE_PATH
+# Legacy FASTGEN_HEALTH_L2_INTERVAL and FASTGEN_HEALTH_L3_* aliases remain
+# accepted for one release.
 # Env always wins over this file for overlapping keys.
 #
 # base_url: public origin Jellyfin/browsers use for logos and absolute links.
@@ -56,20 +58,22 @@ health:
   consecutive_failures: 3
   # When true, HealthDown channels are pruned from M3U/XMLTV (causes Jellyfin lineup churn).
   exclude_unhealthy: false
-  # L2: daily segment GET for NATIVE / SESSION / XUMO_SSAI (not AMAGI_SSAI). Prefer Range; retry plain GET on 416.
-  l2_interval: 24h
-  l2_workers: 4
+  # Health L1: daily segment GET for NATIVE / SESSION / XUMO_SSAI (not AMAGI_SSAI). Prefer Range; retry plain GET on 416.
+  l1_interval: 24h
+  l1_workers: 4
   # Soft-retry timeout/5xx once before counting a hard failure (0 disables).
   soft_retries: 1
-  # Cap concurrent L2/L3 probes per CDN hostname.
+  # Cap concurrent Health L1/L2 probes per CDN hostname.
   max_per_host: 2
-  # L3: ffprobe — OFF by default (bot-fingerprint / ad-impression tradeoff).
-  l3_enabled: false
-  l3_interval: 60m
-  l3_workers: 2
-  l3_timeout: 30s
-  # When L3 is on: always probe degraded/down/untested; sample this fraction of healthy (1.0 = all).
-  l3_healthy_sample: 0.1
+  # Health L2: ffprobe — OFF by default (bot-fingerprint / ad-impression tradeoff).
+  l2_enabled: false
+  l2_interval: 60m
+  l2_workers: 2
+  l2_timeout: 30s
+  # When Health L2 is on: always probe degraded/down/untested; sample this fraction of healthy (1.0 = all).
+  l2_healthy_sample: 0.1
+  # Migration: old l2_interval/l2_workers (Health L1) and l3_* (Health L2)
+  # aliases are accepted for one release when the corresponding new keys are unset.
   ffprobe_path: /usr/bin/ffprobe
 
 # Provider implementations are code (compiled into the binary). This block only

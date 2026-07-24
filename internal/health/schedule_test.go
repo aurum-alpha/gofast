@@ -54,17 +54,37 @@ func TestScheduleStateRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatal(err)
 	}
-	if !f.LastL2At.Equal(last) || !f.NextL2At.Equal(next) {
+	if f.Version != 2 || !f.LastL1At.Equal(last) || !f.NextL1At.Equal(next) {
 		t.Fatalf("file = %+v", f)
 	}
 
 	s2 := &Scheduler{StatePath: path, L2Every: 24 * time.Hour}
 	s2.loadState()
 	snap := s2.Snapshot()
-	if !snap.LastL2At.Equal(last) || !snap.NextL2At.Equal(next) {
+	if !snap.LastL1At.Equal(last) || !snap.NextL1At.Equal(next) {
 		t.Fatalf("snapshot = %+v", snap)
 	}
-	if snap.L2Interval != "24h0m0s" {
-		t.Fatalf("interval = %q", snap.L2Interval)
+	if snap.L1Interval != "24h0m0s" {
+		t.Fatalf("interval = %q", snap.L1Interval)
+	}
+}
+
+func TestScheduleStateMigratesV1(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "health_schedule.json")
+	l1 := time.Date(2026, 7, 23, 20, 0, 0, 0, time.UTC)
+	l2 := l1.Add(time.Hour)
+	data, err := json.Marshal(scheduleFile{LastL2At: l1, NextL2At: l1.Add(24 * time.Hour), LastL3At: l2, NextL3At: l2.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := &Scheduler{StatePath: path, L3On: true}
+	s.loadState()
+	snap := s.Snapshot()
+	if !snap.LastL1At.Equal(l1) || !snap.LastL2At.Equal(l2) {
+		t.Fatalf("snapshot = %+v", snap)
 	}
 }
