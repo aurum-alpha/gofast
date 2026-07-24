@@ -1,0 +1,361 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  type Channel,
+  canonicalClassification,
+  healthStatus,
+  lineupStatus,
+} from '../lib/channel'
+
+type HealthzProvider = {
+  id: string
+  label?: string
+  stale: boolean
+  exported_channels: number
+  exported_programmes: number
+}
+
+type HealthzResponse = {
+  ok: boolean
+  providers?: HealthzProvider[]
+}
+
+type ApiStatusResponse = {
+  ready: boolean
+  logos: {
+    running: boolean
+    done: number
+    total: number
+    provider?: string
+  }
+}
+
+type ChannelsResponse = {
+  channels: Channel[]
+}
+
+type HealthSchedule = {
+  l1_interval?: string
+  last_l1_at?: string
+  next_l1_at?: string
+  l1_running?: boolean
+  l2_enabled?: boolean
+  l2_interval?: string
+  last_l2_at?: string
+  next_l2_at?: string
+  l2_running?: boolean
+}
+
+function validDate(value?: string): Date | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) || date.getUTCFullYear() <= 1 ? null : date
+}
+
+function formatWhen(value?: string): string {
+  const date = validDate(value)
+  if (!date) return '—'
+  return date.toLocaleString()
+}
+
+function Metric({
+  label,
+  value,
+  warn,
+  title,
+}: {
+  label: string
+  value: string | number
+  warn?: boolean
+  title?: string
+}) {
+  return (
+    <div className={`stat${warn ? ' stat-warn' : ''}`} title={title}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  )
+}
+
+export function StatusPage() {
+  const [healthz, setHealthz] = useState<HealthzResponse | null>(null)
+  const [boot, setBoot] = useState<ApiStatusResponse | null>(null)
+  const [channels, setChannels] = useState<Channel[] | null>(null)
+  const [schedule, setSchedule] = useState<HealthSchedule | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+
+    const poll = () => {
+      Promise.all([
+        fetch('/healthz').then(async (res) => {
+          if (!res.ok) throw new Error(`healthz ${res.status}`)
+          return res.json() as Promise<HealthzResponse>
+        }),
+        fetch('/api/status').then(async (res) => {
+          if (!res.ok) throw new Error(`status ${res.status}`)
+          return res.json() as Promise<ApiStatusResponse>
+        }),
+        fetch('/api/channels').then(async (res) => {
+          if (!res.ok) throw new Error(`channels ${res.status}`)
+          return res.json() as Promise<ChannelsResponse>
+        }),
+        fetch('/api/health/schedule').then(async (res) => {
+          if (res.status === 503) return null
+          if (!res.ok) throw new Error(`schedule ${res.status}`)
+          return res.json() as Promise<HealthSchedule>
+        }),
+      ])
+        .then(([hz, st, ch, sched]) => {
+          if (cancelled) return
+          setHealthz(hz)
+          setBoot(st)
+          setChannels(ch.channels)
+          setSchedule(sched)
+          setError(null)
+          const delay = st.logos.running ? 1000 : 5000
+          timer = window.setTimeout(poll, delay)
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return
+          setError(err instanceof Error ? err.message : String(err))
+          timer = window.setTimeout(poll, 5000)
+        })
+    }
+    poll()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [])
+
+  const providers = healthz?.providers ?? []
+  const staleCount = providers.filter((p) => p.stale).length
+  const logosRunning = Boolean(boot?.logos.running)
+
+  const rollups = useMemo(() => {
+    const health = { healthy: 0, degraded: 0, down: 0, untested: 0 }
+    const lineup = {
+      'in-lineup': 0,
+      proxied: 0,
+      'needs-proxy': 0,
+      drm: 0,
+      excluded: 0,
+    }
+    const dialect = {
+      NATIVE: 0,
+      AMAGI_SSAI: 0,
+      SESSION: 0,
+      XUMO_SSAI: 0,
+      DRM: 0,
+      other: 0,
+    }
+    if (!channels) {
+      return { health, lineup, dialect, total: 0 }
+    }
+    for (const ch of channels) {
+      health[healthStatus(ch)]++
+      lineup[lineupStatus(ch)]++
+      const cls = canonicalClassification(ch.classification)
+      if (cls in dialect) {
+        dialect[cls as keyof typeof dialect]++
+      } else if (cls) {
+        dialect.other++
+      } else {
+        dialect.other++
+      }
+    }
+    return { health, lineup, dialect, total: channels.length }
+  }, [channels])
+
+  return (
+    <>
+      <h1>Status</h1>
+      <p className="lead">
+        Jellyfin-facing ops snapshot: process health, lineup problems, and probe
+        schedule. Per-provider detail and Refresh live on{' '}
+        <Link to="/providers">Providers</Link>.
+      </p>
+
+      {error && (
+        <div className="empty-panel" role="alert">
+          <p>Failed to load status: {error}</p>
+        </div>
+      )}
+
+      {!error && !healthz && (
+        <div className="empty-panel" role="status">
+          <p>Loading…</p>
+        </div>
+      )}
+
+      {healthz && (
+        <>
+          <h2 className="status-section-title">System</h2>
+          <div className="stat-grid">
+            <Metric
+              label="Process"
+              value={healthz.ok ? 'up' : 'down'}
+              title="HTTP process is serving — not all-providers-healthy"
+            />
+            <Metric
+              label="Logo warm"
+              value={
+                logosRunning
+                  ? boot!.logos.total > 0
+                    ? `${boot!.logos.done}/${boot!.logos.total}${boot!.logos.provider ? ` · ${boot!.logos.provider}` : ''}`
+                    : 'running'
+                  : boot?.ready
+                    ? 'idle'
+                    : '—'
+              }
+            />
+            <Metric
+              label="Providers stale"
+              value={`${staleCount} / ${providers.length}`}
+              warn={staleCount > 0}
+            />
+            <Metric label="Channels in memory" value={rollups.total.toLocaleString()} />
+          </div>
+          <p className="meta">
+            Process <code>ok</code> means fastgen is up. Stale providers keep
+            last-known-good and do not flip the process down.
+          </p>
+
+          <h2 className="status-section-title">Lineup problems</h2>
+          <p className="meta">
+            Live channel rollup for Jellyfin risk.{' '}
+            <Link to="/">Open Channels</Link> to filter and inspect.
+          </p>
+          <div className="stat-grid">
+            <Metric
+              label="Health down"
+              value={rollups.health.down.toLocaleString()}
+              warn={rollups.health.down > 0}
+            />
+            <Metric
+              label="Health degraded"
+              value={rollups.health.degraded.toLocaleString()}
+              warn={rollups.health.degraded > 0}
+            />
+            <Metric
+              label="Health untested"
+              value={rollups.health.untested.toLocaleString()}
+            />
+            <Metric
+              label="Health healthy"
+              value={rollups.health.healthy.toLocaleString()}
+            />
+            <Metric
+              label="Needs proxy"
+              value={rollups.lineup['needs-proxy'].toLocaleString()}
+              warn={rollups.lineup['needs-proxy'] > 0}
+              title="Blocked from export until FASTProxy / proxy_base_url"
+            />
+            <Metric
+              label="DRM blocked"
+              value={rollups.lineup.drm.toLocaleString()}
+              warn={rollups.lineup.drm > 0}
+            />
+            <Metric
+              label="In lineup"
+              value={(
+                rollups.lineup['in-lineup'] + rollups.lineup.proxied
+              ).toLocaleString()}
+            />
+            <Metric
+              label="Excluded (other)"
+              value={rollups.lineup.excluded.toLocaleString()}
+            />
+          </div>
+
+          <h2 className="status-section-title">Dialects</h2>
+          <div className="stat-grid">
+            <Metric label="NATIVE" value={rollups.dialect.NATIVE.toLocaleString()} />
+            <Metric
+              label="Amagi SSAI"
+              value={rollups.dialect.AMAGI_SSAI.toLocaleString()}
+              warn={rollups.dialect.AMAGI_SSAI > 0}
+              title="Usually need FASTProxy for playback"
+            />
+            <Metric label="SESSION" value={rollups.dialect.SESSION.toLocaleString()} />
+            <Metric
+              label="Xumo SSAI"
+              value={rollups.dialect.XUMO_SSAI.toLocaleString()}
+            />
+            <Metric label="DRM" value={rollups.dialect.DRM.toLocaleString()} warn={rollups.dialect.DRM > 0} />
+          </div>
+
+          <h2 className="status-section-title">Health probes</h2>
+          {schedule ? (
+            <div className="stat-grid">
+              <Metric
+                label="L1 segment"
+                value={
+                  schedule.l1_running
+                    ? 'running'
+                    : `next ${formatWhen(schedule.next_l1_at)}`
+                }
+                title={`Last ${formatWhen(schedule.last_l1_at)} · interval ${schedule.l1_interval || '—'}`}
+              />
+              <Metric
+                label="L2 ffprobe"
+                value={
+                  !schedule.l2_enabled
+                    ? 'off'
+                    : schedule.l2_running
+                      ? 'running'
+                      : `next ${formatWhen(schedule.next_l2_at)}`
+                }
+                title={
+                  schedule.l2_enabled
+                    ? `Last ${formatWhen(schedule.last_l2_at)} · interval ${schedule.l2_interval || '—'}`
+                    : 'Scheduled L2 disabled; Test now still works on channel detail'
+                }
+              />
+            </div>
+          ) : (
+            <p className="meta">Probe schedule unavailable.</p>
+          )}
+
+          <h2 className="status-section-title">Providers</h2>
+          <p className="meta">
+            Compact refresh health. Open Providers for programmes, guide horizon,
+            intervals, and Refresh now.
+          </p>
+          {providers.length === 0 ? (
+            <div className="empty-panel" role="status">
+              <p>No enabled providers.</p>
+            </div>
+          ) : (
+            <div className="provider-chip-grid">
+              {providers.map((p) => (
+                <Link
+                  key={p.id}
+                  to={`/providers/${encodeURIComponent(p.id)}`}
+                  className={`provider-chip${p.stale ? ' provider-chip-stale' : ''}`}
+                >
+                  <div className="provider-chip-head">
+                    <strong>{p.label || p.id}</strong>
+                    {p.stale ? (
+                      <span className="badge badge-drm">stale</span>
+                    ) : (
+                      <span className="badge badge-native">ok</span>
+                    )}
+                  </div>
+                  <code>{p.id}</code>
+                  <div className="provider-chip-counts">
+                    <span>{p.exported_channels.toLocaleString()} ch</span>
+                    <span>{p.exported_programmes.toLocaleString()} prog</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  )
+}
