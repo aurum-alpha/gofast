@@ -258,7 +258,7 @@ func (s *Scheduler) runL2(ctx context.Context) {
 	var jobs []model.Channel
 	for _, feed := range s.Reg.Feeds() {
 		for _, ch := range feed.Channels() {
-			if ch.Excluded || ch.Classification != model.ClassNative || ProbeURL(ch) == "" {
+			if ch.Excluded || !ch.Classification.ScheduleSegmentHealth() || ProbeURL(ch) == "" {
 				continue
 			}
 			jobs = append(jobs, ch)
@@ -284,13 +284,13 @@ func (s *Scheduler) runL3(ctx context.Context) {
 	skippedHealthy := 0
 	for _, feed := range s.Reg.Feeds() {
 		for _, ch := range feed.Channels() {
-			if ch.Excluded || ch.Classification == model.ClassDRM {
+			if ch.Excluded || ch.Classification.Canonical() == model.ClassDRM {
 				continue
 			}
 			if ProbeURL(ch) == "" {
 				continue
 			}
-			if ch.Classification == model.ClassBeacon && ch.EmittedURL == "" {
+			if ch.Classification.RequiresAmagiProxy() && ch.EmittedURL == "" {
 				continue
 			}
 			st := s.priorHealth(ch)

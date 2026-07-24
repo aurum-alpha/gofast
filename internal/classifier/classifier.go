@@ -1,4 +1,4 @@
-// Package classifier probes HLS playlists and buckets channels as NATIVE, BEACON, or DRM.
+// Package classifier probes HLS playlists and buckets channels by stream dialect.
 package classifier
 
 import (
@@ -22,7 +22,7 @@ const (
 	segmentSampleN   = 5
 )
 
-// Client classifies stream URLs using ranged GET (never HEAD).
+// Client classifies stream URLs using URL heuristics and ranged GET (never HEAD).
 type Client struct {
 	http    *httpx.Client
 	workers int
@@ -39,7 +39,13 @@ func New(httpClient *httpx.Client, workers int) *Client {
 	return &Client{http: httpClient, workers: workers}
 }
 
-// Classify probes streamURL: master → first variant → first ~5 segments.
+// FromURL reports SESSION or XUMO_SSAI when the stream URL shape matches without
+// probing. ok is false when no URL heuristic applies (caller should probe or keep prior).
+func FromURL(streamURL string) (model.Classification, bool) {
+	return classifyByURL(streamURL)
+}
+
+// Classify classifies streamURL: URL heuristics first, then master → first variant → first ~5 segments.
 // Fetch errors classify as NATIVE (never drop on transient failure).
 // Channels already marked DRM are left as DRM without probing.
 func (c *Client) Classify(ctx context.Context, streamURL string) model.Classification {
@@ -47,6 +53,9 @@ func (c *Client) Classify(ctx context.Context, streamURL string) model.Classific
 }
 
 func (c *Client) classify(ctx context.Context, streamURL string, headers map[string]string) model.Classification {
+	if class, ok := classifyByURL(streamURL); ok {
+		return class
+	}
 	if c == nil {
 		return model.ClassNative
 	}
@@ -58,7 +67,7 @@ func (c *Client) classify(ctx context.Context, streamURL string, headers map[str
 }
 
 // ClassifyChannels sets Classification on each channel using a bounded worker pool.
-// DRM (already set) is left alone. BEACON channels are not excluded here — callers
+// DRM (already set) is left alone. Amagi SSAI channels are not excluded here — callers
 // decide export policy (e.g. drop when proxy_base_url is unset).
 func (c *Client) ClassifyChannels(ctx context.Context, channels []model.Channel) []model.Channel {
 	if c == nil || len(channels) == 0 {
@@ -104,6 +113,27 @@ func logClassified(ch *model.Channel, via string) {
 	)
 }
 
+// classifyByURL applies host/query heuristics that do not need a playlist fetch.
+// SESSION: Google DAI mint-on-tune-in URLs (often 404 without a fresh session).
+// XUMO_SSAI: CloudFront/Xumo SSAI that needs ads.* query params.
+func classifyByURL(streamURL string) (model.Classification, bool) {
+	u, err := url.Parse(streamURL)
+	if err != nil || u.Host == "" {
+		return "", false
+	}
+	host := strings.ToLower(u.Hostname())
+	if (host == "dai.google.com" || strings.HasSuffix(host, ".dai.google.com")) &&
+		strings.Contains(u.Path, "/linear/hls/") {
+		return model.ClassSession, true
+	}
+	for key := range u.Query() {
+		if strings.HasPrefix(strings.ToLower(key), "ads.") {
+			return model.ClassXumoSSAI, true
+		}
+	}
+	return "", false
+}
+
 func (c *Client) probe(ctx context.Context, streamURL string, headers map[string]string) (model.Classification, error) {
 	body, finalURL, err := c.fetchPlaylist(ctx, streamURL, headers)
 	if err != nil {
@@ -135,8 +165,8 @@ func (c *Client) probe(ctx context.Context, streamURL string, headers map[string
 			// Unresolvable relative → treat path as given
 			abs = seg
 		}
-		if isBeaconURI(abs) {
-			return model.ClassBeacon, nil
+		if isAmagiSSAIURI(abs) {
+			return model.ClassAmagiSSAI, nil
 		}
 	}
 	return model.ClassNative, nil
@@ -218,9 +248,9 @@ func parsePlaylist(body []byte) (variants, segments []string) {
 	return variants, segments
 }
 
-// isBeaconURI reports Amagi-style SSAI: /beacon/ in the path, or no media
+// isAmagiSSAIURI reports Amagi-style SSAI: /beacon/ in the path, or no media
 // extension (.ts/.aac/.mp4/.m4s) before the query string.
-func isBeaconURI(raw string) bool {
+func isAmagiSSAIURI(raw string) bool {
 	pathPart := raw
 	if u, err := url.Parse(raw); err == nil && u.Path != "" {
 		pathPart = u.Path

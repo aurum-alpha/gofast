@@ -125,13 +125,6 @@ func TestDecodeScheduleRejectsGarbage(t *testing.T) {
 	}
 }
 
-func TestStripQuery(t *testing.T) {
-	got := stripQuery("https://x/y.m3u8?a=1&b=2")
-	if got != "https://x/y.m3u8" {
-		t.Fatalf("got %q", got)
-	}
-}
-
 func truncate(b []byte, n int) string {
 	if len(b) <= n {
 		return string(b)

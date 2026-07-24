@@ -86,7 +86,10 @@ Production files (pull-only, no secrets):
 5. **Guide data** → add **XMLTV** → matching guide URL:
    - Aggregate: `http://HOST:8180/epg.xml` or `https://gofast.example.com/epg.xml`
    - Single provider: `…/lg.xml` (etc.)
-6. Gen-only serves **NATIVE** streams directly. **BEACON** channels need FASTProxy (`COMPOSE_PROFILES` including `proxy` + `FASTGEN_PROXY_BASE_URL`). **DRM** stays dropped.
+6. Gen-only serves **NATIVE**, **SESSION**, and **Xumo SSAI** streams directly.
+   **Amagi SSAI** (`AMAGI_SSAI`, legacy `BEACON`) needs FASTProxy
+   (`COMPOSE_PROFILES` including `proxy` + `FASTGEN_PROXY_BASE_URL`). **DRM**
+   stays dropped.
 
 ### TLS / nginx edge (optional)
 
@@ -133,7 +136,7 @@ Runtime YAML on the gen data volume (not baked into the image). **Provider imple
 
 The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`; MJH providers store `channels.json.gz` + `guide.xml.gz`; published-pair providers store `playlist.m3u` plus `guide.xml.gz` (Xumo/DistroTV) or `guide.xml` (LocalNow). Published-pair refreshes log normalized playlist/guide ID match rates. Numberless channels use stable, persisted first-seen assignments from each provider's `synthesize_channel_numbers` base; removed IDs stay reserved.
 
-Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, `FASTGEN_CACHE_LOGOS`, …) stay in env — see `AGENTS.md`. `proxy_base_url` is the public FASTProxy origin; BEACON channels are filtered with an explicit reason when it is absent. `proxy_all` defaults off.
+Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, `FASTGEN_CACHE_LOGOS`, …) stay in env — see `AGENTS.md`. `proxy_base_url` is the public FASTProxy origin; Amagi SSAI (`AMAGI_SSAI`) channels are filtered with an explicit reason when it is absent. `proxy_all` defaults off.
 
 **Logos:** `cache_logos` / `FASTGEN_CACHE_LOGOS` defaults **false** (upstream CDN URLs unchanged). When true, logos download under `{data_dir}/cache/{provider}/logos` and M3U/XMLTV/API rewrite to `{FASTGEN_BASE_URL}/logos/...` (requires `base_url`). Artwork-only TLS exceptions live under `artwork_tls` in YAML — they never apply to stream or EPG fetches.
 

@@ -28,18 +28,29 @@ segment bytes through. Holds short-TTL per-session state for upstream session
 tokens. Probes upstreams with ranged GETs, never HEAD (SSAI endpoints reject
 HEAD with 404/405 while GET works).
 
-**The classifier** probes each channel at refresh time and buckets it:
-- `NATIVE`: plain media segments — plays anywhere
-- `BEACON`: Amagi SSAI dialect — segment lines are extensionless tracking URLs
-  (`/beacon/`, query-laden, no .ts) that ffmpeg's `allowed_segment_extensions`
-  security check rejects
-- `DRM`: has a Widevine `license_url` — never playable, no proxy can help
+**The classifier** probes each channel at refresh time and buckets it by
+**stream dialect** (playback path), not health:
+
+- `NATIVE`: plain media segments — plays anywhere (also fail-open on fetch error)
+- `AMAGI_SSAI` (legacy wire `BEACON`): Amagi SSAI — segment lines are
+  extensionless tracking URLs (`/beacon/`, query-laden, no `.ts`) that ffmpeg's
+  `allowed_segment_extensions` security check rejects; **FASTProxy** rewrites
+- `SESSION`: mint-on-tune-in dialects (Google DAI today: `dai.google.com` +
+  `/linear/hls/…`). Static published masters often 404 without a fresh session;
+  **not** the Amagi rewrite path (mint support is a separate fastproxy follow-on)
+- `XUMO_SSAI`: CloudFront/Xumo SSAI needing `ads.*` query params for origin
+  interpolation; emit upstream URL as-is (keep query — see LG adapter follow-on);
+  **not** Amagi rewrite. Future: AWS MediaTailor and similar stay out of this
+  bucket until we have a detection signal.
+- `DRM`: Widevine `license_url` — never playable, no proxy can help
 
 **Emission decision table** (in FASTGen):
-- NATIVE → emit upstream URL directly (no proxy in media path)
-- DRM → drop always
-- BEACON → if `proxy_base_url` configured, emit
+- `NATIVE` → emit upstream URL directly (no proxy in media path)
+- `DRM` → drop always
+- `AMAGI_SSAI` → if `proxy_base_url` configured, emit
   `{proxy_base_url}/stream/{provider}/{id}.m3u8`; else drop with a logged count
+- `SESSION` / `XUMO_SSAI` → emit upstream URL like NATIVE until a dialect-specific
+  proxy path exists (do **not** route through Amagi rewrite)
 
 **Deployment topologies:** gen-only (default compose) or gen + proxy (compose
 `--profile proxy` or equivalent). When proxy is used, `proxy_base_url` in the
@@ -52,13 +63,13 @@ bandwidth-limited, not CPU-limited).
 
 **proxy_all mode (optional, off by default):** emits ALL channel URLs as proxy
 URLs; the proxy answers NATIVE channels with a 302 to the upstream (zero media
-bytes through the proxy) and fully rewrites BEACON channels. Justifications:
+bytes through the proxy) and fully rewrites `AMAGI_SSAI` channels. Justifications:
 (a) observability — every playback start touches the proxy, enabling per-channel
 now-playing/last-failure telemetry in the UI; (b) drift insulation — upstream
 URL-format changes become proxy-internal fixes rather than M3U regeneration
 events. Documented tradeoff: in this mode the proxy is availability-critical
 for ALL channels (an outage breaks playback start even for healthy native
-streams). Default remains selective proxying (BEACON only).
+streams). Default remains selective proxying (`AMAGI_SSAI` only).
 
 ## What FASTGen serves
 
@@ -86,10 +97,14 @@ is rejected (406). Older responses were plain JSON — fastgen accepts both and
 stores decoded JSON in cache. Response JSON shape:
 `categories[] → channels[] → programs[]`.
 Channel fields: `channelId`, `channelName`, `channelNumber` (string!), 
-`channelLogoUrl`, `mediaStaticUrl` (strip query string), `providerId`,
+`channelLogoUrl`, `mediaStaticUrl` (normalize query: strip junk; keep `ads.*`
+Xumo/CloudFront SSAI keys and neutralize `[IFA]`/`[LMT]`-style client macros),
+`providerId`,
 `channelGenreName`. Programs: `programTitle`, `description`, `startDateTime`/
 `endDateTime` (ISO8601 Z → XMLTV `20060102150405 +0000`). Dedupe channels by
-`channelId` across categories. Guide depth is short (~12–14h); there are no
+`channelId` across categories. Some LG channels are Xumo CloudFront SSAI
+(`XUMO_SSAI` once `ads.*` is retained); stripping those query keys breaks
+origin interpolation. Guide depth is short (~12–14h); there are no
 time-range query params to request more.
 
 ### i.mjh.nz adapters (matthuisman's aggregated feeds)
@@ -123,11 +138,14 @@ labeling, numbering, and validation layered on top:
 
 - **Xumo Play** (~400 ch): M3U + EPG from
   `https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_playlist.m3u`
-  and `.../xumo_epg.xml.gz`. Streams are direct CloudFront SSAI URLs. No
+  and `.../xumo_epg.xml.gz`. Streams are often CloudFront SSAI URLs (`XUMO_SSAI`
+  when `ads.*` query keys are present). No
   upstream tvg-chno (synthesize).
 - **DistroTV** (~170 ch): M3U + EPG from
   `https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.m3u`
-  and `.../distrotv.xml.gz` (~72h depth). Streams via Google DAI. Upstream
+  and `.../distrotv.xml.gz` (~72h depth). Streams via Google DAI (`SESSION`).
+  Published masters frequently 404 without mint-on-tune-in; leave the provider
+  disabled until a SESSION proxy path exists, or accept down health. Upstream
   tvg-ids CONTAIN SPACES (`dtv_EPGACE TV`) -- see id normalization. No
   tvg-chno (synthesize).
 - **LocalNow** (local news/weather by market -- the only local content in the
@@ -184,14 +202,17 @@ streams).
   against stream URL + provider id + channel name (fast first pass; the
   classifier probe is the authoritative gate). Filtered channels are removed
   from BOTH the M3U and the XMLTV.
-- **Classifier probe details:** fetch master playlist -> first variant -> inspect
-  first ~5 segment lines. BEACON if segments contain `/beacon/` or lack a media
+- **Classifier probe details:** URL heuristics first (no fetch): Google DAI
+  (`dai.google.com` + `/linear/hls/`) → `SESSION`; any `ads.*` query key →
+  `XUMO_SSAI`. Else fetch master playlist -> first variant -> inspect first ~5
+  segment lines. `AMAGI_SSAI` if segments contain `/beacon/` or lack a media
   extension (.ts/.aac/.mp4/.m4s) before the query string. Fetch errors classify
   as NATIVE (never drop a channel on a transient network failure). Run probes
   concurrently (bounded worker pool). Amagi context: most FAST channels are
   played out by Amagi (`*.playouts.now.amagi.tv`); the beacon dialect is their
   SSAI ad-tracking format and appears across unrelated "providers" (BBC, A&E)
-  because they share the same playout vendor.
+  because they share the same playout vendor. Legacy channel-attr / meta value
+  `BEACON` canonicalizes to `AMAGI_SSAI`.
 - **DRM:** i.mjh.nz channel records with a `license_url` field are Widevine
   encrypted; drop them unconditionally (65 of Samsung's US channels at time of
   writing).
@@ -387,15 +408,16 @@ under ten seconds.
 
 - HEAD vs GET: health checks must use GET (prefer Range; retry without Range on
   416); assert no HEAD requests are issued to stream endpoints.
-- Classification migration: a channel flipping NATIVE->BEACON between refreshes
-  must not change its emitted URL when proxy_all is on.
+- Classification migration: a channel flipping NATIVE→AMAGI_SSAI between refreshes
+  must not change its emitted URL when proxy_all is on. Legacy `BEACON` reads as
+  `AMAGI_SSAI`.
 
 ## Stream health validation (required; distinct from classification)
 
-Classification (NATIVE/BEACON/DRM) answers "what kind of stream is this" and
-decides export. Health answers "does it actually play right now" and is a
-per-channel time-series. Keep them separate: health annotates by default and
-gates export only by explicit opt-in.
+Classification (NATIVE / AMAGI_SSAI / SESSION / XUMO_SSAI / DRM) answers "what
+kind of stream is this" and decides export. Health answers "does it actually
+play right now" and is a per-channel time-series. Keep them separate: health
+annotates by default and gates export only by explicit opt-in.
 
 **Probe depths (tiered):**
 1. *Shape* — the classifier's playlist inspection (cheap, runs every refresh).
@@ -412,12 +434,14 @@ gates export only by explicit opt-in.
 installs must not collectively generate bot-fingerprint probe traffic or fake
 ad impressions against free services. Therefore:
 - Level 1 (shape): every refresh, all channels. No media fetched, no views.
-- Level 2 (segment): daily, NATIVE channels only — a plain .ts GET fires no ad
-  beacon. Never level-2 BEACON channels on a schedule (probing through the
-  proxy fires impression beacons = fake views).
+- Level 2 (segment): daily for dialects that emit a direct upstream URL
+  (`NATIVE`, `SESSION`, `XUMO_SSAI`) — a plain segment GET fires no Amagi ad
+  beacon. Never schedule L2 on `AMAGI_SSAI` without an emitted proxy URL
+  (probing through the proxy fires impression beacons = fake views).
 - Level 3 (ffprobe): OFF by default; opt-in config for users who accept the
   tradeoff. Bounded worker pool, per-probe timeout, jitter over a configurable
   window (default 60m), randomized order — never a clockwork fingerprint.
+  Skip `AMAGI_SSAI` when `EmittedURL` is empty.
 - **Passive health (primary signal):** FASTProxy records the outcome of every
   REAL playback session (upstream playlist fetch result, segment flow,
   failure class) and feeds the health state machine. Watched channels are
@@ -425,7 +449,7 @@ ad impressions against free services. Therefore:
   channels honestly remain UNTESTED.
 - **On-demand probe:** a "Test now" action in the UI channel detail runs one
   level-3 probe for that single channel — indistinguishable from a viewer
-  tuning in. This is the sanctioned way to deep-test BEACON channels.
+  tuning in. This is the sanctioned way to deep-test Amagi SSAI channels.
 
 **Health event log:** persist probe results and (once FASTProxy lands)
 playback outcomes as an append-only event log with a versioned schema —
@@ -437,9 +461,9 @@ upgrades.
 **HealthSource seam:** define health input as an interface; probe results and
 playback telemetry are its two implementations.
 
-**Probe paths:** on-demand and opt-in probes test BEACON channels THROUGH the
-proxy URL (end-to-end validation of the rewrite chain); NATIVE channels at
-their emitted URL.
+**Probe paths:** on-demand and opt-in probes test Amagi SSAI channels THROUGH the
+proxy URL (end-to-end validation of the rewrite chain); NATIVE / SESSION /
+XUMO_SSAI channels at their emitted URL.
 
 **Health states:** UNTESTED / HEALTHY / DEGRADED (recent intermittent
 failures) / DOWN (N consecutive failures across probes and/or real playback

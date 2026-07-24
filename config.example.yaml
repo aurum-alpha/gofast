@@ -22,8 +22,9 @@ listen: ":8180"
 data_dir: /data
 
 # Public FASTProxy origin as reached by Jellyfin/ffmpeg, not an internal-only
-# container address. BEACON channels are filtered when this is unset. Set
-# proxy_all to route every playable channel through the stable proxy URL;
+# container address. AMAGI_SSAI (Amagi SSAI; legacy BEACON) channels are filtered
+# when this is unset. SESSION / XUMO_SSAI emit upstream URLs (not Amagi rewrite).
+# Set proxy_all to route every playable channel through the stable proxy URL;
 # NATIVE remains direct by default.
 # proxy_base_url: "http://192.168.1.50:8181"
 proxy_all: false
@@ -55,7 +56,7 @@ health:
   consecutive_failures: 3
   # When true, HealthDown channels are pruned from M3U/XMLTV (causes Jellyfin lineup churn).
   exclude_unhealthy: false
-  # L2: daily NATIVE-only segment GET (never scheduled on BEACON). Prefer Range; retry plain GET on 416.
+  # L2: daily segment GET for NATIVE / SESSION / XUMO_SSAI (not AMAGI_SSAI). Prefer Range; retry plain GET on 416.
   l2_interval: 24h
   l2_workers: 4
   # Soft-retry timeout/5xx once before counting a hard failure (0 disables).
@@ -134,6 +135,8 @@ providers:
     # epg_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_epg.xml.gz
 
   distrotv:
+    # Google DAI masters classify as SESSION; static URLs often 404 until
+    # mint-on-tune-in exists in fastproxy. Disable if you do not want down health.
     enabled: true
     label: DistroTV
     synthesize_channel_numbers: 6000

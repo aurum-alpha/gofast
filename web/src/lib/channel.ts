@@ -133,8 +133,14 @@ export function lineupBadge(ch: Channel): LineupBadge {
   }
 }
 
-/** Fixed Class filter options (probe classification). */
-export const CLASS_FILTERS = ['NATIVE', 'BEACON', 'DRM'] as const
+/** Fixed Class filter options (stream dialect). */
+export const CLASS_FILTERS = [
+  'NATIVE',
+  'AMAGI_SSAI',
+  'SESSION',
+  'XUMO_SSAI',
+  'DRM',
+] as const
 
 /** Fixed Status filter options with display labels. */
 export const STATUS_FILTERS: { value: LineupStatusKind; label: string }[] = [
@@ -145,12 +151,23 @@ export const STATUS_FILTERS: { value: LineupStatusKind; label: string }[] = [
   { value: 'excluded', label: 'Excluded' },
 ]
 
+/** Map legacy BEACON → AMAGI_SSAI for filters and display. */
+export function canonicalClassification(classification?: string): string {
+  if (!classification) return ''
+  if (classification === 'BEACON') return 'AMAGI_SSAI'
+  return classification
+}
+
 export function classBadge(classification?: string): { label: string; kind: string } {
-  switch (classification) {
+  switch (canonicalClassification(classification)) {
     case 'NATIVE':
       return { label: 'NATIVE', kind: 'native' }
-    case 'BEACON':
-      return { label: 'BEACON', kind: 'beacon' }
+    case 'AMAGI_SSAI':
+      return { label: 'Amagi SSAI', kind: 'beacon' }
+    case 'SESSION':
+      return { label: 'SESSION', kind: 'beacon' }
+    case 'XUMO_SSAI':
+      return { label: 'Xumo SSAI', kind: 'beacon' }
     case 'DRM':
       return { label: 'DRM', kind: 'drm' }
     default:

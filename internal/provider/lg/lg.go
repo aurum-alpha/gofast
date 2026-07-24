@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -141,7 +140,7 @@ func ParseSchedule(r io.Reader) ([]model.Channel, []model.Programme, error) {
 	for _, cat := range root.Categories {
 		for _, raw := range cat.Channels {
 			id := strings.TrimSpace(raw.ChannelID)
-			stream := stripQuery(strings.TrimSpace(raw.MediaStaticURL))
+			stream := normalizeMediaURL(strings.TrimSpace(raw.MediaStaticURL))
 			if id == "" || stream == "" {
 				provider.SkipMalformed(&skipped)
 				continue
@@ -191,19 +190,6 @@ func ParseSchedule(r io.Reader) ([]model.Channel, []model.Programme, error) {
 	}
 	_ = skipped
 	return channels, programmes, nil
-}
-
-func stripQuery(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		if i := strings.IndexByte(raw, '?'); i >= 0 {
-			return raw[:i]
-		}
-		return raw
-	}
-	u.RawQuery = ""
-	u.Fragment = ""
-	return u.String()
 }
 
 func parseLGTime(s string) (time.Time, error) {

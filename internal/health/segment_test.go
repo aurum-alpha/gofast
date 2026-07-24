@@ -271,7 +271,7 @@ func TestFFProbeEmptyURL(t *testing.T) {
 
 func TestProbeURLBeaconUsesEmitted(t *testing.T) {
 	ch := model.Channel{
-		Classification: model.ClassBeacon,
+		Classification: model.ClassAmagiSSAI,
 		StreamURL:      "https://up/beacon",
 		EmittedURL:     "http://proxy/stream/lg/x.m3u8",
 	}

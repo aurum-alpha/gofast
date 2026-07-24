@@ -65,9 +65,12 @@ func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy
 
 // Restore rebuilds each feed from its cached raw upstream snapshot — re-parsed
 // through the same pipeline as a network fetch (no network). Classifications
-// come from the channel-attr store (Annotate); legacy meta.json maps are seeded
-// into the store once when Current is missing. Providers with no cached raw are
-// left empty (they fetch on boot); unreadable/unparseable entries are skipped.
+// come from the channel-attr store (Annotate); URL dialect heuristics
+// (SESSION / XUMO_SSAI) then override when the stream URL shape is definitive,
+// so adapter URL fixes take effect without waiting for a network refresh.
+// Legacy meta.json maps are seeded into the store once when Current is missing.
+// Providers with no cached raw are left empty (they fetch on boot);
+// unreadable/unparseable entries are skipped.
 //
 // Call Restore before starting channelattr.Receive so meta seed Handle calls
 // do not race the AttrReceiver writer.
@@ -326,12 +329,60 @@ func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) erro
 	return nil
 }
 
-// setLineup paints current channel attrs onto the lineup then publishes to the feed.
+// setLineup paints current channel attrs onto the lineup, applies cheap URL
+// dialect heuristics (SESSION / XUMO_SSAI), then publishes to the feed.
 func (p *providerRefresher) setLineup(lineup provider.Lineup) {
 	if p.attrs != nil {
 		lineup.Channels = p.attrs.Annotate(p.feed.ID(), lineup.Channels)
 	}
+	lineup.Channels = p.applyURLDialectHints(lineup.Channels)
 	p.feed.Set(lineup)
+}
+
+// applyURLDialectHints sets SESSION / XUMO_SSAI from StreamURL shape and persists
+// changes. Used on restore (Handle; Receive not yet running) and refresh (Emit).
+func (p *providerRefresher) applyURLDialectHints(chs []model.Channel) []model.Channel {
+	at := time.Now().UTC()
+	for i := range chs {
+		if chs[i].Classification == model.ClassDRM {
+			continue
+		}
+		class, ok := classifier.FromURL(chs[i].StreamURL)
+		if !ok {
+			continue
+		}
+		if chs[i].Classification.Canonical() == class {
+			continue
+		}
+		chs[i].Classification = class
+		if chs[i].NormalizedID == "" {
+			continue
+		}
+		value, err := json.Marshal(class)
+		if err != nil {
+			continue
+		}
+		ev := channelattr.Event{
+			Provider:  p.feed.ID(),
+			ChannelID: chs[i].NormalizedID,
+			Kind:      channelattr.KindClassification,
+			Value:     value,
+			At:        at,
+			Source:    "url_dialect",
+		}
+		if p.attrBus != nil {
+			if err := channelattr.Emit(context.Background(), p.attrBus, ev); err != nil {
+				slog.Warn("url dialect emit", "provider", p.feed.ID(), "channel", chs[i].NormalizedID, "err", err)
+			}
+			continue
+		}
+		if p.attrs != nil {
+			if err := p.attrs.Handle(context.Background(), ev); err != nil {
+				slog.Warn("url dialect seed", "provider", p.feed.ID(), "channel", chs[i].NormalizedID, "err", err)
+			}
+		}
+	}
+	return chs
 }
 
 // emitClassifications sends KindClassification for channels whose class changed
@@ -342,18 +393,19 @@ func (p *providerRefresher) emitClassifications(ctx context.Context, chs []model
 	}
 	at := time.Now().UTC()
 	for _, ch := range chs {
-		if ch.Classification == "" || ch.NormalizedID == "" {
+		class := ch.Classification.Canonical()
+		if class == "" || ch.NormalizedID == "" {
 			continue
 		}
 		if p.attrs != nil {
 			if raw, ok := p.attrs.Current(p.feed.ID(), ch.NormalizedID, channelattr.KindClassification); ok {
 				var prev model.Classification
-				if err := json.Unmarshal(raw, &prev); err == nil && prev == ch.Classification {
+				if err := json.Unmarshal(raw, &prev); err == nil && prev.Canonical() == class {
 					continue
 				}
 			}
 		}
-		value, err := json.Marshal(ch.Classification)
+		value, err := json.Marshal(class)
 		if err != nil {
 			slog.Warn("classification emit marshal", "provider", p.feed.ID(), "channel", ch.NormalizedID, "err", err)
 			continue
@@ -387,6 +439,7 @@ func (p *providerRefresher) seedClassificationsFromMeta(meta provider.Meta) {
 		if class == "" || channelID == "" {
 			continue
 		}
+		class = class.Canonical()
 		if _, ok := p.attrs.Current(p.feed.ID(), channelID, channelattr.KindClassification); ok {
 			continue
 		}
