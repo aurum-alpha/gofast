@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   channelDetailPath,
   classBadge,
@@ -15,6 +15,17 @@ import {
   STATUS_FILTERS,
 } from '../lib/channel'
 import type { Channel, HealthFilterValue, LineupStatusKind } from '../lib/channel'
+import {
+  channelsFiltersActive,
+  channelsFiltersFromSearch,
+  channelsFiltersToSearch,
+  clearStoredChannelsFilters,
+  DEFAULT_CHANNELS_FILTERS,
+  readStoredChannelsFilters,
+  searchHasChannelsFilters,
+  writeStoredChannelsFilters,
+  type ChannelsLocationState,
+} from '../lib/channelsFilters'
 
 type ChannelsResponse = {
   channels: Channel[]
@@ -31,14 +42,44 @@ function groupLabel(key: string): string {
 }
 
 export function ChannelsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<ChannelsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [providerFilter, setProviderFilter] = useState('all')
-  const [groupFilter, setGroupFilter] = useState('all')
-  const [classFilter, setClassFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [healthFilter, setHealthFilter] = useState('all')
-  const [q, setQ] = useState('')
+  const didHydrate = useRef(false)
+
+  // Hydrate from sessionStorage when the URL has no filter keys (nav to bare /).
+  useEffect(() => {
+    if (didHydrate.current) return
+    didHydrate.current = true
+    if (searchHasChannelsFilters(searchParams)) {
+      writeStoredChannelsFilters(channelsFiltersFromSearch(searchParams))
+      return
+    }
+    const stored = readStoredChannelsFilters()
+    if (stored && channelsFiltersActive(stored)) {
+      setSearchParams(channelsFiltersToSearch(stored), { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  const filters = useMemo(() => channelsFiltersFromSearch(searchParams), [searchParams])
+  const providerFilter = filters.provider
+  const groupFilter = filters.group
+  const classFilter = filters.class
+  const statusFilter = filters.status
+  const healthFilter = filters.health
+  const q = filters.q
+
+  function patchFilters(patch: Partial<typeof DEFAULT_CHANNELS_FILTERS>) {
+    const next = { ...filters, ...patch }
+    const params = channelsFiltersToSearch(next)
+    setSearchParams(params, { replace: true })
+    writeStoredChannelsFilters(next)
+  }
+
+  function resetFilters() {
+    clearStoredChannelsFilters()
+    setSearchParams({}, { replace: true })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -114,6 +155,11 @@ export function ChannelsPage() {
     })
   }, [data, providerFilter, groupFilter, classFilter, statusFilter, healthFilter, q])
 
+  const detailState: ChannelsLocationState = {
+    channelsSearch: searchParams.toString(),
+  }
+  const filtersDirty = channelsFiltersActive(filters)
+
   return (
     <>
       <h1>Channels</h1>
@@ -143,7 +189,7 @@ export function ChannelsPage() {
               Provider{' '}
               <select
                 value={providerFilter}
-                onChange={(e) => setProviderFilter(e.target.value)}
+                onChange={(e) => patchFilters({ provider: e.target.value })}
               >
                 <option value="all">all</option>
                 {providers.map((p) => (
@@ -157,7 +203,7 @@ export function ChannelsPage() {
               Group{' '}
               <select
                 value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
+                onChange={(e) => patchFilters({ group: e.target.value })}
               >
                 <option value="all">all</option>
                 {groups.map((g) => (
@@ -171,7 +217,7 @@ export function ChannelsPage() {
               Class{' '}
               <select
                 value={classFilter}
-                onChange={(e) => setClassFilter(e.target.value)}
+                onChange={(e) => patchFilters({ class: e.target.value })}
               >
                 <option value="all">all</option>
                 {CLASS_FILTERS.map((c) => (
@@ -186,7 +232,9 @@ export function ChannelsPage() {
               <select
                 value={statusFilter}
                 onChange={(e) =>
-                  setStatusFilter(e.target.value as 'all' | LineupStatusKind)
+                  patchFilters({
+                    status: e.target.value as 'all' | LineupStatusKind,
+                  })
                 }
               >
                 <option value="all">all</option>
@@ -202,7 +250,9 @@ export function ChannelsPage() {
               <select
                 value={healthFilter}
                 onChange={(e) =>
-                  setHealthFilter(e.target.value as 'all' | HealthFilterValue)
+                  patchFilters({
+                    health: e.target.value as 'all' | HealthFilterValue,
+                  })
                 }
               >
                 <option value="all">all</option>
@@ -218,10 +268,18 @@ export function ChannelsPage() {
               <input
                 type="search"
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => patchFilters({ q: e.target.value })}
                 placeholder="name, id, group, number…"
               />
             </label>
+            <button
+              type="button"
+              className="toolbar-reset"
+              onClick={resetFilters}
+              disabled={!filtersDirty}
+            >
+              Reset filters
+            </button>
             <span className="meta">
               {rows.length} of {data.channels.length}
             </span>
@@ -294,6 +352,7 @@ export function ChannelsPage() {
                         <td>
                           <Link
                             to={channelDetailPath(ch)}
+                            state={detailState}
                             className="channel-link"
                           >
                             {ch.name}

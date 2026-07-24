@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { CLASS_FILTERS, canonicalClassification, classBadge } from '../lib/channel'
+import {
+  clearStoredGuideFilters,
+  DEFAULT_GUIDE_FILTERS,
+  guideFiltersActive,
+  guideFiltersFromSearch,
+  guideFiltersToSearch,
+  readStoredGuideFilters,
+  searchHasGuideFilters,
+  writeStoredGuideFilters,
+  type TimePreset,
+} from '../lib/guideFilters'
 import {
   enabledProviderIds,
   loadProviderGuides,
@@ -19,14 +31,6 @@ const MIN_PROG_W = 40
 const HOUR_MS = 3_600_000
 const ROW_OVERSCAN = 10
 const PROG_PAD_PX = 240
-
-type TimePreset = 'pm6' | 'pm12' | 'today' | 'next24' | 'all'
-
-const DEFAULT_PROVIDER = 'all'
-const DEFAULT_GROUP = 'all'
-const DEFAULT_CLASS = 'all'
-const DEFAULT_HIDE_EXCLUDED = true
-const DEFAULT_TIME: TimePreset = 'pm12'
 
 type ProgDetail = {
   channelName: string
@@ -119,19 +123,53 @@ function phaseClass(phase: ProviderStatus['phase']): string {
 }
 
 export function GuidePage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const didHydrate = useRef(false)
+
+  useEffect(() => {
+    if (didHydrate.current) return
+    didHydrate.current = true
+    if (searchHasGuideFilters(searchParams)) {
+      writeStoredGuideFilters(guideFiltersFromSearch(searchParams))
+      return
+    }
+    const stored = readStoredGuideFilters()
+    if (stored && guideFiltersActive(stored)) {
+      setSearchParams(guideFiltersToSearch(stored), { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  const filters = useMemo(() => guideFiltersFromSearch(searchParams), [searchParams])
+  const providerFilter = filters.provider
+  const groupFilter = filters.group
+  const classFilter = filters.class
+  const hideExcluded = filters.hideExcluded
+  const timePreset = filters.time
+  const channelQ = filters.channelQ
+  const programmeQ = filters.programmeQ
+
+  function patchFilters(patch: Partial<typeof DEFAULT_GUIDE_FILTERS>) {
+    let next = { ...filters, ...patch }
+    // DRM channels are always excluded — DRM filter is meaningless while hiding excluded.
+    if (next.hideExcluded && next.class === 'DRM') {
+      next = { ...next, class: 'all' }
+    }
+    const params = guideFiltersToSearch(next)
+    setSearchParams(params, { replace: true })
+    writeStoredGuideFilters(next)
+  }
+
+  function resetFilters() {
+    clearStoredGuideFilters()
+    setSearchParams({}, { replace: true })
+    setDetail(null)
+  }
+
   const [channels, setChannels] = useState<ChannelMeta[] | null>(null)
   const [rowsById, setRowsById] = useState<Map<string, GuideRow>>(() => new Map())
   const [statuses, setStatuses] = useState<ProviderStatus[]>([])
   const [bootError, setBootError] = useState<string | null>(null)
   const [booting, setBooting] = useState(true)
-
-  const [providerFilter, setProviderFilter] = useState(DEFAULT_PROVIDER)
-  const [groupFilter, setGroupFilter] = useState(DEFAULT_GROUP)
-  const [classFilter, setClassFilter] = useState(DEFAULT_CLASS)
-  const [hideExcluded, setHideExcluded] = useState(DEFAULT_HIDE_EXCLUDED)
-  const [timePreset, setTimePreset] = useState<TimePreset>(DEFAULT_TIME)
-  const [channelQ, setChannelQ] = useState('')
-  const [programmeQ, setProgrammeQ] = useState('')
   const [detail, setDetail] = useState<ProgDetail | null>(null)
 
   const loadedRef = useRef(new Set<string>())
@@ -304,24 +342,7 @@ export function GuidePage() {
     s.phase === 'pending' || s.phase === 'fetching' || s.phase === 'parsing',
   )
   const hasPaint = allRows.length > 0
-
-  // DRM channels are always excluded — DRM filter is meaningless while hiding excluded.
-  useEffect(() => {
-    if (hideExcluded && classFilter === 'DRM') {
-      setClassFilter(DEFAULT_CLASS)
-    }
-  }, [hideExcluded, classFilter])
-
-  function resetFilters() {
-    setProviderFilter(DEFAULT_PROVIDER)
-    setGroupFilter(DEFAULT_GROUP)
-    setClassFilter(DEFAULT_CLASS)
-    setHideExcluded(DEFAULT_HIDE_EXCLUDED)
-    setTimePreset(DEFAULT_TIME)
-    setChannelQ('')
-    setProgrammeQ('')
-    setDetail(null)
-  }
+  const filtersDirty = guideFiltersActive(filters)
 
   function showProgrammeDetail(
     el: HTMLElement,
@@ -455,7 +476,7 @@ export function GuidePage() {
               Provider{' '}
               <select
                 value={providerFilter}
-                onChange={(e) => setProviderFilter(e.target.value)}
+                onChange={(e) => patchFilters({ provider: e.target.value })}
               >
                 <option value="all">all</option>
                 {providers.map((p) => (
@@ -469,7 +490,7 @@ export function GuidePage() {
               Group{' '}
               <select
                 value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
+                onChange={(e) => patchFilters({ group: e.target.value })}
               >
                 <option value="all">all</option>
                 {groups.map((g) => (
@@ -483,7 +504,7 @@ export function GuidePage() {
               Classification{' '}
               <select
                 value={classFilter}
-                onChange={(e) => setClassFilter(e.target.value)}
+                onChange={(e) => patchFilters({ class: e.target.value })}
               >
                 <option value="all">all</option>
                 {CLASS_FILTERS.map((c) => (
@@ -497,7 +518,9 @@ export function GuidePage() {
               Time{' '}
               <select
                 value={timePreset}
-                onChange={(e) => setTimePreset(e.target.value as TimePreset)}
+                onChange={(e) =>
+                  patchFilters({ time: e.target.value as TimePreset })
+                }
               >
                 <option value="pm6">Now ±6h</option>
                 <option value="pm12">Now ±12h</option>
@@ -510,7 +533,7 @@ export function GuidePage() {
               <input
                 type="checkbox"
                 checked={hideExcluded}
-                onChange={(e) => setHideExcluded(e.target.checked)}
+                onChange={(e) => patchFilters({ hideExcluded: e.target.checked })}
               />
               Hide excluded
             </label>
@@ -519,7 +542,7 @@ export function GuidePage() {
               <input
                 type="search"
                 value={channelQ}
-                onChange={(e) => setChannelQ(e.target.value)}
+                onChange={(e) => patchFilters({ channelQ: e.target.value })}
                 placeholder="name, id, group, number…"
               />
             </label>
@@ -528,11 +551,16 @@ export function GuidePage() {
               <input
                 type="search"
                 value={programmeQ}
-                onChange={(e) => setProgrammeQ(e.target.value)}
+                onChange={(e) => patchFilters({ programmeQ: e.target.value })}
                 placeholder="title…"
               />
             </label>
-            <button type="button" className="toolbar-reset" onClick={resetFilters}>
+            <button
+              type="button"
+              className="toolbar-reset"
+              onClick={resetFilters}
+              disabled={!filtersDirty}
+            >
               Reset filters
             </button>
             <span className="meta">
