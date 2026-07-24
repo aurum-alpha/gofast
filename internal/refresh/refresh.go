@@ -6,9 +6,11 @@ package refresh
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"sync/atomic"
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/cache"
@@ -19,6 +21,14 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/xmltv"
+)
+
+var (
+	// ErrUnknownProvider is returned when TriggerAsync is asked for a provider
+	// that has no scheduled refresher (unknown or disabled).
+	ErrUnknownProvider = errors.New("unknown provider")
+	// ErrRefreshInFlight is returned when a refresh is already running for the provider.
+	ErrRefreshInFlight = errors.New("refresh in progress")
 )
 
 const minInterval = time.Minute
@@ -42,7 +52,8 @@ type Refresher interface {
 
 // Service schedules a set of Refreshers, each on its own goroutine.
 type Service struct {
-	refreshers []Refresher
+	refreshers []*providerRefresher
+	byID       map[model.ProviderID]*providerRefresher
 }
 
 // New builds one Refresher per enabled feed. notify is called after each
@@ -53,14 +64,52 @@ type Service struct {
 // attrBus may be nil; when set with attrs, classification changes are Emitted after classify.
 // st may be nil; when set, background logo work updates GET /api/status.
 func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, attrs *channelattr.Store, attrBus channelattr.Bus, notify func(), st *Status) *Service {
-	var rs []Refresher
-	for _, f := range reg.Feeds() {
-		rs = append(rs, &providerRefresher{
+	feeds := reg.Feeds()
+	rs := make([]*providerRefresher, 0, len(feeds))
+	byID := make(map[model.ProviderID]*providerRefresher, len(feeds))
+	for _, f := range feeds {
+		pr := &providerRefresher{
 			feed: f, clf: clf, cache: cc, policy: policy, logos: logos,
 			attrs: attrs, attrBus: attrBus, notify: notify, status: st,
-		})
+		}
+		rs = append(rs, pr)
+		byID[f.ID()] = pr
 	}
-	return &Service{refreshers: rs}
+	return &Service{refreshers: rs, byID: byID}
+}
+
+// TriggerAsync starts one network refresh for id in a background goroutine.
+// Returns ErrUnknownProvider or ErrRefreshInFlight without starting work.
+// runCtx should be the process lifetime context (cancelled on shutdown).
+func (s *Service) TriggerAsync(runCtx context.Context, id model.ProviderID) error {
+	if s == nil {
+		return ErrUnknownProvider
+	}
+	p, ok := s.byID[id]
+	if !ok {
+		return ErrUnknownProvider
+	}
+	if err := p.beginRefresh(); err != nil {
+		return err
+	}
+	go func() {
+		defer p.endRefresh()
+		start := time.Now()
+		err := p.refreshLocked(runCtx)
+		if err != nil {
+			slog.Warn("on-demand refresh failed; keeping last-good",
+				"provider", id,
+				"err", err,
+				"duration", time.Since(start),
+			)
+			return
+		}
+		slog.Info("on-demand refresh completed",
+			"provider", id,
+			"duration", time.Since(start),
+		)
+	}()
+	return nil
 }
 
 // Restore rebuilds each feed from its cached raw upstream snapshot — re-parsed
@@ -138,11 +187,17 @@ func run(ctx context.Context, r Refresher) {
 			err := r.Refresh(ctx)
 			refreshing = false
 			if err != nil {
-				slog.Warn("refresh failed; keeping last-good",
-					"provider", r.ID(),
-					"err", err,
-					"duration", time.Since(start),
-				)
+				if errors.Is(err, ErrRefreshInFlight) {
+					slog.Info("scheduled refresh skipped; already in progress",
+						"provider", r.ID(),
+					)
+				} else {
+					slog.Warn("refresh failed; keeping last-good",
+						"provider", r.ID(),
+						"err", err,
+						"duration", time.Since(start),
+					)
+				}
 			}
 			interval = applyRefreshClamp(r)
 			warnIfGuideExhausted(r)
@@ -221,15 +276,16 @@ func jitter(d time.Duration) time.Duration {
 // providerRefresher composes a feed with the shared pipeline (classify, gate,
 // emit, persist, notify). It never lives in the adapter packages.
 type providerRefresher struct {
-	feed    *provider.Feed
-	clf     *classifier.Client
-	cache   *cache.Cache
-	policy  EmissionPolicy
-	logos   *logocache.Cache
-	attrs   *channelattr.Store
-	attrBus channelattr.Bus
-	notify  func()
-	status  *Status
+	feed     *provider.Feed
+	clf      *classifier.Client
+	cache    *cache.Cache
+	policy   EmissionPolicy
+	logos    *logocache.Cache
+	attrs    *channelattr.Store
+	attrBus  channelattr.Bus
+	notify   func()
+	status   *Status
+	inFlight atomic.Bool
 }
 
 func (p *providerRefresher) ID() model.ProviderID    { return p.feed.ID() }
@@ -256,9 +312,30 @@ func (p *providerRefresher) GuideEnd() time.Time {
 	return p.feed.Stats().GuideEnd
 }
 
+func (p *providerRefresher) beginRefresh() error {
+	if !p.inFlight.CompareAndSwap(false, true) {
+		return ErrRefreshInFlight
+	}
+	return nil
+}
+
+func (p *providerRefresher) endRefresh() {
+	p.inFlight.Store(false)
+}
+
 // Refresh runs one full network cycle and publishes only after every stage
 // succeeds. Any failure records status and leaves the last-known-good untouched.
+// Concurrent Refresh calls for the same provider return ErrRefreshInFlight.
 func (p *providerRefresher) Refresh(ctx context.Context) error {
+	if err := p.beginRefresh(); err != nil {
+		return err
+	}
+	defer p.endRefresh()
+	return p.refreshLocked(ctx)
+}
+
+// refreshLocked runs the network cycle. Caller must hold the in-flight claim.
+func (p *providerRefresher) refreshLocked(ctx context.Context) error {
 	start := time.Now()
 	status := p.feed.Status()
 	status.LastAttemptAt = time.Now()

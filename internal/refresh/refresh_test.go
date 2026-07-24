@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -958,4 +959,68 @@ func TestWarmLogosUpdatesStatus(t *testing.T) {
 	if hits.Load() < 1 {
 		t.Fatalf("expected logo downloads, hits=%d", hits.Load())
 	}
+}
+
+func TestTriggerAsyncUnknownAndInFlight(t *testing.T) {
+	reader := &gateReader{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	settings := model.ProviderSettings{ID: model.ProviderLG, Label: "LG", MinChannels: 1}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: reader},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	cc := cache.New(t.TempDir())
+	svc := New(reg, nil, cc, EmissionPolicy{}, nil, nil, nil, nil, nil)
+
+	if err := svc.TriggerAsync(context.Background(), "nope"); !errors.Is(err, ErrUnknownProvider) {
+		t.Fatalf("unknown: %v", err)
+	}
+
+	if err := svc.TriggerAsync(context.Background(), model.ProviderLG); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-reader.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("refresh did not start")
+	}
+	if err := svc.TriggerAsync(context.Background(), model.ProviderLG); !errors.Is(err, ErrRefreshInFlight) {
+		t.Fatalf("inflight: %v", err)
+	}
+	if err := svc.byID[model.ProviderLG].Refresh(context.Background()); !errors.Is(err, ErrRefreshInFlight) {
+		t.Fatalf("Refresh while async: %v", err)
+	}
+	close(reader.release)
+	p := svc.byID[model.ProviderLG]
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !p.inFlight.Load() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("refresh did not finish")
+}
+
+type gateReader struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (r *gateReader) Fetch(context.Context) (provider.Raw, error) {
+	r.once.Do(func() { close(r.started) })
+	<-r.release
+	return provider.Raw{"fixture": []byte("RAW")}, nil
+}
+
+func (r *gateReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
+	start := time.Now().UTC()
+	return []model.Channel{{
+			ID: "news", Name: "News", StreamURL: "https://example.test/news.m3u8",
+		}}, []model.Programme{{
+			ChannelID: "news", Title: "News", Start: start, Stop: start.Add(time.Hour),
+		}}, nil
 }

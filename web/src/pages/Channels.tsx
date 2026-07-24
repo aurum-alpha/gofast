@@ -127,32 +127,41 @@ export function ChannelsPage() {
   const rows = useMemo(() => {
     if (!data) return [] as Channel[]
     const needle = q.trim().toLowerCase()
-    return data.channels.filter((ch) => {
-      if (providerFilter !== 'all' && ch.provider !== providerFilter) {
-        return false
-      }
-      if (groupFilter !== 'all' && groupKey(ch.group) !== groupFilter) {
-        return false
-      }
-      if (classFilter !== 'all') {
-        if (canonicalClassification(ch.classification) !== classFilter) return false
-      }
-      if (statusFilter !== 'all' && lineupStatus(ch) !== statusFilter) {
-        return false
-      }
-      if (healthFilter !== 'all' && healthStatus(ch) !== healthFilter) {
-        return false
-      }
-      if (!needle) return true
-      return (
-        ch.name.toLowerCase().includes(needle) ||
-        ch.id.toLowerCase().includes(needle) ||
-        ch.normalized_id.toLowerCase().includes(needle) ||
-        ch.group.toLowerCase().includes(needle) ||
-        String(ch.number).includes(needle) ||
-        String(ch.offset_number).includes(needle)
-      )
-    })
+    return data.channels
+      .filter((ch) => {
+        if (providerFilter !== 'all' && ch.provider !== providerFilter) {
+          return false
+        }
+        if (groupFilter !== 'all' && groupKey(ch.group) !== groupFilter) {
+          return false
+        }
+        if (classFilter !== 'all') {
+          if (canonicalClassification(ch.classification) !== classFilter) return false
+        }
+        if (statusFilter !== 'all' && lineupStatus(ch) !== statusFilter) {
+          return false
+        }
+        if (healthFilter !== 'all' && healthStatus(ch) !== healthFilter) {
+          return false
+        }
+        if (!needle) return true
+        return (
+          ch.name.toLowerCase().includes(needle) ||
+          ch.id.toLowerCase().includes(needle) ||
+          ch.normalized_id.toLowerCase().includes(needle) ||
+          ch.group.toLowerCase().includes(needle) ||
+          String(ch.number).includes(needle) ||
+          String(ch.offset_number).includes(needle)
+        )
+      })
+      .slice()
+      .sort((a, b) => {
+        const an = a.offset_number > 0 ? a.offset_number : Number.POSITIVE_INFINITY
+        const bn = b.offset_number > 0 ? b.offset_number : Number.POSITIVE_INFINITY
+        if (an !== bn) return an - bn
+        if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
+        return a.normalized_id.localeCompare(b.normalized_id)
+      })
   }, [data, providerFilter, groupFilter, classFilter, statusFilter, healthFilter, q])
 
   const detailState: ChannelsLocationState = {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 type ProviderStats = {
@@ -73,38 +73,80 @@ function isStale(stats?: ProviderStats): boolean {
 export function ProvidersPage() {
   const [data, setData] = useState<ProvidersResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [refreshNote, setRefreshNote] = useState<string | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const res = await fetch('/api/providers')
+    if (!res.ok) {
+      throw new Error(`${res.status} ${res.statusText}`)
+    }
+    const body = (await res.json()) as ProvidersResponse
+    setData(body)
+    setError(null)
+    return body
+  }, [])
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/providers')
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`${res.status} ${res.statusText}`)
-        }
-        return res.json() as Promise<ProvidersResponse>
-      })
-      .then((body) => {
-        if (!cancelled) {
-          setData(body)
-          setError(null)
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err))
-        }
-      })
+    load().catch((err: unknown) => {
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [load])
+
+  async function refreshProvider(id: string) {
+    setRefreshError(null)
+    setRefreshNote(null)
+    setBusyId(id)
+    try {
+      const res = await fetch(`/api/providers/${encodeURIComponent(id)}/refresh`, {
+        method: 'POST',
+      })
+      if (res.status === 409) {
+        setRefreshError(`${id}: refresh already in progress`)
+        return
+      }
+      if (res.status === 404) {
+        setRefreshError(`${id}: provider not found or disabled`)
+        return
+      }
+      if (!res.ok) {
+        throw new Error(`${res.status} ${res.statusText}`)
+      }
+      setRefreshNote(
+        `${id}: refresh started (fetch + classify runs in the background)`,
+      )
+      window.setTimeout(() => {
+        void load().catch(() => {})
+      }, 2000)
+      window.setTimeout(() => {
+        void load().catch(() => {})
+      }, 8000)
+    } catch (err: unknown) {
+      setRefreshError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusyId(null)
+      try {
+        await load()
+      } catch {
+        // keep list; load errors surface via initial error path
+      }
+    }
+  }
 
   return (
     <>
       <h1>Providers</h1>
       <p className="lead">
         Configured lineup sources with triage counts. Open a provider for full
-        rollups (classifications, filter reasons, guide coverage).
+        rollups (classifications, filter reasons, guide coverage). Use Refresh
+        to force a fetch + classify now (does not wait for the schedule).
       </p>
 
       {error && (
@@ -112,6 +154,17 @@ export function ProvidersPage() {
           <p>Failed to load providers: {error}</p>
         </div>
       )}
+
+      {refreshNote ? (
+        <p className="meta" role="status">
+          {refreshNote}
+        </p>
+      ) : null}
+      {refreshError ? (
+        <div className="empty-panel" role="alert">
+          <p>{refreshError}</p>
+        </div>
+      ) : null}
 
       {!error && !data && (
         <div className="empty-panel" role="status">
@@ -132,12 +185,13 @@ export function ProvidersPage() {
                 <th>Status</th>
                 <th>Last success</th>
                 <th>Notes</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {data.providers.length === 0 ? (
                 <tr className="empty">
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     No providers in config. Copy config.example.yaml to
                     /data/config.yaml and restart.
                   </td>
@@ -145,6 +199,7 @@ export function ProvidersPage() {
               ) : (
                 data.providers.map((p) => {
                   const stale = isStale(p.stats)
+                  const busy = busyId === p.id
                   return (
                     <tr key={p.id} className={stale ? 'excluded' : undefined}>
                       <td>
@@ -171,6 +226,19 @@ export function ProvidersPage() {
                       </td>
                       <td>{relativeTime(p.stats?.fetched_at)}</td>
                       <td>{notesFor(p)}</td>
+                      <td>
+                        <span className="probe-actions">
+                          <button
+                            type="button"
+                            disabled={!p.enabled || busyId !== null}
+                            onClick={() => {
+                              void refreshProvider(p.id)
+                            }}
+                          >
+                            {busy ? 'Starting…' : 'Refresh'}
+                          </button>
+                        </span>
+                      </td>
                     </tr>
                   )
                 })

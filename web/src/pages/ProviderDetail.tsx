@@ -124,9 +124,14 @@ export function ProviderDetailPage() {
   const { id = '' } = useParams()
   const [data, setData] = useState<ProviderDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refreshBusy, setRefreshBusy] = useState(false)
+  const [refreshNote, setRefreshNote] = useState<string | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
+    setRefreshNote(null)
+    setRefreshError(null)
     fetch(`/api/providers/${encodeURIComponent(id)}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
@@ -145,6 +150,41 @@ export function ProviderDetailPage() {
       cancelled = true
     }
   }, [id])
+
+  async function refreshNow() {
+    setRefreshBusy(true)
+    setRefreshNote(null)
+    setRefreshError(null)
+    try {
+      const res = await fetch(`/api/providers/${encodeURIComponent(id)}/refresh`, {
+        method: 'POST',
+      })
+      if (res.status === 409) {
+        setRefreshError('Refresh already in progress')
+        return
+      }
+      if (res.status === 404) {
+        setRefreshError('Provider not found or disabled')
+        return
+      }
+      if (!res.ok) {
+        throw new Error(`${res.status} ${res.statusText}`)
+      }
+      setRefreshNote('Refresh started — stats update when the fetch finishes')
+      window.setTimeout(() => {
+        void fetch(`/api/providers/${encodeURIComponent(id)}`)
+          .then(async (r) => {
+            if (!r.ok) return
+            setData(await r.json())
+          })
+          .catch(() => {})
+      }, 3000)
+    } catch (err: unknown) {
+      setRefreshError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRefreshBusy(false)
+    }
+  }
 
   if (error) {
     return (
@@ -169,6 +209,24 @@ export function ProviderDetailPage() {
           {settings.enabled ? 'Enabled' : 'Disabled'}
         </span>
       </div>
+
+      <p className="probe-actions">
+        <button
+          type="button"
+          disabled={!settings.enabled || refreshBusy}
+          onClick={() => {
+            void refreshNow()
+          }}
+        >
+          {refreshBusy ? 'Starting…' : 'Refresh now'}
+        </button>
+      </p>
+      {refreshNote ? <p className="meta" role="status">{refreshNote}</p> : null}
+      {refreshError ? (
+        <div className="empty-panel" role="alert">
+          <p>{refreshError}</p>
+        </div>
+      ) : null}
 
       {stats.last_error && (
         <div className="error-banner" role="alert">
@@ -229,3 +287,4 @@ export function ProviderDetailPage() {
     </>
   )
 }
+
