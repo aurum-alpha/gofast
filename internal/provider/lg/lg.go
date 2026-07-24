@@ -32,8 +32,9 @@ type Client struct {
 	url      string
 }
 
-// DefaultSettings returns LG's built-in defaults. A YAML providers.lg block is
-// merged over these (see model.ProviderSettings.Merge); omitting it uses these.
+// DefaultSettings returns LG's built-in defaults. LG runs only when a
+// providers.lg block is present; that block is merged over these field defaults
+// (see model.ProviderSettings.MergeConfigured). Omitting the block disables LG.
 func DefaultSettings() model.ProviderSettings {
 	s := model.DefaultSettings()
 	s.ID = "lg"

@@ -16,6 +16,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
+	"github.com/j27-aurum/gofast/internal/groups"
 	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/m3u"
 	"github.com/j27-aurum/gofast/internal/model"
@@ -63,13 +64,13 @@ type Service struct {
 // attrs may be nil; when set, current channel attrs are Annotate'd before Feed.Set.
 // attrBus may be nil; when set with attrs, classification changes are Emitted after classify.
 // st may be nil; when set, background logo work updates GET /api/status.
-func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, attrs *channelattr.Store, attrBus channelattr.Bus, notify func(), st *Status) *Service {
+func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, groupsHolder *groups.Holder, logos *logocache.Cache, attrs *channelattr.Store, attrBus channelattr.Bus, notify func(), st *Status) *Service {
 	feeds := reg.Feeds()
 	rs := make([]*providerRefresher, 0, len(feeds))
 	byID := make(map[model.ProviderID]*providerRefresher, len(feeds))
 	for _, f := range feeds {
 		pr := &providerRefresher{
-			feed: f, clf: clf, cache: cc, policy: policy, logos: logos,
+			feed: f, clf: clf, cache: cc, policy: policy, groups: groupsHolder, logos: logos,
 			attrs: attrs, attrBus: attrBus, notify: notify, status: st,
 		}
 		rs = append(rs, pr)
@@ -125,7 +126,7 @@ func (s *Service) TriggerAsync(runCtx context.Context, id model.ProviderID) erro
 // do not race the AttrReceiver writer.
 // Logo HTTP is not run here — call WarmLogos in the background after listen so
 // /healthz and the UI come up immediately.
-func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, attrs *channelattr.Store) {
+func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, groupsHolder *groups.Holder, attrs *channelattr.Store) {
 	for _, f := range reg.Feeds() {
 		raw, meta, _, err := cc.LoadProvider(f.ID())
 		if err != nil {
@@ -138,7 +139,7 @@ func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, att
 			}
 			f.SetStatus(status)
 		}
-		pr := &providerRefresher{feed: f, cache: cc, policy: policy, attrs: attrs}
+		pr := &providerRefresher{feed: f, cache: cc, policy: policy, groups: groupsHolder, attrs: attrs}
 		if err := pr.rehydrate(raw, meta); err != nil {
 			slog.Warn("cache restore failed", "provider", f.ID(), "err", err)
 			continue
@@ -280,6 +281,7 @@ type providerRefresher struct {
 	clf      *classifier.Client
 	cache    *cache.Cache
 	policy   EmissionPolicy
+	groups   *groups.Holder
 	logos    *logocache.Cache
 	attrs    *channelattr.Store
 	attrBus  channelattr.Bus
@@ -395,6 +397,48 @@ func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) erro
 		return err
 	}
 	p.seedClassificationsFromMeta(meta)
+	lineup, m3uData, xmlData, err := p.prepare(context.Background(), chs, progs, assignments, meta.FetchedAt)
+	if err != nil {
+		return err
+	}
+	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
+		return err
+	}
+	p.setLineup(lineup)
+	return nil
+}
+
+// ReapplyAll re-emits every provider from its cached raw snapshot (no network),
+// recomputing group taxonomy + exclusions from scratch with the current policy,
+// then republishing. Used after a live group-taxonomy change. Per-provider
+// failures are logged and skipped (last-good is preserved for that provider).
+func (s *Service) ReapplyAll() {
+	if s == nil {
+		return
+	}
+	for _, p := range s.refreshers {
+		if err := p.reapplyFromCache(); err != nil {
+			slog.Warn("group reapply failed; keeping last-good", "provider", p.feed.ID(), "err", err)
+		}
+	}
+}
+
+// reapplyFromCache re-parses the cached raw snapshot through the shared pipeline
+// and republishes. Unlike rehydrate it does not seed classifications (the attr
+// receiver is the sole writer at runtime), so it is safe to call live.
+func (p *providerRefresher) reapplyFromCache() error {
+	raw, meta, _, err := p.cache.LoadProvider(p.feed.ID())
+	if err != nil {
+		return err
+	}
+	chs, progs, err := p.feed.Reader().Parse(raw)
+	if err != nil {
+		return err
+	}
+	chs, progs, assignments, err := p.transform(chs, progs, meta.SyntheticChannelNumbers)
+	if err != nil {
+		return err
+	}
 	lineup, m3uData, xmlData, err := p.prepare(context.Background(), chs, progs, assignments, meta.FetchedAt)
 	if err != nil {
 		return err
@@ -578,6 +622,9 @@ func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, pr
 	s := p.feed.Settings()
 	if p.attrs != nil {
 		chs = p.attrs.Annotate(id, chs)
+	}
+	if p.groups != nil {
+		chs = groups.Apply(chs, id, p.groups.Policy())
 	}
 	var emission emissionStats
 	chs, emission = applyEmissionPolicy(chs, p.policy)

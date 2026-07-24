@@ -54,7 +54,7 @@ func TestProviderRefreshAPI(t *testing.T) {
 		settings,
 	)
 	cc := cache.New(t.TempDir())
-	svc := refresh.New(reg, nil, cc, refresh.EmissionPolicy{}, nil, nil, nil, nil, nil)
+	svc := refresh.New(reg, nil, cc, refresh.EmissionPolicy{}, nil, nil, nil, nil, nil, nil)
 	runCtx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 

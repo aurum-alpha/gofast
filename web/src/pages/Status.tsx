@@ -142,6 +142,7 @@ export function StatusPage() {
       proxied: 0,
       'needs-proxy': 0,
       drm: 0,
+      'disabled-group': 0,
       excluded: 0,
     }
     const dialect = {
@@ -264,6 +265,11 @@ export function StatusPage() {
               value={(
                 rollups.lineup['in-lineup'] + rollups.lineup.proxied
               ).toLocaleString()}
+            />
+            <Metric
+              label="Disabled group"
+              value={rollups.lineup['disabled-group'].toLocaleString()}
+              title="Dropped because their group is disabled in the taxonomy"
             />
             <Metric
               label="Excluded (other)"

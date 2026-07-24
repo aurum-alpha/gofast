@@ -1,5 +1,8 @@
 /bin/
 web/node_modules/
-# Generated runtime artifacts (docker-compose bind mounts for local viewing).
+# Local runtime data volume (docker-compose bind mount for /data:
+# config.yaml, cache/ generations, channelattr/). Never commit.
+/.data/
+# Legacy local bind mounts (pre single-/data volume).
 /.cache/
 /.channelattr/

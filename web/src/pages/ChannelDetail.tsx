@@ -269,6 +269,13 @@ export function ChannelDetailPage() {
               be emitted.
             </p>
           ) : null}
+          {status.kind === 'disabled-group' ? (
+            <p className="status-reason">
+              This channel's group is disabled in the{' '}
+              <Link to="/groups">Groups</Link> editor, so it is not emitted to
+              the M3U/XMLTV. Re-enable the group to include it.
+            </p>
+          ) : null}
           {status.kind === 'drm' && channel.license_url ? (
             <p className="status-reason">
               DRM license evidence:{' '}
@@ -330,8 +337,12 @@ export function ChannelDetailPage() {
                 </td>
                 <td>
                   <CellValue>
-                    <span className="field-hint">group-title (same unless labeled)</span>
-                    <Plain value={channel.group || undefined} />
+                    <span className="field-hint">
+                      {channel.emitted_group
+                        ? 'group-title (taxonomy)'
+                        : 'group-title (same unless labeled)'}
+                    </span>
+                    <Plain value={channel.emitted_group || channel.group || undefined} />
                   </CellValue>
                 </td>
               </tr>

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/j27-aurum/gofast/internal/m3u"
@@ -48,6 +49,28 @@ func TestMarshalAggregateGoldenAndDeterministic(t *testing.T) {
 	}
 	if string(again) != string(got) {
 		t.Fatalf("output changed after input reorder:\n%s\n---\n%s", got, again)
+	}
+}
+
+func TestMarshalUsesEmittedGroup(t *testing.T) {
+	// EmittedGroup (taxonomy) wins over the legacy "{label}: {group}" prefix.
+	got, err := m3u.Marshal([]model.Channel{
+		{ID: "a", NormalizedID: "a", Name: "One", Group: "NEWS", EmittedGroup: "News", StreamURL: "https://stream.test/a.m3u8"},
+		{ID: "b", NormalizedID: "b", Name: "Two", Group: "Movies", StreamURL: "https://stream.test/b.m3u8"},
+	}, "LG")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(got)
+	if !strings.Contains(out, `group-title="News"`) {
+		t.Errorf("expected taxonomy group-title=News, got:\n%s", out)
+	}
+	if strings.Contains(out, `group-title="LG: NEWS"`) {
+		t.Errorf("EmittedGroup should override legacy prefix, got:\n%s", out)
+	}
+	// The unassigned channel keeps the legacy prefix.
+	if !strings.Contains(out, `group-title="LG: Movies"`) {
+		t.Errorf("expected legacy prefix for unassigned, got:\n%s", out)
 	}
 }
 

@@ -13,11 +13,9 @@ func TestKnownProviderWiringRequiresProviderBlock(t *testing.T) {
 	if len(settings) != 7 {
 		t.Fatalf("known settings: %+v", settings)
 	}
-	if _, ok := readers[model.ProviderLG]; !ok {
-		t.Fatal("LG should preserve existing default enablement")
-	}
 	for _, id := range []model.ProviderID{
 		model.ProviderDistroTV,
+		model.ProviderLG,
 		model.ProviderLocalNow,
 		model.ProviderPluto,
 		model.ProviderRoku,
@@ -56,6 +54,7 @@ func TestKnownProviderWiringHonorsPresenceAndExplicitFalse(t *testing.T) {
 	disabled := false
 	overlays := map[model.ProviderID]model.ProviderSettings{
 		model.ProviderDistroTV: {},
+		model.ProviderLG:       {},
 		model.ProviderLocalNow: {},
 		model.ProviderPluto:    {},
 		model.ProviderRoku:     {},
@@ -66,6 +65,7 @@ func TestKnownProviderWiringHonorsPresenceAndExplicitFalse(t *testing.T) {
 	readers := knownProviderReaders(settings, nil)
 	for _, id := range []model.ProviderID{
 		model.ProviderDistroTV,
+		model.ProviderLG,
 		model.ProviderLocalNow,
 		model.ProviderPluto,
 		model.ProviderRoku,

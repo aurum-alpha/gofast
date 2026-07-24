@@ -11,7 +11,20 @@ const (
 	FilterReasonDRM            = "DRM"
 	FilterReasonNeedsFASTProxy = "needs FASTProxy (proxy_base_url not configured)"
 	FilterReasonUnhealthy      = "unhealthy (exclude_unhealthy)"
+	// FilterReasonDisabledGroupPrefix begins the reason for channels dropped
+	// because their group was disabled in the taxonomy. The UI matches this
+	// prefix to render a distinct "disabled group" badge.
+	FilterReasonDisabledGroupPrefix = "disabled group"
 )
+
+// DisabledGroupReason is the FilterReason for a channel dropped by a disabled group.
+func DisabledGroupReason(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return FilterReasonDisabledGroupPrefix
+	}
+	return fmt.Sprintf("%s %q", FilterReasonDisabledGroupPrefix, name)
+}
 
 // Channel is a lineup entry after provider fetch (+ optional classify).
 type Channel struct {
@@ -23,6 +36,10 @@ type Channel struct {
 	Number      int        `json:"number"`                // provider's upstream channel number
 	StreamURL   string     `json:"stream_url"`            // provider's upstream URL
 	EmittedURL  string     `json:"emitted_url,omitempty"` // selected direct/proxy playback URL
+	// EmittedGroup is the resolved M3U group-title after the group taxonomy
+	// (merge / drop-prefix). Empty means "use the legacy {label}: {group}".
+	// Upstream Group is never mutated so diagnosis still shows the source group.
+	EmittedGroup string `json:"emitted_group,omitempty"`
 	// LogoURL is what we export (tvg-logo / XMLTV icon): local /logos/... when
 	// caching succeeds, upstream on soft failure / cache off, empty after hard 403/404.
 	LogoURL string `json:"logo_url,omitempty"`

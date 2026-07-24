@@ -125,7 +125,10 @@ export function ConfigPage() {
       <h1>Config</h1>
       <p className="lead">
         Effective settings for this process (defaults → YAML → env). Read-only —
-        edit <code>config.yaml</code> / env and restart to change.
+        edit <code>config.yaml</code> / env and restart to change. The{' '}
+        <Link to="/groups">Groups</Link> editor is the exception: it writes the
+        <code>groups</code> block back to <code>config.yaml</code> and applies
+        live (no restart).
       </p>
 
       <section className="detail-section">
