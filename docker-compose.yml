@@ -8,20 +8,45 @@
 # behind TLS on 443). Optional proxy: docker compose --profile proxy up.
 
 services:
+  # One-shot: seed ./.data/config.yaml from config.example.yaml on first run so
+  # local dev boots with all providers enabled. Prod does not use this — a fresh
+  # /data with no file makes fastgen generate a defaults-only config (no
+  # providers). Delete ./.data/config.yaml to re-seed.
+  seed-config:
+    image: busybox
+    volumes:
+      - ./config.example.yaml:/seed/config.example.yaml:ro
+      - ./.data:/data
+    command:
+      - sh
+      - -c
+      - |
+        if [ -f /data/config.yaml ]; then
+          echo "seed-config: /data/config.yaml exists; leaving as-is"
+        else
+          cp /seed/config.example.yaml /data/config.yaml
+          echo "seed-config: seeded /data/config.yaml from config.example.yaml"
+        fi
+
   fastgen:
     image: ghcr.io/j27-aurum/gofast/fastgen:latest
     build:
       context: .
       dockerfile: Dockerfile
       target: fastgen
+    depends_on:
+      seed-config:
+        condition: service_completed_successfully
     ports:
       - "8180:8180"
     volumes:
-      # Local bind mounts so generated artifacts are viewable in the repo.
-      - ./.cache:/data/cache
-      - ./.channelattr:/data/channelattr
-      # Seed providers for local smoke; override by replacing the file on the volume.
-      - ./config.example.yaml:/data/config.yaml:ro
+      # Single writable data volume (matches prod). fastgen owns /data:
+      # generated artifacts under ./.data/cache, channel attrs under
+      # ./.data/channelattr, and an operator-editable ./.data/config.yaml.
+      # The seed-config service above copies config.example.yaml here on first
+      # run; without it a fresh /data yields a defaults-only config (no
+      # providers enabled), since every provider requires its own YAML block.
+      - ./.data:/data
     environment:
       PORT: "8180"
       FASTGEN_PROXY_BASE_URL: "${FASTGEN_PROXY_BASE_URL:-}"

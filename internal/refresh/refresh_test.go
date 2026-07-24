@@ -162,7 +162,7 @@ func TestSyntheticNumberPersistsAcrossRefreshAndRestore(t *testing.T) {
 	}
 
 	restored := newRegistry()
-	Restore(restored, cc, EmissionPolicy{}, nil)
+	Restore(restored, cc, EmissionPolicy{}, nil, nil)
 	restoredFeed, _ := restored.Feed(model.ProviderXumo)
 	if got := restoredFeed.Channels()[0].OffsetNumber; got != 5000 {
 		t.Fatalf("restored number = %d, want 5000", got)
@@ -264,7 +264,7 @@ func TestPublishedProviderRefreshAndRestore(t *testing.T) {
 		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: restoredReader},
 		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
 	)
-	Restore(restoredRegistry, cc, EmissionPolicy{}, nil)
+	Restore(restoredRegistry, cc, EmissionPolicy{}, nil, nil)
 	restoredFeed, _ := restoredRegistry.Feed(model.ProviderDistroTV)
 	if channels := restoredFeed.Channels(); len(channels) != 2 || channels[0].NormalizedID != "dtv_EPGACE_TV" {
 		t.Fatalf("restored channels: %+v", channels)
@@ -432,7 +432,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = attrs.Close() })
 
-	Restore(reg, cc, EmissionPolicy{}, attrs)
+	Restore(reg, cc, EmissionPolicy{}, nil, attrs)
 
 	f, _ := reg.Feed(model.ProviderLG)
 	if len(f.Channels()) == 0 {
@@ -924,7 +924,7 @@ func TestWarmLogosUpdatesStatus(t *testing.T) {
 	if err := pr.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	Restore(reg, cc, EmissionPolicy{}, nil)
+	Restore(reg, cc, EmissionPolicy{}, nil, nil)
 	if hits.Load() != 0 {
 		t.Fatalf("restore must not download logos, hits=%d", hits.Load())
 	}
@@ -972,7 +972,7 @@ func TestTriggerAsyncUnknownAndInFlight(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
 	)
 	cc := cache.New(t.TempDir())
-	svc := New(reg, nil, cc, EmissionPolicy{}, nil, nil, nil, nil, nil)
+	svc := New(reg, nil, cc, EmissionPolicy{}, nil, nil, nil, nil, nil, nil)
 
 	if err := svc.TriggerAsync(context.Background(), "nope"); !errors.Is(err, ErrUnknownProvider) {
 		t.Fatalf("unknown: %v", err)

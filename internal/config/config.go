@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/j27-aurum/gofast/internal/groups"
 	"github.com/j27-aurum/gofast/internal/model"
 	"gopkg.in/yaml.v3"
 )
@@ -39,6 +40,7 @@ type Config struct {
 	Timeouts     Timeouts                                    `yaml:"timeouts"`
 	Logging      Logging                                     `yaml:"logging"`
 	Health       Health                                      `yaml:"health"`
+	Groups       groups.Doc                                  `yaml:"groups"`
 	Providers    map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
 }
 
@@ -502,6 +504,9 @@ func (c *Config) merge(o *Config) {
 	}
 	if o.Health.FFProbePath != "" {
 		c.Health.FFProbePath = o.Health.FFProbePath
+	}
+	if !o.Groups.IsZero() {
+		c.Groups = o.Groups.Clone()
 	}
 	if o.Providers != nil {
 		c.Providers = maps.Clone(o.Providers)

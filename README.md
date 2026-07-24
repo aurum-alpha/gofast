@@ -77,7 +77,7 @@ Production files (pull-only, no secrets):
 
 ### Jellyfin Live TV (gen-only)
 
-1. Bring the stack up (prod or local compose). Copy [`config.example.yaml`](config.example.yaml) to `/data/config.yaml` if you need provider overlays.
+1. Bring the stack up (prod or local compose). Local compose auto-seeds `./.data/config.yaml` from [`config.example.yaml`](config.example.yaml) on first run (a `seed-config` init service), so all providers are enabled out of the box. In prod, copy [`config.example.yaml`](config.example.yaml) to `/data/config.yaml` before first boot; otherwise fastgen generates a defaults-only `config.yaml` with **no providers enabled**.
 2. Set `FASTGEN_BASE_URL` to the origin **Jellyfin can reach** (LAN `http://HOST:8180` or HTTPS hostname behind nginx — see [TLS / nginx edge](#tls--nginx-edge-optional)). No trailing slash.
 3. Wait until providers have last-known-good data: open the UI, or `curl …/healthz` and check per-provider `exported_channels` / `fetched_at`. Failed refreshes keep serving the previous M3U/XMLTV so Jellyfin is not left empty.
 4. In Jellyfin: **Dashboard → Live TV → Tuners → Add** → type **M3U Tuner** → URL:
@@ -130,9 +130,11 @@ docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 
 ### Config (`/data/config.yaml`)
 
-Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, `roku`, `xumo`, `distrotv`, and `localnow`. Pluto/Samsung/Roku use Matt Huisman's `i.mjh.nz` feeds; Xumo/DistroTV/LocalNow consume maintained M3U/XMLTV pairs. All except LG run only when their YAML block is present; `enabled: false` disables an existing block.
+Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, `roku`, `xumo`, `distrotv`, and `localnow`. Pluto/Samsung/Roku use Matt Huisman's `i.mjh.nz` feeds; Xumo/DistroTV/LocalNow consume maintained M3U/XMLTV pairs. Every provider (LG included) runs only when its YAML block is present; `enabled: false` disables an existing block. A fresh `/data` with no `config.yaml` generates a defaults-only file with no providers enabled.
 
-- [`config.example.yaml`](config.example.yaml) — starter template with the well-known provider overlays; copy to `/data/config.yaml`.
+`config.yaml` is **operator-writable** — mount `/data` read-write. If the file is missing on first boot, fastgen generates it from the baked-in code defaults (deploy-varying values stay in the environment). App-managed settings are persisted back atomically, preserving your comments and any keys fastgen does not manage (a `.bak` of the prior file is kept). The **Groups** editor (cross-provider group merge + disable) is the first such feature: it writes the `groups` block and applies live — no restart. A read-only mount surfaces a clear "config is read-only" message instead of failing.
+
+- [`config.example.yaml`](config.example.yaml) — starter template with the well-known provider overlays. Local compose auto-seeds it into `./.data/config.yaml` on first run (`seed-config` service); delete that file to re-seed. In prod, copy it to `/data/config.yaml` before first boot; otherwise a defaults-only file with no providers enabled is generated.
 
 The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`; MJH providers store `channels.json.gz` + `guide.xml.gz`; published-pair providers store `playlist.m3u` plus `guide.xml.gz` (Xumo/DistroTV) or `guide.xml` (LocalNow). Published-pair refreshes log normalized playlist/guide ID match rates. Numberless channels use stable, persisted first-seen assignments from each provider's `synthesize_channel_numbers` base; removed IDs stay reserved.
 

@@ -3,8 +3,39 @@ package refresh
 import (
 	"testing"
 
+	"github.com/j27-aurum/gofast/internal/groups"
 	"github.com/j27-aurum/gofast/internal/model"
 )
+
+// TestGroupPolicyThenEmission verifies the prepare() ordering: group taxonomy
+// marks disabled channels excluded (which emission preserves) and sets
+// EmittedGroup on the survivors before emission runs.
+func TestGroupPolicyThenEmission(t *testing.T) {
+	policy := groups.Compile(groups.Doc{
+		Enabled:  true,
+		Merges:   []groups.Merge{{Name: "News", Members: []string{"NEWS"}}},
+		Disabled: []string{"Shopping"},
+	})
+	in := []model.Channel{
+		{Provider: model.ProviderLG, NormalizedID: "a", StreamURL: "https://up.test/a.m3u8", Classification: model.ClassNative, Group: "NEWS"},
+		{Provider: model.ProviderLG, NormalizedID: "b", StreamURL: "https://up.test/b.m3u8", Classification: model.ClassNative, Group: "Shopping"},
+	}
+	afterGroups := groups.Apply(in, model.ProviderLG, policy)
+	got, _ := applyEmissionPolicy(afterGroups, EmissionPolicy{})
+
+	if got[0].EmittedGroup != "News" || got[0].Excluded {
+		t.Fatalf("news channel = %+v", got[0])
+	}
+	if got[0].EmittedURL != "https://up.test/a.m3u8" {
+		t.Fatalf("news channel should still emit a URL: %q", got[0].EmittedURL)
+	}
+	if !got[1].Excluded || got[1].FilterReason != model.DisabledGroupReason("Shopping") {
+		t.Fatalf("shopping channel = %+v", got[1])
+	}
+	if got[1].EmittedURL != "" {
+		t.Fatalf("disabled channel must not emit a URL: %q", got[1].EmittedURL)
+	}
+}
 
 func TestApplyEmissionPolicy(t *testing.T) {
 	tests := []struct {

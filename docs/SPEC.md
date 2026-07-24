@@ -198,6 +198,23 @@ streams).
 - **Provider labels:** per-provider `label` (LG/Pluto/Samsung). Display name in
   M3U = `{name} · {label}`. `group-title` = `{label}: {group}`. Keep `tvg-name`
   as the clean unlabeled name.
+- **Group taxonomy (cross-provider merge + disable, `groups` in `config.yaml`):**
+  optional, off by default (legacy `{label}: {group}` folders). When enabled the
+  provider prefix is dropped and `group-title` becomes the resolved group name:
+  - **Auto-merge:** identical upstream group strings across providers collapse to
+    one folder on their own (no config needed).
+  - **Merge:** an operator `merges` entry folds differently-named upstream groups
+    (`NEWS`, `News & Info`, `Noticias`) into one canonical `name`. Members match
+    trim + case-insensitively across all providers; unlisted strings emit bare.
+  - **Disable:** a merged group (`enabled: false`) or a `disabled` selector — bare
+    `groupName` (all providers) or `providerID/groupName` (one provider) — drops
+    its channels from **both** M3U and XMLTV. Disable wins over emit. Disabled
+    channels stay in the API/UI with `filter_reason = disabled group "X"`; upstream
+    `Channel.group` is never mutated (detail still shows the source group).
+  - **Precedence vs per-channel override (J27-40, not built here):** a future
+    per-channel `group` override wins over taxonomy.
+  - Managed in the UI Groups editor; saving writes the `groups` block back to
+    `config.yaml` (comment-preserving) and applies **live** (re-emit, no restart).
 - **Exclusion filters:** per-provider list of case-insensitive regexes matched
   against stream URL + provider id + channel name (fast first pass; the
   classifier probe is the authoritative gate). Filtered channels are removed
@@ -314,6 +331,17 @@ wins over the file. Precedence: code defaults →
 YAML (if present) → env. Include a documented example (`config.example.yaml`)
 in the repo — never a filled production config. Hot-reload on SIGHUP is
 nice-to-have.
+
+`config.yaml` is **operator-writable**: mount `/data` (or the config path) read-write.
+On first boot with no file present, fastgen generates `/data/config.yaml` from the
+baked-in code defaults (deploy-varying env values are not baked in). App-managed
+settings persist back through a shared, atomic, comment/unknown-key-preserving YAML
+writer that keeps a `.bak` of the prior bytes. The **`groups`** taxonomy (J27-47) is
+the first such writer: the Groups editor writes the `groups` block and applies live
+(re-emit, no restart). Env-sourced keys have no `groups` overlay, so there is no
+env-shadow concern for that slice; broader UI config editing (J27-27) extends the
+same writer. A read-only mount surfaces a clear "config is read-only" error instead
+of failing silently.
 
 ## Operational requirements
 

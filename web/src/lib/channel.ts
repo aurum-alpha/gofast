@@ -25,6 +25,7 @@ export type Channel = {
   offset_number: number
   stream_url: string
   emitted_url?: string
+  emitted_group?: string
   logo_url?: string
   logo_source_url?: string
   logo_error?: string
@@ -39,12 +40,15 @@ export type Channel = {
 export const FILTER_REASON_DRM = 'DRM'
 export const FILTER_REASON_NEEDS_PROXY =
   'needs FASTProxy (proxy_base_url not configured)'
+/** Prefix of FilterReason set when a channel's group was disabled in the taxonomy. */
+export const FILTER_REASON_DISABLED_GROUP = 'disabled group'
 
 export type LineupStatusKind =
   | 'in-lineup'
   | 'proxied'
   | 'needs-proxy'
   | 'drm'
+  | 'disabled-group'
   | 'excluded'
 
 export type LineupBadge = {
@@ -89,6 +93,7 @@ export function lineupStatus(ch: Channel): LineupStatusKind {
   }
   if (ch.filter_reason === FILTER_REASON_NEEDS_PROXY) return 'needs-proxy'
   if (ch.filter_reason === FILTER_REASON_DRM || ch.classification === 'DRM') return 'drm'
+  if (ch.filter_reason?.startsWith(FILTER_REASON_DISABLED_GROUP)) return 'disabled-group'
   return 'excluded'
 }
 
@@ -123,6 +128,13 @@ export function lineupBadge(ch: Channel): LineupBadge {
         className: 'badge-drm',
         title: ch.filter_reason || FILTER_REASON_DRM,
       }
+    case 'disabled-group':
+      return {
+        kind,
+        label: 'Disabled group',
+        className: 'badge-none',
+        title: ch.filter_reason || 'Channel is in a disabled group',
+      }
     case 'excluded':
       return {
         kind,
@@ -148,6 +160,7 @@ export const STATUS_FILTERS: { value: LineupStatusKind; label: string }[] = [
   { value: 'proxied', label: 'Via proxy' },
   { value: 'needs-proxy', label: 'Needs proxy' },
   { value: 'drm', label: 'DRM blocked' },
+  { value: 'disabled-group', label: 'Disabled group' },
   { value: 'excluded', label: 'Excluded' },
 ]
 

@@ -60,7 +60,11 @@ func MarshalAll(sources []Source, options Options) ([]byte, error) {
 		if logo := format.M3UAttribute(channel.LogoURL); logo != "" {
 			line += fmt.Sprintf(` tvg-logo="%s"`, logo)
 		}
-		if group := format.M3UAttribute(format.FormatGroupTitle(item.label, channel.Group)); group != "" {
+		groupTitle := channel.EmittedGroup
+		if groupTitle == "" {
+			groupTitle = format.FormatGroupTitle(item.label, channel.Group)
+		}
+		if group := format.M3UAttribute(groupTitle); group != "" {
 			line += fmt.Sprintf(` group-title="%s"`, group)
 		}
 		line += "," + format.M3UText(format.FormatDisplayName(channel.Name, item.label))

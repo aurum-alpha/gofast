@@ -76,16 +76,39 @@ health:
   # aliases are accepted for one release when the corresponding new keys are unset.
   ffprobe_path: /usr/bin/ffprobe
 
+# Cross-provider group taxonomy (J27-47). Optional and app-managed: the Groups
+# editor in the UI writes this block back to config.yaml (comments preserved).
+# When enabled, the "{label}: {group}" prefix is dropped so identical upstream
+# group strings auto-merge into one Jellyfin folder; use `merges` to fold
+# differently-named upstream groups (NEWS vs News & Info) into one canonical
+# name, and `disabled` to drop a group's channels from export (they stay visible
+# in the UI with a "disabled group" reason). Match is trim + case-insensitive.
+# Omit the block (or set enabled: false) for the legacy per-provider grouping.
+groups:
+  enabled: false
+  # merges:
+  #   - name: News
+  #     members: [News, NEWS, "News & Info", Noticias]
+  #   - name: Shopping
+  #     members: [Shopping, QVC]
+  #     enabled: false          # disable the whole merged group
+  # disabled:
+  #   - "Weather"               # any provider's "Weather" group
+  #   - "samsung/Local"         # only Samsung's "Local" group
+
 # Provider implementations are code (compiled into the binary). This block only
 # customizes the settings of a known provider — offsets, exclusions, enabled,
 # URL overrides, etc. It cannot add a provider without shipping Go: ids with no
 # implementation are ignored at startup (a warning is logged). Pluto, Samsung,
 # and Roku use i.mjh.nz; Xumo, DistroTV, and LocalNow consume published
-# M3U/XMLTV pairs. These providers run only when their block is present.
+# M3U/XMLTV pairs; LG reads api.lgchannels.com.
 #
-# Copy this file to /data/config.yaml (or your bind mount). Keys are stable provider ids.
-# Set enabled: false to disable. Omitted "enabled" = true. Any setting you omit
-# falls back to the provider package's own default (e.g. lg's offset/exclusions).
+# Every provider (LG included) runs ONLY when its block is present here — a
+# fresh /data with no config.yaml generates a defaults-only file with no
+# providers enabled. Copy this file to /data/config.yaml (or your bind mount)
+# to enable them. Keys are stable provider ids. Set enabled: false to disable a
+# present block; omitted "enabled" = true. Any setting you omit falls back to
+# the provider package's own default (e.g. lg's offset/exclusions).
 # Channel-number ranges are spaced so lineups do not collide when merged.
 providers:
   lg:

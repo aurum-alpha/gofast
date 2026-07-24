@@ -13,6 +13,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/config"
+	"github.com/j27-aurum/gofast/internal/groups"
 	"github.com/j27-aurum/gofast/internal/health"
 	"github.com/j27-aurum/gofast/internal/httpx"
 	"github.com/j27-aurum/gofast/internal/logocache"
@@ -75,7 +76,9 @@ func main() {
 	}
 
 	// Providers are code: each known provider's package defaults are overlaid by
-	// its YAML settings. Unknown YAML ids have no implementation (warned).
+	// its YAML settings. No provider runs without its own YAML block — the
+	// generated default config enables nothing. Unknown YAML ids have no
+	// implementation (warned).
 	settings := knownProviderSettings(cfg.Providers)
 	for id := range cfg.Providers {
 		if _, known := settings[id]; !known {
@@ -93,8 +96,9 @@ func main() {
 		ProxyAll:         cfg.ProxyAllEnabled(),
 		ExcludeUnhealthy: cfg.HealthExcludeUnhealthy(),
 	}
+	groupsHolder := groups.NewHolder(cfg.Groups)
 	bootStatus := &refresh.Status{}
-	refresh.Restore(reg, cc, emissionPolicy, attrs)
+	refresh.Restore(reg, cc, emissionPolicy, groupsHolder, attrs)
 
 	attrBus := channelattr.NewBus(256)
 	go channelattr.Receive(ctx, attrBus, attrs)
@@ -134,8 +138,12 @@ func main() {
 	go agg.Run(ctx)
 
 	clf := classifier.New(client, 0)
-	svc := refresh.New(reg, clf, cc, emissionPolicy, logos, attrs, attrBus, agg.Notify, bootStatus)
+	svc := refresh.New(reg, clf, cc, emissionPolicy, groupsHolder, logos, attrs, attrBus, agg.Notify, bootStatus)
 	go svc.Run(ctx)
+	applyGroups := func() {
+		svc.ReapplyAll()
+		agg.Notify()
+	}
 	go refresh.WarmLogos(ctx, reg, cc, emissionPolicy, logos, agg.Notify, bootStatus)
 
 	uiHandler := ui.Handler()
@@ -145,6 +153,8 @@ func main() {
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/status", server.StatusHandler(bootStatus))
 			mux.HandleFunc("GET /api/config", server.ConfigHandler(cfg, path, fromFile, reg, sched))
+			mux.HandleFunc("GET /api/groups", server.GroupsHandler(groupsHolder, reg, path))
+			mux.HandleFunc("PUT /api/groups", server.GroupsSaveHandler(groupsHolder, reg, path, applyGroups))
 			mux.HandleFunc("GET /api/health/schedule", server.HealthScheduleHandler(sched))
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
 			mux.HandleFunc("GET /api/providers/{id}", server.ProviderDetailHandler(reg))
@@ -215,6 +225,7 @@ func knownProviderReaders(settings map[model.ProviderID]model.ProviderSettings, 
 
 func knownProviderSettings(overlays map[model.ProviderID]model.ProviderSettings) map[model.ProviderID]model.ProviderSettings {
 	distroTVOverlay, distroTVConfigured := overlays[model.ProviderDistroTV]
+	lgOverlay, lgConfigured := overlays[model.ProviderLG]
 	localNowOverlay, localNowConfigured := overlays[model.ProviderLocalNow]
 	plutoOverlay, plutoConfigured := overlays[model.ProviderPluto]
 	rokuOverlay, rokuConfigured := overlays[model.ProviderRoku]
@@ -222,7 +233,7 @@ func knownProviderSettings(overlays map[model.ProviderID]model.ProviderSettings)
 	xumoOverlay, xumoConfigured := overlays[model.ProviderXumo]
 	return map[model.ProviderID]model.ProviderSettings{
 		model.ProviderDistroTV: distrotv.DefaultSettings().MergeConfigured(distroTVOverlay, distroTVConfigured),
-		model.ProviderLG:       lg.DefaultSettings().Merge(overlays[model.ProviderLG]),
+		model.ProviderLG:       lg.DefaultSettings().MergeConfigured(lgOverlay, lgConfigured),
 		model.ProviderLocalNow: localnow.DefaultSettings().MergeConfigured(localNowOverlay, localNowConfigured),
 		model.ProviderPluto:    pluto.DefaultSettings().MergeConfigured(plutoOverlay, plutoConfigured),
 		model.ProviderRoku:     roku.DefaultSettings().MergeConfigured(rokuOverlay, rokuConfigured),
@@ -243,6 +254,16 @@ func loadConfig() (cfg *config.Config, path string, fromFile bool, err error) {
 	if errors.Is(err, os.ErrNotExist) {
 		slog.Warn("config file missing; using defaults and environment", "path", path)
 		cfg, err = config.New("")
+		if err == nil {
+			switch werr := config.WriteDefault(path); {
+			case werr == nil:
+				slog.Info("wrote default config", "path", path)
+			case errors.Is(werr, config.ErrReadOnly):
+				slog.Warn("config path is read-only; not generating default config", "path", path)
+			default:
+				slog.Warn("could not generate default config", "path", path, "err", werr)
+			}
+		}
 		return cfg, path, false, err
 	}
 	return nil, path, false, err
