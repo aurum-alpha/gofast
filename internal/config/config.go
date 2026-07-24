@@ -50,6 +50,8 @@ type Health struct {
 	ExcludeUnhealthy *bool `yaml:"exclude_unhealthy"`
 	// L2Interval is how often to run NATIVE segment probes (default 24h).
 	L2Interval time.Duration `yaml:"l2_interval"`
+	// L2Workers bounds concurrent L2 probes (default 4).
+	L2Workers int `yaml:"l2_workers"`
 	// L3Enabled turns on scheduled ffprobe (default false).
 	L3Enabled *bool `yaml:"l3_enabled"`
 	// L3Interval is the jitter window for scheduled L3 (default 60m).
@@ -58,6 +60,12 @@ type Health struct {
 	L3Workers int `yaml:"l3_workers"`
 	// L3Timeout is per-probe ffprobe timeout (default 30s).
 	L3Timeout time.Duration `yaml:"l3_timeout"`
+	// L3HealthySample is fraction of healthy channels probed each L3 sweep (default 0.1).
+	L3HealthySample *float64 `yaml:"l3_healthy_sample"`
+	// MaxPerHost caps concurrent probes per CDN hostname (default 2).
+	MaxPerHost int `yaml:"max_per_host"`
+	// SoftRetries is extra attempts on timeout/5xx (default 1; 0 disables).
+	SoftRetries *int `yaml:"soft_retries"`
 	// FFProbePath is the ffprobe binary (default /usr/bin/ffprobe).
 	FFProbePath string `yaml:"ffprobe_path"`
 }
@@ -123,6 +131,15 @@ func New(path string) (*Config, error) {
 	if cfg.Health.ConsecutiveFailures < 0 {
 		return nil, fmt.Errorf("config: health.consecutive_failures must be >= 0")
 	}
+	if cfg.Health.L3HealthySample != nil {
+		v := *cfg.Health.L3HealthySample
+		if v < 0 || v > 1 {
+			return nil, fmt.Errorf("config: health.l3_healthy_sample must be between 0 and 1")
+		}
+	}
+	if cfg.Health.SoftRetries != nil && *cfg.Health.SoftRetries < 0 {
+		return nil, fmt.Errorf("config: health.soft_retries must be >= 0")
+	}
 
 	providers, err := compileProviders(cfg.Providers)
 	if err != nil {
@@ -153,14 +170,21 @@ func defaults() *Config {
 			ConsecutiveFailures: 3,
 			ExcludeUnhealthy:    &excludeUnhealthy,
 			L2Interval:          24 * time.Hour,
+			L2Workers:           4,
 			L3Enabled:           &l3Enabled,
 			L3Interval:          60 * time.Minute,
 			L3Workers:           2,
 			L3Timeout:           30 * time.Second,
+			L3HealthySample:     floatPtr(0.1),
+			MaxPerHost:          2,
+			SoftRetries:         intPtr(1),
 			FFProbePath:         "/usr/bin/ffprobe",
 		},
 	}
 }
+
+func floatPtr(v float64) *float64 { return &v }
+func intPtr(v int) *int           { return &v }
 
 // envOverlay builds a Config containing only values set in the environment.
 func envOverlay() (*Config, error) {
@@ -231,6 +255,46 @@ func envOverlay() (*Config, error) {
 	}
 	if v := os.Getenv("FASTGEN_HEALTH_FFPROBE_PATH"); v != "" {
 		o.Health.FFProbePath = v
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_SOFT_RETRIES"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_SOFT_RETRIES: %w", err)
+		}
+		if n < 0 {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_SOFT_RETRIES must be >= 0")
+		}
+		o.Health.SoftRetries = &n
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_L3_HEALTHY_SAMPLE"); v != "" {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L3_HEALTHY_SAMPLE: %w", err)
+		}
+		if f < 0 || f > 1 {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L3_HEALTHY_SAMPLE must be between 0 and 1")
+		}
+		o.Health.L3HealthySample = &f
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_MAX_PER_HOST"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_MAX_PER_HOST: %w", err)
+		}
+		if n < 1 {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_MAX_PER_HOST must be >= 1")
+		}
+		o.Health.MaxPerHost = n
+	}
+	if v := os.Getenv("FASTGEN_HEALTH_L2_WORKERS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L2_WORKERS: %w", err)
+		}
+		if n < 1 {
+			return nil, fmt.Errorf("config: FASTGEN_HEALTH_L2_WORKERS must be >= 1")
+		}
+		o.Health.L2Workers = n
 	}
 	return o, nil
 }
@@ -315,8 +379,22 @@ func (c *Config) merge(o *Config) {
 	if o.Health.L3Workers != 0 {
 		c.Health.L3Workers = o.Health.L3Workers
 	}
+	if o.Health.L2Workers != 0 {
+		c.Health.L2Workers = o.Health.L2Workers
+	}
 	if o.Health.L3Timeout != 0 {
 		c.Health.L3Timeout = o.Health.L3Timeout
+	}
+	if o.Health.L3HealthySample != nil {
+		v := *o.Health.L3HealthySample
+		c.Health.L3HealthySample = &v
+	}
+	if o.Health.MaxPerHost != 0 {
+		c.Health.MaxPerHost = o.Health.MaxPerHost
+	}
+	if o.Health.SoftRetries != nil {
+		v := *o.Health.SoftRetries
+		c.Health.SoftRetries = &v
 	}
 	if o.Health.FFProbePath != "" {
 		c.Health.FFProbePath = o.Health.FFProbePath
@@ -378,12 +456,54 @@ func (c *Config) HealthL3Workers() int {
 	return c.Health.L3Workers
 }
 
+// HealthL2Workers returns L2 concurrency (default 4, min 1).
+func (c *Config) HealthL2Workers() int {
+	if c == nil || c.Health.L2Workers < 1 {
+		return 4
+	}
+	return c.Health.L2Workers
+}
+
 // HealthL3Timeout returns per-probe ffprobe timeout (default 30s).
 func (c *Config) HealthL3Timeout() time.Duration {
 	if c == nil || c.Health.L3Timeout <= 0 {
 		return 30 * time.Second
 	}
 	return c.Health.L3Timeout
+}
+
+// HealthL3HealthySample returns fraction of healthy channels for L3 (default 0.1).
+func (c *Config) HealthL3HealthySample() float64 {
+	if c == nil || c.Health.L3HealthySample == nil {
+		return 0.1
+	}
+	v := *c.Health.L3HealthySample
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// HealthMaxPerHost returns per-host probe concurrency (default 2, min 1).
+func (c *Config) HealthMaxPerHost() int {
+	if c == nil || c.Health.MaxPerHost < 1 {
+		return 2
+	}
+	return c.Health.MaxPerHost
+}
+
+// HealthSoftRetries returns soft retries on timeout/5xx (default 1; 0 disables).
+func (c *Config) HealthSoftRetries() int {
+	if c == nil || c.Health.SoftRetries == nil {
+		return 1
+	}
+	if *c.Health.SoftRetries < 0 {
+		return 0
+	}
+	return *c.Health.SoftRetries
 }
 
 // HealthFFProbePath returns the ffprobe binary path.

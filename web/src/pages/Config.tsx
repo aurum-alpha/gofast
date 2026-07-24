@@ -34,10 +34,14 @@ type ActiveConfig = {
     consecutive_failures: number
     exclude_unhealthy: boolean
     l2_interval: string
+    l2_workers: number
     l3_enabled: boolean
     l3_interval: string
     l3_workers: number
     l3_timeout: string
+    l3_healthy_sample: number
+    max_per_host: number
+    soft_retries: number
     ffprobe_path: string
   }
   probe_schedule?: {
@@ -218,6 +222,18 @@ export function ConfigPage() {
             <dd>{health.l2_interval}</dd>
           </div>
           <div>
+            <dt>L2 workers</dt>
+            <dd>{health.l2_workers}</dd>
+          </div>
+          <div>
+            <dt>Soft retries</dt>
+            <dd>{health.soft_retries}</dd>
+          </div>
+          <div>
+            <dt>Max per host</dt>
+            <dd>{health.max_per_host}</dd>
+          </div>
+          <div>
             <dt>L3 enabled</dt>
             <dd>
               <Bool value={health.l3_enabled} />
@@ -234,6 +250,10 @@ export function ConfigPage() {
           <div>
             <dt>L3 timeout</dt>
             <dd>{health.l3_timeout}</dd>
+          </div>
+          <div>
+            <dt>L3 healthy sample</dt>
+            <dd>{health.l3_healthy_sample}</dd>
           </div>
           <div>
             <dt>ffprobe path</dt>

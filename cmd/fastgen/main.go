@@ -105,16 +105,20 @@ func main() {
 		ConsecutiveFailures: cfg.HealthConsecutiveFailures(),
 	}
 	probeClient := httpx.NewClient(cfg.Timeouts.HTTPClient, 1)
+	softRetries := cfg.HealthSoftRetries()
 	sched := &health.Scheduler{
-		Reg:       reg,
-		Emitter:   healthEmitter,
-		Segment:   &health.SegmentProber{HTTP: probeClient},
-		FFProbe:   &health.FFProbe{Path: cfg.HealthFFProbePath(), Timeout: cfg.HealthL3Timeout()},
-		L2Every:   cfg.HealthL2Interval(),
-		L3Every:   cfg.HealthL3Interval(),
-		L3On:      cfg.HealthL3Enabled(),
-		L3Workers: cfg.HealthL3Workers(),
-		StatePath: filepath.Join(cfg.DataDir, "channelattr", "health_schedule.json"),
+		Reg:             reg,
+		Emitter:         healthEmitter,
+		Segment:         &health.SegmentProber{HTTP: probeClient, SoftRetries: softRetries},
+		FFProbe:         &health.FFProbe{Path: cfg.HealthFFProbePath(), Timeout: cfg.HealthL3Timeout(), SoftRetries: softRetries},
+		L2Every:         cfg.HealthL2Interval(),
+		L3Every:         cfg.HealthL3Interval(),
+		L3On:            cfg.HealthL3Enabled(),
+		L2Workers:       cfg.HealthL2Workers(),
+		L3Workers:       cfg.HealthL3Workers(),
+		L3HealthySample: cfg.HealthL3HealthySample(),
+		Hosts:           health.NewHostLimiter(cfg.HealthMaxPerHost()),
+		StatePath:       filepath.Join(cfg.DataDir, "channelattr", "health_schedule.json"),
 	}
 	go sched.Run(ctx)
 	if cfg.HealthL3Enabled() {

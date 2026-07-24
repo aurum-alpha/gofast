@@ -405,6 +405,42 @@ export function ChannelDetailPage() {
               </dd>
             </div>
             <div>
+              <dt>Duration</dt>
+              <dd>
+                {channel.health?.last_duration_ms
+                  ? `${channel.health.last_duration_ms} ms`
+                  : '—'}
+              </dd>
+            </div>
+            <div>
+              <dt>Bytes read</dt>
+              <dd>
+                {channel.health?.last_bytes_read
+                  ? channel.health.last_bytes_read
+                  : '—'}
+              </dd>
+            </div>
+            <div>
+              <dt>Range</dt>
+              <dd>
+                {channel.health?.last_range_retried
+                  ? 'retried (416→plain)'
+                  : channel.health?.last_range_used
+                    ? 'used'
+                    : '—'}
+              </dd>
+            </div>
+            <div className="health-meta-wide">
+              <dt>Final URL</dt>
+              <dd>
+                {channel.health?.last_final_url ? (
+                  <code className="url-break">{channel.health.last_final_url}</code>
+                ) : (
+                  '—'
+                )}
+              </dd>
+            </div>
+            <div>
               <dt>Failure streak</dt>
               <dd>{channel.health?.consecutive_failures ?? 0}</dd>
             </div>
@@ -521,6 +557,8 @@ export function ChannelDetailPage() {
                   <th scope="col">Status</th>
                   <th scope="col">Check</th>
                   <th scope="col">HTTP</th>
+                  <th scope="col">ms</th>
+                  <th scope="col">Bytes</th>
                   <th scope="col">Failure</th>
                 </tr>
               </thead>
@@ -574,12 +612,31 @@ export function ChannelDetailPage() {
                             '—'
                           )}
                         </td>
-                        <td>{h.last_failure_class || '—'}</td>
+                        <td>
+                          {h.last_duration_ms != null && h.last_duration_ms > 0
+                            ? h.last_duration_ms
+                            : '—'}
+                        </td>
+                        <td>
+                          {h.last_bytes_read != null && h.last_bytes_read > 0
+                            ? h.last_bytes_read
+                            : '—'}
+                        </td>
+                        <td>
+                          {h.last_failure_class || '—'}
+                          {h.last_range_retried ? (
+                            <span className="subtle"> · 416↻</span>
+                          ) : null}
+                        </td>
                       </tr>
                       {open && detail ? (
                         <tr id={`history-detail-${i}`} className="history-detail-row">
-                          <td colSpan={7}>
-                            <pre className="history-detail-body">{detail}</pre>
+                          <td colSpan={9}>
+                            <pre className="history-detail-body">
+                              {h.last_final_url
+                                ? `Final-URL: ${h.last_final_url}\n\n${detail}`
+                                : detail}
+                            </pre>
                           </td>
                         </tr>
                       ) : null}

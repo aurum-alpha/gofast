@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -71,6 +72,65 @@ func TestSegmentProberHTTP403(t *testing.T) {
 	}
 	if !strings.Contains(check.Detail, "Content-Type: text/html") {
 		t.Fatalf("detail missing content-type: %q", check.Detail)
+	}
+}
+
+func TestSegmentProberUsesEmittedURL(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/upstream.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("should not hit upstream when EmittedURL is set")
+	})
+	mux.HandleFunc("/emitted.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("#EXTM3U\n#EXTINF:6,\nseg.ts\n"))
+	})
+	mux.HandleFunc("/seg.ts", func(w http.ResponseWriter, r *http.Request) {
+		body := make([]byte, 188)
+		body[0] = 0x47
+		_, _ = w.Write(body)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	p := &SegmentProber{HTTP: httpx.NewClient(5*time.Second, 1)}
+	check := p.Check(context.Background(), model.Channel{
+		StreamURL:  srv.URL + "/upstream.m3u8",
+		EmittedURL: srv.URL + "/emitted.m3u8",
+	})
+	if check.Result != model.HealthCheckSuccess {
+		t.Fatalf("got %+v detail=%q", check, check.Detail)
+	}
+	if check.DurationMs <= 0 || check.BytesRead < 188 {
+		t.Fatalf("expected duration/bytes metadata, got %+v", check)
+	}
+}
+
+func TestSegmentProberSoftRetryOn503(t *testing.T) {
+	var hits atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/media.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		if n == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("busy"))
+			return
+		}
+		_, _ = w.Write([]byte("#EXTM3U\n#EXTINF:6,\nseg.ts\n"))
+	})
+	mux.HandleFunc("/seg.ts", func(w http.ResponseWriter, r *http.Request) {
+		body := make([]byte, 188)
+		body[0] = 0x47
+		_, _ = w.Write(body)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	p := &SegmentProber{HTTP: httpx.NewClient(5*time.Second, 1), SoftRetries: 1}
+	check := p.Check(context.Background(), model.Channel{StreamURL: srv.URL + "/media.m3u8"})
+	if check.Result != model.HealthCheckSuccess {
+		t.Fatalf("expected success after soft retry: %+v detail=%q", check, check.Detail)
+	}
+	if hits.Load() < 2 {
+		t.Fatalf("expected retry, hits=%d", hits.Load())
 	}
 }
 
