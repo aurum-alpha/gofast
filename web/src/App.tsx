@@ -7,6 +7,7 @@ import { GuidePage } from './pages/Guide'
 import { HostsPage } from './pages/Hosts'
 import { ProvidersPage } from './pages/Providers'
 import { ProviderDetailPage } from './pages/ProviderDetail'
+import { StatusPage } from './pages/Status'
 import './App.css'
 
 type StatusResponse = {
@@ -73,6 +74,7 @@ export default function App() {
           GoFAST
         </NavLink>
         <nav className="nav" aria-label="Primary">
+          <NavLink to="/status">Status</NavLink>
           <NavLink to="/providers">Providers</NavLink>
           <NavLink to="/" end>
             Channels
@@ -93,6 +95,7 @@ export default function App() {
           />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/hosts" element={<HostsPage />} />
+          <Route path="/status" element={<StatusPage />} />
           <Route path="/providers" element={<ProvidersPage />} />
           <Route path="/providers/:id" element={<ProviderDetailPage />} />
           <Route path="/config" element={<ConfigPage />} />

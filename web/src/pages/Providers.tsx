@@ -3,11 +3,17 @@ import { Link } from 'react-router-dom'
 
 type ProviderStats = {
   fetched_at?: string
+  last_attempt_at?: string
   last_error?: string
   last_error_at?: string
   exported_channels?: number
   excluded_channels?: number
   total_channels?: number
+  exported_programmes?: number
+  guide_hours_ahead?: number
+  refresh_interval_configured?: string
+  refresh_interval_effective?: string
+  refresh_interval_clamped?: boolean
 }
 
 type ProviderRow = {
@@ -64,6 +70,12 @@ function relativeTime(value?: string): string {
     }
   }
   return formatter.format(seconds, 'second')
+}
+
+function guideLabel(hours?: number): string {
+  if (hours === undefined || !Number.isFinite(hours) || hours <= 0) return '—'
+  if (hours >= 48) return `${(hours / 24).toFixed(1)}d`
+  return `${hours.toFixed(1)}h`
 }
 
 function isStale(stats?: ProviderStats): boolean {
@@ -180,10 +192,14 @@ export function ProvidersPage() {
                 <th>ID</th>
                 <th>Enabled</th>
                 <th>Label</th>
-                <th>Exported</th>
-                <th>Excluded</th>
+                <th className="number-cell">Exported</th>
+                <th className="number-cell">Programmes</th>
+                <th className="number-cell">Excluded</th>
                 <th>Status</th>
                 <th>Last success</th>
+                <th>Last attempt</th>
+                <th className="number-cell">Guide</th>
+                <th>Interval</th>
                 <th>Notes</th>
                 <th>Actions</th>
               </tr>
@@ -191,7 +207,7 @@ export function ProvidersPage() {
             <tbody>
               {data.providers.length === 0 ? (
                 <tr className="empty">
-                  <td colSpan={9}>
+                  <td colSpan={13}>
                     No providers in config. Copy config.example.yaml to
                     /data/config.yaml and restart.
                   </td>
@@ -213,6 +229,9 @@ export function ProvidersPage() {
                         {(p.stats?.exported_channels ?? 0).toLocaleString()}
                       </td>
                       <td className="number-cell">
+                        {(p.stats?.exported_programmes ?? 0).toLocaleString()}
+                      </td>
+                      <td className="number-cell">
                         {(p.stats?.excluded_channels ?? 0).toLocaleString()}
                       </td>
                       <td>
@@ -225,6 +244,27 @@ export function ProvidersPage() {
                         )}
                       </td>
                       <td>{relativeTime(p.stats?.fetched_at)}</td>
+                      <td>{relativeTime(p.stats?.last_attempt_at)}</td>
+                      <td className="number-cell">
+                        {guideLabel(p.stats?.guide_hours_ahead)}
+                      </td>
+                      <td>
+                        <code>
+                          {p.stats?.refresh_interval_effective ||
+                            p.stats?.refresh_interval_configured ||
+                            p.refresh_interval ||
+                            '—'}
+                        </code>
+                        {p.stats?.refresh_interval_clamped ? (
+                          <span
+                            className="badge badge-beacon"
+                            title={`Configured ${p.stats.refresh_interval_configured || '—'}`}
+                          >
+                            {' '}
+                            clamped
+                          </span>
+                        ) : null}
+                      </td>
                       <td>{notesFor(p)}</td>
                       <td>
                         <span className="probe-actions">
