@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/model"
@@ -34,9 +35,7 @@ func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck
 		streamURL = ch.StreamURL
 	}
 	if streamURL == "" {
-		check.Result = model.HealthCheckFailure
-		check.FailureClass = "no_url"
-		return check
+		return failCheck(check, "no_url", "channel has no emitted_url or stream_url")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -53,13 +52,17 @@ func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		check.Result = model.HealthCheckFailure
-		if ctx.Err() != nil {
-			check.FailureClass = "timeout"
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
 		} else {
-			check.FailureClass = "ffprobe"
+			detail = fmt.Sprintf("%s (%v)", detail, err)
 		}
-		return check
+		detail = fmt.Sprintf("ffprobe %s: %s", detailURL(streamURL), detail)
+		if ctx.Err() != nil {
+			return failCheck(check, "timeout", detail)
+		}
+		return failCheck(check, "ffprobe", detail)
 	}
 
 	var report struct {
@@ -67,14 +70,12 @@ func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck
 		Format  json.RawMessage   `json:"format"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
-		check.Result = model.HealthCheckFailure
-		check.FailureClass = "ffprobe_parse"
-		return check
+		return failCheck(check, "ffprobe_parse",
+			fmt.Sprintf("ffprobe json from %s: %v\n\n%s", detailURL(streamURL), err, bodyForDetail(stdout.Bytes())))
 	}
 	if len(report.Streams) == 0 || len(report.Format) == 0 || string(report.Format) == "null" {
-		check.Result = model.HealthCheckFailure
-		check.FailureClass = "ffprobe_empty"
-		return check
+		return failCheck(check, "ffprobe_empty",
+			fmt.Sprintf("ffprobe %s returned no streams/format\n\n%s", detailURL(streamURL), bodyForDetail(stdout.Bytes())))
 	}
 	check.Result = model.HealthCheckSuccess
 	return check

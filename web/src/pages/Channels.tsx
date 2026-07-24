@@ -5,11 +5,15 @@ import {
   classBadge,
   CLASS_FILTERS,
   displayNumber,
+  formatHealthWhen,
+  healthBadge,
+  HEALTH_FILTERS,
+  healthStatus,
   lineupBadge,
   lineupStatus,
   STATUS_FILTERS,
 } from '../lib/channel'
-import type { Channel, LineupStatusKind } from '../lib/channel'
+import type { Channel, HealthFilterValue, LineupStatusKind } from '../lib/channel'
 
 type ChannelsResponse = {
   channels: Channel[]
@@ -32,6 +36,7 @@ export function ChannelsPage() {
   const [groupFilter, setGroupFilter] = useState('all')
   const [classFilter, setClassFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [healthFilter, setHealthFilter] = useState('all')
   const [q, setQ] = useState('')
 
   useEffect(() => {
@@ -94,6 +99,9 @@ export function ChannelsPage() {
       if (statusFilter !== 'all' && lineupStatus(ch) !== statusFilter) {
         return false
       }
+      if (healthFilter !== 'all' && healthStatus(ch) !== healthFilter) {
+        return false
+      }
       if (!needle) return true
       return (
         ch.name.toLowerCase().includes(needle) ||
@@ -104,15 +112,15 @@ export function ChannelsPage() {
         String(ch.offset_number).includes(needle)
       )
     })
-  }, [data, providerFilter, groupFilter, classFilter, statusFilter, q])
+  }, [data, providerFilter, groupFilter, classFilter, statusFilter, healthFilter, q])
 
   return (
     <>
       <h1>Channels</h1>
       <p className="lead">
         Live lineup from the last successful refresh. Click a row for export
-        status, reasons, URLs, and identity. Class is probed at refresh (NATIVE /
-        BEACON / DRM).
+        status, reasons, URLs, health history, and identity. Class is probed at
+        refresh (NATIVE / BEACON / DRM); Health comes from segment/ffprobe checks.
       </p>
 
       {error && (
@@ -189,6 +197,22 @@ export function ChannelsPage() {
               </select>
             </label>
             <label>
+              Health{' '}
+              <select
+                value={healthFilter}
+                onChange={(e) =>
+                  setHealthFilter(e.target.value as 'all' | HealthFilterValue)
+                }
+              >
+                <option value="all">all</option>
+                {HEALTH_FILTERS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
               Search{' '}
               <input
                 type="search"
@@ -215,13 +239,14 @@ export function ChannelsPage() {
                   <th scope="col">Provider</th>
                   <th scope="col">Group</th>
                   <th scope="col">Class</th>
+                  <th scope="col">Health</th>
                   <th scope="col">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr className="empty">
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       No channels yet — wait for a successful provider refresh
                       (e.g. LG), or clear filters.
                     </td>
@@ -229,7 +254,20 @@ export function ChannelsPage() {
                 ) : (
                   rows.map((ch) => {
                     const cls = classBadge(ch.classification)
+                    const hb = healthBadge(ch.health?.status)
                     const status = lineupBadge(ch)
+                    const healthTitle = [
+                      ch.health?.last_check_at
+                        ? `Last check ${formatHealthWhen(ch.health.last_check_at)}`
+                        : null,
+                      ch.health?.consecutive_failures
+                        ? `Streak ${ch.health.consecutive_failures}`
+                        : null,
+                      ch.health?.last_failure_class || null,
+                      ch.health?.last_failure_detail || null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
                     return (
                       <tr
                         key={`${ch.provider}:${ch.normalized_id}`}
@@ -266,6 +304,20 @@ export function ChannelsPage() {
                         <td>{ch.group || '—'}</td>
                         <td>
                           <span className={`badge badge-${cls.kind}`}>{cls.label}</span>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge badge-${hb.kind}`}
+                            title={healthTitle || undefined}
+                          >
+                            {hb.label}
+                          </span>
+                          {ch.health?.consecutive_failures ? (
+                            <span className="meta health-streak">
+                              {' '}
+                              ×{ch.health.consecutive_failures}
+                            </span>
+                          ) : null}
                         </td>
                         <td>
                           <span

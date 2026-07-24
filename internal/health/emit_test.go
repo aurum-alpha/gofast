@@ -25,7 +25,7 @@ func TestEmitCheckAppliesAndPersists(t *testing.T) {
 
 	em := &Emitter{Bus: bus, Store: store, ConsecutiveFailures: 3}
 	at := time.Date(2026, 7, 22, 15, 0, 0, 0, time.UTC)
-	if err := em.EmitCheck(ctx, model.ProviderLG, "ch-a", model.HealthCheck{
+	if _, err := em.EmitCheck(ctx, model.ProviderLG, "ch-a", model.HealthCheck{
 		Result:       model.HealthCheckFailure,
 		FailureClass: "http_403",
 		At:           at,

@@ -1,5 +1,15 @@
 /** Shared channel types and lineup-status helpers for list + detail pages. */
 
+export type ChannelHealth = {
+  status?: string
+  consecutive_failures?: number
+  last_check_at?: string
+  last_check?: string
+  last_failure_class?: string
+  last_failure_detail?: string
+  last_http_status?: number
+}
+
 export type Channel = {
   provider: string
   id: string
@@ -18,6 +28,7 @@ export type Channel = {
   filter_reason?: string
   excluded: boolean
   description?: string
+  health?: ChannelHealth
 }
 
 export const FILTER_REASON_DRM = 'DRM'
@@ -37,6 +48,35 @@ export type LineupBadge = {
   className: string
   title: string
 }
+
+export type HealthFilterValue = 'healthy' | 'degraded' | 'down' | 'untested'
+
+export function healthStatus(ch: Channel): HealthFilterValue {
+  const s = (ch.health?.status || '').toLowerCase()
+  if (s === 'healthy' || s === 'degraded' || s === 'down') return s
+  return 'untested'
+}
+
+export function healthBadge(status?: string): { label: string; kind: string } {
+  switch ((status || '').toLowerCase()) {
+    case 'healthy':
+      return { label: 'healthy', kind: 'native' }
+    case 'degraded':
+      return { label: 'degraded', kind: 'beacon' }
+    case 'down':
+      return { label: 'down', kind: 'drm' }
+    default:
+      return { label: 'untested', kind: 'none' }
+  }
+}
+
+/** Fixed Health filter options. */
+export const HEALTH_FILTERS: { value: HealthFilterValue; label: string }[] = [
+  { value: 'healthy', label: 'Healthy' },
+  { value: 'degraded', label: 'Degraded' },
+  { value: 'down', label: 'Down' },
+  { value: 'untested', label: 'Untested' },
+]
 
 export function lineupStatus(ch: Channel): LineupStatusKind {
   if (!ch.excluded) {
@@ -119,4 +159,12 @@ export function displayNumber(n: number): string {
 
 export function channelDetailPath(ch: Pick<Channel, 'provider' | 'normalized_id'>): string {
   return `/channels/${encodeURIComponent(ch.provider)}/${encodeURIComponent(ch.normalized_id)}`
+}
+
+export function formatHealthWhen(iso?: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  // Go zero time ("0001-01-01…") and other garbage → em dash, not "12/31/1".
+  if (Number.isNaN(d.getTime()) || d.getUTCFullYear() <= 1) return '—'
+  return d.toLocaleString()
 }

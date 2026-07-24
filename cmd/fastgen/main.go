@@ -114,6 +114,7 @@ func main() {
 		L3Every:   cfg.HealthL3Interval(),
 		L3On:      cfg.HealthL3Enabled(),
 		L3Workers: cfg.HealthL3Workers(),
+		StatePath: filepath.Join(cfg.DataDir, "channelattr", "health_schedule.json"),
 	}
 	go sched.Run(ctx)
 	if cfg.HealthL3Enabled() {
@@ -139,10 +140,15 @@ func main() {
 		Healthz: server.HealthzHandler(reg),
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/status", server.StatusHandler(bootStatus))
+			mux.HandleFunc("GET /api/config", server.ConfigHandler(cfg, path, fromFile, reg, sched))
+			mux.HandleFunc("GET /api/health/schedule", server.HealthScheduleHandler(sched))
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
 			mux.HandleFunc("GET /api/providers/{id}", server.ProviderDetailHandler(reg))
 			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(reg))
 			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}", server.ChannelHandler(reg))
+			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}/health/history", server.ChannelHealthHistoryHandler(reg, attrs))
+			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe", server.ChannelHealthProbeHandler(reg, sched))
+			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe/l2", server.ChannelHealthProbeL2Handler(reg, sched))
 			mux.HandleFunc("GET /api/guide.xml", server.GuideXML(reg))
 			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(reg))
 			mux.HandleFunc("GET /metrics", server.MetricsHandler(reg))

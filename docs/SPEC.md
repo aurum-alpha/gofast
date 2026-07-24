@@ -385,8 +385,8 @@ under ten seconds.
 
 ## Additional test cases (from production failures)
 
-- HEAD vs GET: health checks must use ranged GET; assert no HEAD requests are
-  issued to stream endpoints.
+- HEAD vs GET: health checks must use GET (prefer Range; retry without Range on
+  416); assert no HEAD requests are issued to stream endpoints.
 - Classification migration: a channel flipping NATIVE->BEACON between refreshes
   must not change its emitted URL when proxy_all is on.
 
@@ -399,9 +399,10 @@ gates export only by explicit opt-in.
 
 **Probe depths (tiered):**
 1. *Shape* — the classifier's playlist inspection (cheap, runs every refresh).
-2. *Segment* — fetch the first media segment via ranged GET, verify real video
-   (MPEG-TS sync byte 0x47 / fMP4 box header, size above a floor). Catches
-   dead playouts, 403s, geo-blocks, empty segments.
+2. *Segment* — fetch the first media segment via GET (prefer Range; plain GET on
+   HTTP 416), verify real video (MPEG-TS sync byte 0x47 / fMP4 box header, size
+   above a floor). Persist HTTP status on each check. Catches dead playouts,
+   403s, geo-blocks, empty segments.
 3. *Decode* — run ffprobe against the stream URL; PASS requires non-null
    streams and format (the exact check Jellyfin performs). Ground truth.
 
