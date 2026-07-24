@@ -141,6 +141,56 @@ func TestAnnotatePaintsHealth(t *testing.T) {
 	}
 }
 
+func TestHistoryNewestFirst(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	at1 := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	at2 := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
+	v1, _ := json.Marshal(model.ChannelHealth{Status: model.HealthDegraded, LastCheck: model.HealthCheckFailure})
+	v2, _ := json.Marshal(model.ChannelHealth{Status: model.HealthHealthy, LastCheck: model.HealthCheckSuccess})
+	for _, ev := range []Event{
+		{Provider: model.ProviderLG, ChannelID: "news", Kind: KindHealth, Value: v1, At: at1, Source: "probe_l2"},
+		{Provider: model.ProviderLG, ChannelID: "news", Kind: KindHealth, Value: v2, At: at2, Source: "probe_l3"},
+	} {
+		if err := store.Handle(ctx, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := store.History(ctx, model.ProviderLG, "news", KindHealth, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len=%d", len(got))
+	}
+	if !got[0].At.Equal(at2) || got[0].Source != "probe_l3" {
+		t.Fatalf("first=%+v", got[0])
+	}
+	if !got[1].At.Equal(at1) {
+		t.Fatalf("second=%+v", got[1])
+	}
+}
+
+func TestSuccessRate(t *testing.T) {
+	at := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	okVal, _ := json.Marshal(model.ChannelHealth{LastCheck: model.HealthCheckSuccess})
+	failVal, _ := json.Marshal(model.ChannelHealth{LastCheck: model.HealthCheckFailure})
+	events := []HistoryEvent{
+		{At: at, Value: okVal},
+		{At: at.Add(time.Hour), Value: failVal},
+		{At: at.Add(2 * time.Hour), Value: okVal},
+		{At: at.Add(-48 * time.Hour), Value: failVal}, // outside window
+	}
+	rate, ok := SuccessRate(events, at.Add(-time.Hour))
+	if !ok || rate != 2.0/3.0 {
+		t.Fatalf("rate=%v ok=%v", rate, ok)
+	}
+	_, ok = SuccessRate(nil, at)
+	if ok {
+		t.Fatal("empty should be !ok")
+	}
+}
+
 func TestAnnotatePaintsClassificationWhenEmpty(t *testing.T) {
 	store := openTestStore(t)
 	v, _ := json.Marshal(model.ClassBeacon)

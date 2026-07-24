@@ -287,3 +287,20 @@ func (f *Feed) SetStatus(status Status) {
 	defer f.mu.Unlock()
 	f.status = status
 }
+
+// UpdateChannelHealth patches one channel's Health on the live lineup.
+func (f *Feed) UpdateChannelHealth(normalizedID string, h model.ChannelHealth) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	chs := f.lineup.Channels
+	for i := range chs {
+		if chs[i].NormalizedID != normalizedID {
+			continue
+		}
+		chs = append([]model.Channel(nil), chs...)
+		chs[i].Health = h
+		f.lineup.Channels = chs
+		return true
+	}
+	return false
+}

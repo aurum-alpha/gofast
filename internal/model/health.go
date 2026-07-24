@@ -23,10 +23,16 @@ const (
 // HealthCheck is one try of the stream (probe or playback). Feeds Apply; the
 // attr store persists ChannelHealth (current + history), not raw checks alone.
 type HealthCheck struct {
-	Result       HealthCheckResult
-	FailureClass string // empty on success
-	At           time.Time
-	Source       string // "probe", "playback", …
+	Result       HealthCheckResult `json:"result"`
+	FailureClass string            `json:"failure_class,omitempty"`
+	// Detail is the human-readable cause (HTTP status line, net error, ffprobe
+	// stderr). Kept short; omitted on success.
+	Detail string `json:"detail,omitempty"`
+	// HTTPStatus is the final HTTP status from an L2 (segment) probe when the
+	// check involved an HTTP response (success or failure). Zero if N/A.
+	HTTPStatus int       `json:"http_status,omitempty"`
+	At         time.Time `json:"at"`
+	Source     string    `json:"source,omitempty"`
 }
 
 // ChannelHealth is the current (and history-row) value for kind=health.
@@ -36,6 +42,9 @@ type ChannelHealth struct {
 	LastCheckAt         time.Time         `json:"last_check_at,omitempty"`
 	LastCheck           HealthCheckResult `json:"last_check,omitempty"`
 	LastFailureClass    string            `json:"last_failure_class,omitempty"`
+	LastFailureDetail   string            `json:"last_failure_detail,omitempty"`
+	// LastHTTPStatus is from the latest check that recorded one (L2 HTTP).
+	LastHTTPStatus int `json:"last_http_status,omitempty"`
 }
 
 // Apply returns the next ChannelHealth after one check. n is the DOWN threshold
@@ -49,8 +58,9 @@ func (h ChannelHealth) Apply(check HealthCheck, n int) ChannelHealth {
 		at = time.Now().UTC()
 	}
 	out := ChannelHealth{
-		LastCheckAt: at,
-		LastCheck:   check.Result,
+		LastCheckAt:    at,
+		LastCheck:      check.Result,
+		LastHTTPStatus: check.HTTPStatus,
 	}
 	switch check.Result {
 	case HealthCheckSuccess:
@@ -60,6 +70,7 @@ func (h ChannelHealth) Apply(check HealthCheck, n int) ChannelHealth {
 	case HealthCheckFailure:
 		out.ConsecutiveFailures = h.ConsecutiveFailures + 1
 		out.LastFailureClass = check.FailureClass
+		out.LastFailureDetail = check.Detail
 		if out.ConsecutiveFailures >= n {
 			out.Status = HealthDown
 		} else {
@@ -71,6 +82,10 @@ func (h ChannelHealth) Apply(check HealthCheck, n int) ChannelHealth {
 		out.Status = h.StatusOrUntested()
 		out.ConsecutiveFailures = h.ConsecutiveFailures
 		out.LastFailureClass = h.LastFailureClass
+		out.LastFailureDetail = h.LastFailureDetail
+		if out.LastHTTPStatus == 0 {
+			out.LastHTTPStatus = h.LastHTTPStatus
+		}
 		return out
 	}
 }

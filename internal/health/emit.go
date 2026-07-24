@@ -1,4 +1,3 @@
-// Package health turns HealthCheck observations into channel-attr events.
 package health
 
 import (
@@ -19,9 +18,10 @@ type Emitter struct {
 }
 
 // EmitCheck folds check into current health and sends the result on the bus.
-func (e *Emitter) EmitCheck(ctx context.Context, provider model.ProviderID, channelID string, check model.HealthCheck) error {
+// The returned ChannelHealth is the value that will be persisted (bus is async).
+func (e *Emitter) EmitCheck(ctx context.Context, provider model.ProviderID, channelID string, check model.HealthCheck) (model.ChannelHealth, error) {
 	if e == nil || e.Bus == nil {
-		return fmt.Errorf("health: nil emitter or bus")
+		return model.ChannelHealth{}, fmt.Errorf("health: nil emitter or bus")
 	}
 	n := e.ConsecutiveFailures
 	if n < 1 {
@@ -39,18 +39,21 @@ func (e *Emitter) EmitCheck(ctx context.Context, provider model.ProviderID, chan
 	next := prev.Apply(check, n)
 	value, err := json.Marshal(next)
 	if err != nil {
-		return err
+		return model.ChannelHealth{}, err
 	}
 	src := check.Source
 	if src == "" {
 		src = "probe"
 	}
-	return channelattr.Emit(ctx, e.Bus, channelattr.Event{
+	if err := channelattr.Emit(ctx, e.Bus, channelattr.Event{
 		Provider:  provider,
 		ChannelID: channelID,
 		Kind:      channelattr.KindHealth,
 		Value:     value,
 		At:        check.At,
 		Source:    src,
-	})
+	}); err != nil {
+		return model.ChannelHealth{}, err
+	}
+	return next, nil
 }

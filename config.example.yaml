@@ -56,7 +56,7 @@ health:
   # When true, HealthDown channels are pruned from M3U/XMLTV (causes Jellyfin lineup churn).
   exclude_unhealthy: false
   # L2: daily NATIVE-only ranged segment GET (never scheduled on BEACON).
-  l2_interval: 1m
+  l2_interval: 24h
   # L3: ffprobe — OFF by default (bot-fingerprint / ad-impression tradeoff).
   l3_enabled: false
   l3_interval: 60m
