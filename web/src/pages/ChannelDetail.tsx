@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, Fragment, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   classBadge,
   displayNumber,
@@ -8,6 +8,10 @@ import {
   lineupBadge,
 } from '../lib/channel'
 import type { Channel, ChannelHealth } from '../lib/channel'
+import {
+  channelsBackHref,
+  type ChannelsLocationState,
+} from '../lib/channelsFilters'
 
 type HistoryEvent = {
   at: string
@@ -95,6 +99,10 @@ function parseHistoryValue(value: HistoryEvent['value']): ChannelHealth {
 
 export function ChannelDetailPage() {
   const { provider = '', normalizedId = '' } = useParams()
+  const location = useLocation()
+  const channelsHref = channelsBackHref(
+    (location.state as ChannelsLocationState | null)?.channelsSearch,
+  )
   const [channel, setChannel] = useState<Channel | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryResponse | null>(null)
@@ -200,7 +208,7 @@ export function ChannelDetailPage() {
   if (error) {
     return (
       <>
-        <Link to="/" className="back-link">
+        <Link to={channelsHref} className="back-link">
           ← Channels
         </Link>
         <div className="empty-panel" role="alert">
@@ -229,7 +237,7 @@ export function ChannelDetailPage() {
 
   return (
     <>
-      <Link to="/" className="back-link">
+      <Link to={channelsHref} className="back-link">
         ← Channels
       </Link>
       <div className="detail-heading">

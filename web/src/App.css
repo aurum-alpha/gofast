@@ -604,6 +604,11 @@
   border-color: var(--accent);
 }
 
+.toolbar-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .guide-status {
   margin: 0 0 1rem;
   padding: 0.75rem 1rem;
