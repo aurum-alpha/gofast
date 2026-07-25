@@ -31,10 +31,15 @@ var _ provider.Reader = (*Client)(nil)
 
 // Source describes one compile-time i.mjh.nz provider shape.
 type Source struct {
-	ID          model.ProviderID
-	Directory   string
-	Regionless  bool
-	DefaultSlug string
+	ID         model.ProviderID
+	Directory  string
+	Regionless bool
+	// TaggedRegions means channels live at the top-level map and each channel
+	// lists membership in a regions[] array (Plex). Region metadata is still
+	// required for headers / EPG path ({region}.xml.gz); nested region.channels
+	// maps are ignored.
+	TaggedRegions bool
+	DefaultSlug   string
 }
 
 // Client fetches and parses one MJH source.
@@ -123,15 +128,9 @@ func (c *Client) Parse(raw provider.Raw) ([]model.Channel, []model.Programme, er
 }
 
 func (c *Client) channels(metadata metadata) ([]model.Channel, error) {
-	rawChannels := metadata.Channels
-	headers := cloneHeaders(metadata.Headers)
-	if !c.source.Regionless {
-		region, ok := metadata.Regions[c.settings.Region]
-		if !ok {
-			return nil, fmt.Errorf("%s: region %q not found", c.source.ID, c.settings.Region)
-		}
-		rawChannels = region.Channels
-		mergeHeaders(headers, region.Headers)
+	rawChannels, headers, err := c.selectChannels(metadata)
+	if err != nil {
+		return nil, err
 	}
 	mergeHeaders(headers, c.settings.Headers)
 
@@ -193,6 +192,40 @@ func (c *Client) channels(metadata metadata) ([]model.Channel, error) {
 	return channels, nil
 }
 
+// selectChannels returns the channel map and base request headers for this
+// source shape (region-nested, tagged top-level, or regionless).
+func (c *Client) selectChannels(metadata metadata) (map[string]rawChannel, map[string]string, error) {
+	headers := cloneHeaders(metadata.Headers)
+	switch {
+	case c.source.TaggedRegions:
+		regionName := strings.TrimSpace(c.settings.Region)
+		if regionName == "" {
+			return nil, nil, fmt.Errorf("%s: region required for tagged-region metadata", c.source.ID)
+		}
+		region, ok := metadata.Regions[regionName]
+		if !ok {
+			return nil, nil, fmt.Errorf("%s: region %q not found", c.source.ID, regionName)
+		}
+		mergeHeaders(headers, region.Headers)
+		filtered := make(map[string]rawChannel)
+		for id, raw := range metadata.Channels {
+			if channelInRegion(raw, regionName) {
+				filtered[id] = raw
+			}
+		}
+		return filtered, headers, nil
+	case !c.source.Regionless:
+		region, ok := metadata.Regions[c.settings.Region]
+		if !ok {
+			return nil, nil, fmt.Errorf("%s: region %q not found", c.source.ID, c.settings.Region)
+		}
+		mergeHeaders(headers, region.Headers)
+		return region.Channels, headers, nil
+	default:
+		return metadata.Channels, headers, nil
+	}
+}
+
 func (c *Client) fetch(ctx context.Context, url string, headers map[string]string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -225,13 +258,9 @@ func (c *Client) headers(channelsRaw []byte) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s metadata: %w", c.source.ID, err)
 	}
-	headers := cloneHeaders(metadata.Headers)
-	if !c.source.Regionless {
-		region, ok := metadata.Regions[c.settings.Region]
-		if !ok {
-			return nil, fmt.Errorf("%s: region %q not found", c.source.ID, c.settings.Region)
-		}
-		mergeHeaders(headers, region.Headers)
+	_, headers, err := c.selectChannels(metadata)
+	if err != nil {
+		return nil, err
 	}
 	mergeHeaders(headers, c.settings.Headers)
 	return headers, nil

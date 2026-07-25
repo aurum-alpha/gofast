@@ -5,6 +5,7 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
+	"github.com/j27-aurum/gofast/internal/provider/plex"
 	"github.com/j27-aurum/gofast/internal/provider/pluto"
 	"github.com/j27-aurum/gofast/internal/provider/roku"
 	"github.com/j27-aurum/gofast/internal/provider/samsung"
@@ -30,11 +31,16 @@ func TestProviderDefaultsAndConstructors(t *testing.T) {
 			settings := roku.DefaultSettings()
 			return roku.New(settings, nil)
 		}},
+		{model.ProviderPlex, 8000, "us", "plex-{id}.m3u8", func() provider.Reader {
+			settings := plex.DefaultSettings()
+			return plex.New(settings, nil)
+		}},
 	}
 	defaults := []model.ProviderSettings{
 		pluto.DefaultSettings(),
 		samsung.DefaultSettings(),
 		roku.DefaultSettings(),
+		plex.DefaultSettings(),
 	}
 	for index, test := range tests {
 		settings := defaults[index]

@@ -15,6 +15,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/provider/distrotv"
 	"github.com/j27-aurum/gofast/internal/provider/lg"
 	"github.com/j27-aurum/gofast/internal/provider/localnow"
+	"github.com/j27-aurum/gofast/internal/provider/plex"
 	"github.com/j27-aurum/gofast/internal/provider/pluto"
 	"github.com/j27-aurum/gofast/internal/provider/roku"
 	"github.com/j27-aurum/gofast/internal/provider/samsung"
@@ -47,6 +48,11 @@ var catalog = map[model.ProviderID]entry{
 		defaults: localnow.DefaultSettings,
 		reader:   func(s model.ProviderSettings, c *httpx.Client) provider.Reader { return localnow.New(s, c) },
 		fields:   []string{"m3u_url", "epg_url", "user_agent", "headers"},
+	},
+	model.ProviderPlex: {
+		defaults: plex.DefaultSettings,
+		reader:   func(s model.ProviderSettings, c *httpx.Client) provider.Reader { return plex.New(s, c) },
+		fields:   []string{"region", "slug_template", "channels_url", "epg_url", "headers"},
 	},
 	model.ProviderPluto: {
 		defaults: pluto.DefaultSettings,

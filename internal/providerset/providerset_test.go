@@ -12,6 +12,7 @@ var allIDs = []model.ProviderID{
 	model.ProviderDistroTV,
 	model.ProviderLG,
 	model.ProviderLocalNow,
+	model.ProviderPlex,
 	model.ProviderPluto,
 	model.ProviderRoku,
 	model.ProviderSamsung,
@@ -50,6 +51,7 @@ func TestSettingsHonorPresenceAndExplicitFalse(t *testing.T) {
 		model.ProviderDistroTV: {},
 		model.ProviderLG:       {},
 		model.ProviderLocalNow: {},
+		model.ProviderPlex:     {},
 		model.ProviderPluto:    {},
 		model.ProviderRoku:     {},
 		model.ProviderSamsung:  {Enabled: &disabled},
@@ -61,6 +63,7 @@ func TestSettingsHonorPresenceAndExplicitFalse(t *testing.T) {
 		model.ProviderDistroTV,
 		model.ProviderLG,
 		model.ProviderLocalNow,
+		model.ProviderPlex,
 		model.ProviderPluto,
 		model.ProviderRoku,
 	} {

@@ -130,6 +130,38 @@ func TestRokuRegionlessShape(t *testing.T) {
 	}
 }
 
+func TestPlexTaggedRegionsShape(t *testing.T) {
+	client := New(Source{
+		ID:            model.ProviderPlex,
+		Directory:     "Plex",
+		TaggedRegions: true,
+		DefaultSlug:   "plex-{id}.m3u8",
+	}, model.ProviderSettings{ID: model.ProviderPlex, Region: "us"}, nil)
+	channels, programmes, err := client.Parse(fixtureRaw(t, "plex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(channels) != 2 {
+		t.Fatalf("want 2 US channels, got %+v", channels)
+	}
+	if channels[0].ID != "plex-both" || channels[0].Number != 10 ||
+		channels[0].StreamURL != "https://jmp2.uk/plex-plex-both.m3u8" {
+		t.Fatalf("first channel: %+v", channels[0])
+	}
+	if channels[1].ID != "plex-us-news" || channels[1].StreamURL != "https://jmp2.uk/plex-plex-us-news.m3u8" {
+		t.Fatalf("second channel: %+v", channels[1])
+	}
+	if channels[0].RequestHeaders["User-Agent"] != "plex-agent" || channels[0].RequestHeaders["X-Region"] != "us" {
+		t.Fatalf("headers: %+v", channels[0].RequestHeaders)
+	}
+	if len(programmes) != 2 {
+		t.Fatalf("want 2 US programmes, got %+v", programmes)
+	}
+	if client.guideURL != "https://i.mjh.nz/Plex/us.xml.gz" {
+		t.Fatalf("guide URL: %s", client.guideURL)
+	}
+}
+
 func TestMissingSlugFails(t *testing.T) {
 	client := New(Source{ID: "test", Directory: "Test"}, model.ProviderSettings{ID: "test", Region: "us"}, nil)
 	_, _, err := client.Parse(fixtureRaw(t, "pluto"))

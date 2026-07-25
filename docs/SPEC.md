@@ -131,18 +131,23 @@ Base: `https://raw.githubusercontent.com/matthuisman/i.mjh.nz/master/{Provider}/
 - Stream URL: `https://jmp2.uk/{slug-with-id-substituted}` where slug comes from
   the metadata `slug` field (e.g. Samsung = `stvp-{id}`)
 
-**GOTCHA:** PlutoTV's `.channels.json.gz` has NO `slug` field. Its slug must be
-configurable per provider and default to `plu-{id}.m3u8` for Pluto. Never emit a
-bare `{id}.m3u8` fallback silently — log a warning if slug is missing and no
-override exists.
+**GOTCHA:** PlutoTV's and Plex's `.channels.json.gz` have NO `slug` field. Slug
+must be configurable per provider (`plu-{id}.m3u8` for Pluto, `plex-{id}.m3u8`
+for Plex). Never emit a bare `{id}.m3u8` fallback silently — log a warning if
+slug is missing and no override exists.
 
-Initial mjh providers: PlutoTV (us), SamsungTVPlus (us), Roku.
+Shipped mjh providers: PlutoTV (us), SamsungTVPlus (us), Roku, Plex (us).
 
 **GOTCHA (Roku):** Roku's `.channels.json.gz` has NO `regions` wrapper --
 channels live at the top level -- and no `slug` field (use `rok-{id}.m3u8`,
 WITH extension). Its `group` is a LIST (`groups`); take the first element.
 Its EPG file is `all.xml.gz`, not `{region}.xml.gz`. The mjh adapter must
 handle both shapes (regioned + regionless).
+
+**GOTCHA (Plex):** Plex is *tagged-region* shaped — channels live at the top
+level with a per-channel `regions: ["us", …]` array. The `regions.us` block
+has headers/name only (no nested `channels` map). Filter top-level channels by
+tag membership for the configured region; EPG is still `{region}.xml.gz`.
 
 ### Published-pair adapters (maintained upstream M3U + EPG consumed directly)
 
@@ -177,9 +182,9 @@ regardless of input.
 
 **Direct-API candidates for later** (endpoints verified, adapters not yet
 prioritized): Tubi (`https://tubitv.com/oz/epg/programming`; Fox library
-channels), Plex (anon-token dance: `clients.plex.tv/api/v2/users/anonymous`
--> `epg.provider.plex.tv`; also available via mjh), TCL
-(`gateway-prod.ideonow.com` / `tcl-channel-cdn.ideonow.com`).
+channels), TCL (`gateway-prod.ideonow.com` / `tcl-channel-cdn.ideonow.com`).
+Plex ships via mjh (`i.mjh.nz/Plex/`); a direct anon-token API
+(`clients.plex.tv` → `epg.provider.plex.tv`) is not needed unless mjh regresses.
 
 **Deprioritized with reasons:** Amazon Fire TV Channels (Freevee successor;
 auth/DRM-heavy, no stable community source -- if attempted, build the adapter

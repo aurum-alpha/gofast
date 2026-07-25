@@ -401,6 +401,16 @@ providers:
     min_channels: 50
     refresh_interval: 6h
 
+  plex:
+    enabled: true
+    label: Plex
+    region: us
+    channel_number_offset: 8000
+    min_channels: 50
+    refresh_interval: 6h
+    # Plex mjh metadata has no slug field — required override.
+    slug_template: "plex-{id}.m3u8"
+
   xumo:
     enabled: true
     label: Xumo

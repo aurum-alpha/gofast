@@ -14,6 +14,8 @@ const (
 	ProviderLG ProviderID = "lg"
 	// ProviderLocalNow is the LocalNow published-pair provider.
 	ProviderLocalNow ProviderID = "localnow"
+	// ProviderPlex is the Plex Free TV US provider (i.mjh.nz).
+	ProviderPlex ProviderID = "plex"
 	// ProviderPluto is the Pluto TV US provider.
 	ProviderPluto ProviderID = "pluto"
 	// ProviderRoku is the Roku Channel provider.

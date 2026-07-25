@@ -142,7 +142,7 @@ func TestNewExampleConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []model.ProviderID{"lg", "pluto", "samsung", "roku", "xumo", "distrotv", "localnow"}
+	want := []model.ProviderID{"lg", "pluto", "samsung", "roku", "plex", "xumo", "distrotv", "localnow"}
 	if len(cfg.Providers) != len(want) {
 		t.Fatalf("example providers: got %d want %d", len(cfg.Providers), len(want))
 	}
@@ -154,6 +154,7 @@ func TestNewExampleConfig(t *testing.T) {
 	for _, id := range []model.ProviderID{
 		model.ProviderDistroTV,
 		model.ProviderLocalNow,
+		model.ProviderPlex,
 		model.ProviderPluto,
 		model.ProviderRoku,
 		model.ProviderSamsung,
@@ -168,7 +169,7 @@ func TestNewExampleConfig(t *testing.T) {
 	}
 
 	list := model.ListProviders(cfg.Providers)
-	if len(list.Providers) != 7 || list.Providers[0].ID != "distrotv" {
+	if len(list.Providers) != 8 || list.Providers[0].ID != "distrotv" {
 		t.Fatalf("sorted list: %+v", list.Providers)
 	}
 }

@@ -28,6 +28,9 @@ type rawChannel struct {
 	Groups        []string        `json:"groups"`
 	Logo          string          `json:"logo"`
 	LicenseURL    string          `json:"license_url"`
+	// Regions lists which lineup regions include this channel (Plex-shaped
+	// top-level channel maps). Empty means "no regional tag".
+	Regions []string `json:"regions"`
 }
 
 func cloneHeaders(headers map[string]string) map[string]string {
@@ -40,6 +43,19 @@ func mergeHeaders(dst, src map[string]string) {
 	for key, value := range src {
 		dst[http.CanonicalHeaderKey(key)] = value
 	}
+}
+
+func channelInRegion(raw rawChannel, region string) bool {
+	region = strings.ToLower(strings.TrimSpace(region))
+	if region == "" {
+		return false
+	}
+	for _, value := range raw.Regions {
+		if strings.ToLower(strings.TrimSpace(value)) == region {
+			return true
+		}
+	}
+	return false
 }
 
 func parseChannelNumber(raw json.RawMessage) (int, error) {

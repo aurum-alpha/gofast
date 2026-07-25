@@ -1,0 +1,34 @@
+{
+  "headers": {"user-agent": "plex-agent"},
+  "regions": {
+    "us": {
+      "name": "United States",
+      "headers": {"x-region": "us"}
+    },
+    "ca": {
+      "name": "Canada",
+      "headers": {"x-region": "ca"}
+    }
+  },
+  "channels": {
+    "plex-us-news": {
+      "name": "Plex US News",
+      "group": "News",
+      "logo": "https://img.example/plex-us.png",
+      "regions": ["us"]
+    },
+    "plex-ca-news": {
+      "name": "Plex CA News",
+      "group": "News",
+      "logo": "https://img.example/plex-ca.png",
+      "regions": ["ca"]
+    },
+    "plex-both": {
+      "chno": 10,
+      "name": "Plex Shared",
+      "group": "Movies",
+      "logo": "https://img.example/plex-both.png",
+      "regions": ["us", "ca"]
+    }
+  }
+}

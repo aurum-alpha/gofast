@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="plex-us-news">
+    <display-name>Plex US News</display-name>
+  </channel>
+  <channel id="plex-both">
+    <display-name>Plex Shared</display-name>
+  </channel>
+  <channel id="plex-ca-news">
+    <display-name>Plex CA News</display-name>
+  </channel>
+  <programme start="20260101120000 +0000" stop="20260101130000 +0000" channel="plex-us-news">
+    <title>US Headlines</title>
+  </programme>
+  <programme start="20260101120000 +0000" stop="20260101130000 +0000" channel="plex-both">
+    <title>Shared Show</title>
+  </programme>
+  <programme start="20260101120000 +0000" stop="20260101130000 +0000" channel="plex-ca-news">
+    <title>CA Headlines</title>
+  </programme>
+</tv>
