@@ -18,6 +18,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/httpx"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/providerset"
+	"github.com/j27-aurum/gofast/internal/proxyactivity"
 	"github.com/j27-aurum/gofast/internal/refresh"
 	"github.com/j27-aurum/gofast/internal/run"
 	"github.com/j27-aurum/gofast/internal/server"
@@ -48,6 +49,13 @@ func main() {
 		os.Exit(1)
 	}
 	defer access.Close()
+
+	proxyAct, err := proxyactivity.Open(cacheDir)
+	if err != nil {
+		slog.Error("proxyactivity open", "err", err)
+		os.Exit(1)
+	}
+	defer proxyAct.Close()
 
 	attrs, err := channelattr.Open(cfg.DataDir)
 	if err != nil {
@@ -156,6 +164,9 @@ func main() {
 			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(reg))
 			mux.HandleFunc("GET /metrics", server.MetricsHandler(reg))
 			mux.HandleFunc("GET /api/client-access", server.ClientAccessHandler(access))
+			mux.HandleFunc("GET /api/proxy/origin/{provider}/{normalizedId}", server.ProxyOriginHandler(reg))
+			mux.HandleFunc("POST /api/proxy/events", server.ProxyEventsHandler(proxyAct))
+			mux.HandleFunc("GET /api/proxy/status", server.ProxyStatusHandler(proxyAct))
 			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(cc))
 			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc, access))
 			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc, access))

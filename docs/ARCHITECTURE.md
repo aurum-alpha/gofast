@@ -22,7 +22,7 @@ Shared logic lives under `internal/` (model, config, httpx, classifier, etc.). T
 ### Compose topologies
 
 - **Gen-only (default):** `docker compose up` runs `fastgen` on port 8180 with `/data` for config, cache, logos.
-- **Gen + proxy:** `docker compose --profile proxy up` also runs `fastproxy` on 8181. Set `proxy_base_url` in gen config to the address **reachable by Jellyfin/ffmpeg** (not merely by gen).
+- **Gen + proxy:** `docker compose --profile proxy up` also runs `fastproxy` on 8181. Set `proxy_base_url` in gen config to the address **reachable by Jellyfin/ffmpeg** (not merely by gen). The proxy container sets `FASTPROXY_GEN_URL` (e.g. `http://fastgen:8180`) for origin pull + telemetry push; gen Status shows proxy activity. Proxy stays headless (no `/data`).
 
 ## Data flow
 
@@ -157,7 +157,8 @@ internal/
   channelattr/ # current+history channel labels (health; classification next)
   health/     # EmitCheck, Health L1 segment / Health L2 ffprobe, scheduler
   logocache/ refresh/
-  proxy/      # M5
+  proxy/         # FASTProxy rewrite, sessions, seg shuttle, reporter
+  proxyactivity/ # gen-side SQLite glass for proxy events/snapshots
   server/ ui/   # ui embeds Vite dist from web/
 web/            # React + Vite source (build → internal/ui/dist)
 testdata/

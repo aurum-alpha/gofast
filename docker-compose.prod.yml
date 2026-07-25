@@ -57,10 +57,14 @@ services:
     profiles:
       - proxy
     image: ghcr.io/j27-aurum/gofast/fastproxy:${IMAGE_TAG:-latest}
+    depends_on:
+      - gen
     ports:
       - "${FASTPROXY_HOST_PORT:-8181}:8181"
     environment:
       PORT: "8181"
+      # Internal compose DNS — origin pull + telemetry push (not Jellyfin-facing).
+      FASTPROXY_GEN_URL: "${FASTPROXY_GEN_URL:-http://gen:8180}"
     restart: unless-stopped
     networks:
       - gofast

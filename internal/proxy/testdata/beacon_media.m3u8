@@ -1,0 +1,9 @@
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXTINF:6.0,
+https://cdn.example/beacon/track?x=1
+#EXTINF:6.0,
+https://cdn.example/beacon/track?x=2
+#EXTINF:6.0,
+https://cdn.example/beacon/track?x=3

@@ -58,6 +58,40 @@ type ClientAccessResponse = {
   summary: ClientAccessSummary[]
 }
 
+type ProxySnapshot = {
+  at?: string
+  proxy_id?: string
+  active_sessions?: number
+  active_seg_tokens?: number
+  stream_opens?: number
+  stream_302s?: number
+  playlist_ok?: number
+  playlist_fail?: number
+  seg_ok?: number
+  seg_fail?: number
+  seg_bytes?: number
+  events_dropped?: number
+}
+
+type ProxyEvent = {
+  kind: string
+  at?: string
+  provider?: string
+  channel_id?: string
+  reason?: string
+  message?: string
+  status?: number
+  duration_ms?: number
+}
+
+type ProxyStatusResponse = {
+  snapshot?: ProxySnapshot | null
+  heartbeat?: string
+  stale?: boolean
+  recent?: ProxyEvent[]
+  recent_failures?: ProxyEvent[]
+}
+
 function validDate(value?: string): Date | null {
   if (!value) return null
   const date = new Date(value)
@@ -95,6 +129,7 @@ export function StatusPage() {
   const [channels, setChannels] = useState<Channel[] | null>(null)
   const [schedule, setSchedule] = useState<HealthSchedule | null>(null)
   const [access, setAccess] = useState<ClientAccessResponse | null>(null)
+  const [proxyStatus, setProxyStatus] = useState<ProxyStatusResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -124,14 +159,20 @@ export function StatusPage() {
           if (!res.ok) throw new Error(`client-access ${res.status}`)
           return res.json() as Promise<ClientAccessResponse>
         }),
+        fetch('/api/proxy/status').then(async (res) => {
+          if (res.status === 503) return null
+          if (!res.ok) throw new Error(`proxy-status ${res.status}`)
+          return res.json() as Promise<ProxyStatusResponse>
+        }),
       ])
-        .then(([hz, st, ch, sched, ca]) => {
+        .then(([hz, st, ch, sched, ca, px]) => {
           if (cancelled) return
           setHealthz(hz)
           setBoot(st)
           setChannels(ch.channels)
           setSchedule(sched)
           setAccess(ca)
+          setProxyStatus(px)
           setError(null)
           const delay = st.logos.running ? 1000 : 5000
           timer = window.setTimeout(poll, delay)
@@ -342,6 +383,83 @@ export function StatusPage() {
             </div>
           ) : (
             <p className="meta">Probe schedule unavailable.</p>
+          )}
+
+          <h2 className="status-section-title">Proxy</h2>
+          <p className="meta">
+            FASTProxy is headless; this is the control-plane glass for rewrite
+            and segment activity (not channel health badges).
+          </p>
+          {!proxyStatus || (!proxyStatus.snapshot && (proxyStatus.recent?.length ?? 0) === 0) ? (
+            <div className="empty-panel" role="status">
+              <p>No proxy heartbeat yet. Enable the compose proxy profile and set proxy_base_url.</p>
+            </div>
+          ) : (
+            <>
+              <div className="stat-row">
+                <Metric
+                  label="Heartbeat"
+                  value={formatWhen(proxyStatus.heartbeat)}
+                  warn={Boolean(proxyStatus.stale)}
+                  title={proxyStatus.stale ? 'Snapshot older than 2 minutes' : proxyStatus.snapshot?.proxy_id}
+                />
+                <Metric
+                  label="Sessions"
+                  value={proxyStatus.snapshot?.active_sessions ?? 0}
+                />
+                <Metric
+                  label="Seg tokens"
+                  value={proxyStatus.snapshot?.active_seg_tokens ?? 0}
+                />
+                <Metric
+                  label="Playlist fail"
+                  value={proxyStatus.snapshot?.playlist_fail ?? 0}
+                  warn={(proxyStatus.snapshot?.playlist_fail ?? 0) > 0}
+                />
+                <Metric
+                  label="Seg fail"
+                  value={proxyStatus.snapshot?.seg_fail ?? 0}
+                  warn={(proxyStatus.snapshot?.seg_fail ?? 0) > 0}
+                />
+              </div>
+              {(proxyStatus.recent_failures?.length ?? 0) > 0 ? (
+                <div className="table-wrap">
+                  <table className="channels client-access-table">
+                    <thead>
+                      <tr>
+                        <th>When</th>
+                        <th>Kind</th>
+                        <th>Channel</th>
+                        <th>Reason</th>
+                        <th>Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proxyStatus.recent_failures!.slice(0, 12).map((ev, i) => (
+                        <tr key={`${ev.at}-${ev.kind}-${i}`}>
+                          <td>{formatWhen(ev.at)}</td>
+                          <td>
+                            <code>{ev.kind}</code>
+                          </td>
+                          <td>
+                            <code>
+                              {ev.provider}/{ev.channel_id}
+                            </code>
+                          </td>
+                          <td>{ev.reason || '—'}</td>
+                          <td title={ev.message}>
+                            {ev.status ? `${ev.status} ` : ''}
+                            {ev.message || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="meta">No recent proxy failures.</p>
+              )}
+            </>
           )}
 
           <h2 className="status-section-title">Client access</h2>

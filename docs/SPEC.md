@@ -473,6 +473,12 @@ under ten seconds.
 - Never modify ad content: beacons are resolved (the tracking GET is made, the
   redirect followed) so impressions still count; the proxy translates dialect,
   it does not strip ads.
+- **Headless control-plane hop:** proxy has no `/data` and no product UI.
+  `FASTPROXY_GEN_URL` (internal gen origin) is required: proxy pulls
+  `GET /api/proxy/origin/{provider}/{id}` and asynchronously posts events /
+  snapshots to `POST /api/proxy/events`. Gen persists activity under
+  `{data_dir}/cache/proxy_activity.db` and exposes `GET /api/proxy/status` for
+  the Status Proxy glass. Media path never blocks on ingest.
 - Tests: golden rewrite tests from fixture playlists (beacon-style modeled on
   Amagi, clean, relative-URL, EXT-X-KEY); integration test proving a
   beacon-style fixture becomes a playlist whose every non-comment line targets

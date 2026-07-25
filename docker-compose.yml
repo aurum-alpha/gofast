@@ -64,7 +64,11 @@ services:
       context: .
       dockerfile: Dockerfile
       target: fastproxy
+    depends_on:
+      - fastgen
     ports:
       - "8181:8181"
     environment:
       PORT: "8181"
+      # Internal Docker DNS to gen for origin lookup + telemetry push.
+      FASTPROXY_GEN_URL: "${FASTPROXY_GEN_URL:-http://fastgen:8180}"
