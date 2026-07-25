@@ -78,15 +78,23 @@ func TestApplyEmissionPolicy(t *testing.T) {
 			wantDropped:    1,
 		},
 		{
-			name:           "session direct (not Amagi proxy)",
+			name:           "session through selective proxy",
 			classification: model.ClassSession,
-			wantURL:        "https://upstream.test/live.m3u8",
+			policy:         EmissionPolicy{ProxyBaseURL: "https://proxy.test"},
+			wantURL:        "https://proxy.test/stream/lg/news.m3u8",
 		},
 		{
-			name:           "session does not need Amagi proxy",
+			name:           "session without proxy",
 			classification: model.ClassSession,
-			policy:         EmissionPolicy{},
-			wantURL:        "https://upstream.test/live.m3u8",
+			wantExcluded:   true,
+			wantReason:     model.FilterReasonNeedsFASTProxy,
+			wantDropped:    1,
+		},
+		{
+			name:           "session through proxy all",
+			classification: model.ClassSession,
+			policy:         EmissionPolicy{ProxyBaseURL: "https://proxy.test", ProxyAll: true},
+			wantURL:        "https://proxy.test/stream/lg/news.m3u8",
 		},
 		{
 			name:           "xumo ssai direct",
@@ -182,6 +190,7 @@ func TestApplyEmissionPolicyProxyAllNativeToAmagiFlipStableURL(t *testing.T) {
 	for _, class := range []model.Classification{
 		model.ClassNative,
 		model.ClassAmagiSSAI,
+		model.ClassSession,
 		"BEACON",
 	} {
 		ch := base

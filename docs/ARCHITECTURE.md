@@ -38,18 +38,19 @@ flowchart LR
     Stream["/stream"] --> Rewrite --> Seg["/seg"]
   end
   Jellyfin --> HTTP
-  Jellyfin -->|"AMAGI_SSAI when proxy_base_url set"| Stream
+  Jellyfin -->|"AMAGI_SSAI / SESSION when proxy_base_url set"| Stream
 ```
 
 **Classifier dialects** (at refresh): `NATIVE` | `AMAGI_SSAI` | `SESSION` | `XUMO_SSAI` | `DRM`  
-(Legacy wire `BEACON` canonicalizes to `AMAGI_SSAI`.)
+(Legacy wire `BEACON` canonicalizes to `AMAGI_SSAI`.) Glossary: [`docs/TERMINOLOGY.md`](TERMINOLOGY.md).
 
 **Emission (in gen):**
 
-- `NATIVE` / `SESSION` / `XUMO_SSAI` → upstream URL (unless `proxy_all`)
+- `NATIVE` / `XUMO_SSAI` → upstream URL (unless `proxy_all`)
 - `DRM` → always drop
 - `AMAGI_SSAI` → `{proxy_base_url}/stream/{provider}/{id}.m3u8` if configured; else drop (UI shows “needs FASTProxy”)
-- `SESSION` mint-at-request and Xumo query-keep are follow-ons — do not use the Amagi rewrite path for them
+- `SESSION` → same proxy `/stream/...` URL when configured; else drop. FASTProxy mints (DAI POST) then 302s to `stream_manifest` — not Amagi rewrite
+- Under `proxy_all`: all exported channels get `/stream/...`; proxy branches by `ProxyKind` (rewrite / mint / plain 302)
 
 ## UI feathering
 
@@ -106,7 +107,7 @@ Follow [12factor.net/config](https://12factor.net/config) (see `AGENTS.md`):
 - **`FASTGEN_PROXY_BASE_URL` / `proxy_base_url`:** public FASTProxy origin as reached by Jellyfin/ffmpeg. It is canonicalized without a trailing slash. `FASTGEN_PROXY_ALL` / `proxy_all` defaults false and requires a proxy base URL when enabled.
 - **`FASTGEN_PROXY_INTERNAL_URL` / `proxy_internal_url`:** optional gen-only origin for health probes. When set, L1/L2 rewrite `EmittedURL` from the public base to this base (e.g. public `http://localhost:8181` → internal `http://fastproxy:8181`) so Manual L2 works inside Docker. Empty = probe the public URL. Does not change M3U emit.
 - **`FASTGEN_HEALTH_CONSECUTIVE_FAILURES` / `health.consecutive_failures`:** N for the health FSM (`down` after N consecutive failures; default 3). Used by health producers only — not by the attr store itself.
-- **Health probes (`internal/health`):** Health L1 (default 24h) GETs the first media segment for **NATIVE / SESSION / XUMO_SSAI** via `ProbeURL` (Emitted when set); skip `AMAGI_SSAI` on the schedule (legacy `BEACON` canonicalizes to Amagi). Prefer ranged GET, retry without `Range` on 416; soft-retry timeout/5xx; AES-128 segments accepted. Records `http_status`, `duration_ms`, `final_url`, `bytes_read`, range flags. Concurrent L1 workers + per-host caps. Timing is **last sweep + interval** (persisted in `{data_dir}/channelattr/health_schedule.json`). Health L2 ffprobe is **off by default**; when on, escalate degraded/down/untested always and sample healthy (`l2_healthy_sample`, default 0.1); require a video stream; pass `RequestHeaders`; skip Amagi without `EmittedURL`. Results `EmitCheck` into the channel-attr bus. `exclude_unhealthy` (default false) prunes `HealthDown` from export. Prometheus `gofast_provider_channels_health{status=…}`. `GET /api/health/schedule` exposes last/next L1/L2. The classifier labels stream dialect for export/routing and is independent from health/FSM state; former health L2/L3 names map to Health L1/L2 during the one-release alias period.
+- **Health probes (`internal/health`):** Health L1 (default 24h) GETs the first media segment for **NATIVE / XUMO_SSAI** and for **`AMAGI_SSAI` when `EmittedURL` is set** (probe through FASTProxy rewrite — never schedule Amagi upstream beacons). Skip `SESSION` on the schedule (mint would fake a tune). Prefer ranged GET, retry without `Range` on 416; soft-retry timeout/5xx; AES-128 segments accepted. Records `http_status`, `duration_ms`, `final_url`, `bytes_read`, range flags. Concurrent L1 workers + per-host caps. Timing is **last sweep + interval** (persisted in `{data_dir}/channelattr/health_schedule.json`). Health L2 ffprobe is **off by default**; when on, escalate degraded/down/untested always and sample healthy (`l2_healthy_sample`, default 0.1); require a video stream; pass `RequestHeaders`; skip Amagi without `EmittedURL`. Results `EmitCheck` into the channel-attr bus. `exclude_unhealthy` (default false) prunes `HealthDown` from export. Prometheus `gofast_provider_channels_health{status=…}`. `GET /api/health/schedule` exposes last/next L1/L2. The classifier labels stream dialect for export/routing and is independent from health/FSM state; former health L2/L3 names map to Health L1/L2 during the one-release alias period.
 - **Passive playback health:** FASTProxy pushes telemetry to `POST /api/proxy/events` (stored in `proxyactivity` for the Status/Proxy UI). Mapped events (`playlist_ok` / `playlist_fail` / `origin_miss` / non-cancel `seg_fail`) call `Emitter.EmitCheck` with `source=playback` and patch the live feed — same FSM as probes, push intake rather than `Source.Check`.
 - **ffprobe:** shipped in the **fastgen** image (`debian:bookworm-slim` + ffmpeg); default path `/usr/bin/ffprobe` (`health.ffprobe_path`). fastproxy remains distroless/static.
 - **Optional YAML** on the data volume: `/data/config.yaml` for structured, non-secret settings. Provider *implementations* are code (packages under `internal/provider/<id>` exposing `New` + `DefaultSettings`, wired into a `map[id]provider.Reader`); the `providers` block only *overlays settings* for a known provider and cannot add one without shipping Go (unknown ids are ignored/warned). Every provider — LG, MJH providers (Pluto, Samsung, Roku), and published-pair providers (Xumo, DistroTV, LocalNow) — runs only when its YAML block is present and may be disabled explicitly with `enabled: false`. A generated defaults-only config enables nothing. Runtime data only — ship `config.example.yaml` as a template; never commit a filled production file.

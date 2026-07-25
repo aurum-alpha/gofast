@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	sessionTTL = 5 * time.Minute
-	segTTL     = 2 * time.Minute
+	sessionTTL   = 5 * time.Minute
+	segTTL       = 2 * time.Minute
+	mintEntryTTL = mintCacheTTL
 )
 
 // Session holds per-tune-in upstream context so Amagi query/session tokens stay coherent.
@@ -37,18 +38,26 @@ type SegToken struct {
 	ExpiresAt      time.Time
 }
 
-// Store is the in-memory session and segment-token map with sliding TTLs.
+// mintCacheEntry holds a recently minted DAI stream_manifest for SESSION tune-ins.
+type mintCacheEntry struct {
+	ManifestURL string
+	ExpiresAt   time.Time
+}
+
+// Store is the in-memory session, segment-token, and SESSION mint-cache map.
 type Store struct {
-	mu       sync.Mutex
-	sessions map[string]*Session
-	segs     map[string]*SegToken
+	mu        sync.Mutex
+	sessions  map[string]*Session
+	segs      map[string]*SegToken
+	mintCache map[string]*mintCacheEntry
 }
 
 // NewStore returns an empty session/seg store.
 func NewStore() *Store {
 	return &Store{
-		sessions: make(map[string]*Session),
-		segs:     make(map[string]*SegToken),
+		sessions:  make(map[string]*Session),
+		segs:      make(map[string]*SegToken),
+		mintCache: make(map[string]*mintCacheEntry),
 	}
 }
 
@@ -131,6 +140,29 @@ func (s *Store) Stats() (sessions, segs int) {
 	return len(s.sessions), len(s.segs)
 }
 
+// GetMintedManifest returns a cached SESSION mint result if still fresh.
+func (s *Store) GetMintedManifest(provider model.ProviderID, channelID string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.expireLocked(time.Now())
+	e, ok := s.mintCache[mintCacheKey(provider, channelID)]
+	if !ok {
+		return "", false
+	}
+	return e.ManifestURL, true
+}
+
+// PutMintedManifest caches a successful SESSION mint for mintCacheTTL.
+func (s *Store) PutMintedManifest(provider model.ProviderID, channelID, manifestURL string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.expireLocked(time.Now())
+	s.mintCache[mintCacheKey(provider, channelID)] = &mintCacheEntry{
+		ManifestURL: manifestURL,
+		ExpiresAt:   time.Now().Add(mintEntryTTL),
+	}
+}
+
 func (s *Store) expireLocked(now time.Time) {
 	for id, sess := range s.sessions {
 		if now.After(sess.ExpiresAt) {
@@ -140,6 +172,11 @@ func (s *Store) expireLocked(now time.Time) {
 	for tok, seg := range s.segs {
 		if now.After(seg.ExpiresAt) {
 			delete(s.segs, tok)
+		}
+	}
+	for key, e := range s.mintCache {
+		if now.After(e.ExpiresAt) {
+			delete(s.mintCache, key)
 		}
 	}
 }

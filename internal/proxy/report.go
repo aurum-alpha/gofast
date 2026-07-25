@@ -119,7 +119,7 @@ func (r *Reporter) Emit(ev Event) {
 	case EventSegFail:
 		r.segFail.Add(1)
 	}
-	if ev.Kind == EventPlaylistFail || ev.Kind == EventSegFail || ev.Kind == EventOriginMiss {
+	if ev.Kind == EventPlaylistFail || ev.Kind == EventSegFail || ev.Kind == EventOriginMiss || ev.Kind == EventSessionMintFail {
 		r.mu.Lock()
 		r.lastErrs = append(r.lastErrs, ev)
 		if len(r.lastErrs) > 20 {

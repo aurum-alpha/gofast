@@ -8,29 +8,33 @@ import (
 
 // Stable event names shared by slog and gen ingest payloads.
 const (
-	EventStreamOpen    = "stream_open"
-	EventStream302     = "stream_302"
-	EventPlaylistOK    = "playlist_ok"
-	EventPlaylistFail  = "playlist_fail"
-	EventSessionStart  = "session_start"
-	EventSegOK         = "seg_ok"
-	EventSegFail       = "seg_fail"
-	EventSnapshot      = "snapshot"
-	EventOriginLookup  = "origin_lookup"
-	EventOriginMiss    = "origin_miss"
-	EventReportDropped = "report_dropped"
+	EventStreamOpen      = "stream_open"
+	EventStream302       = "stream_302"
+	EventPlaylistOK      = "playlist_ok"
+	EventPlaylistFail    = "playlist_fail"
+	EventSessionStart    = "session_start"
+	EventSessionMint     = "session_mint"
+	EventSessionMintFail = "session_mint_fail"
+	EventSegOK           = "seg_ok"
+	EventSegFail         = "seg_fail"
+	EventSnapshot        = "snapshot"
+	EventOriginLookup    = "origin_lookup"
+	EventOriginMiss      = "origin_miss"
+	EventReportDropped   = "report_dropped"
 )
 
 // Failure reasons for correlating docker logs with Status rows.
 const (
-	ReasonOriginMiss      = "origin_miss"
-	ReasonUpstream4xx     = "upstream_4xx"
-	ReasonUpstream5xx     = "upstream_5xx"
-	ReasonUpstreamTimeout = "upstream_timeout"
-	ReasonUpstreamError   = "upstream_error"
-	ReasonRewriteEmpty    = "rewrite_empty"
-	ReasonTokenUnknown    = "token_unknown"
-	ReasonClientCancel    = "client_cancel"
+	ReasonOriginMiss        = "origin_miss"
+	ReasonUpstream4xx       = "upstream_4xx"
+	ReasonUpstream5xx       = "upstream_5xx"
+	ReasonUpstreamTimeout   = "upstream_timeout"
+	ReasonUpstreamError     = "upstream_error"
+	ReasonRewriteEmpty      = "rewrite_empty"
+	ReasonTokenUnknown      = "token_unknown"
+	ReasonClientCancel      = "client_cancel"
+	ReasonSessionMintAuth   = "session_mint_auth"
+	ReasonSessionMintBadURL = "session_mint_bad_url"
 )
 
 func logEvent(level slog.Level, event string, attrs ...any) {

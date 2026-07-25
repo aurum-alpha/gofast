@@ -1,6 +1,7 @@
 package model
 
 // Classification is the stream dialect / playback-path bucket.
+// See docs/TERMINOLOGY.md for plain-language definitions.
 type Classification string
 
 const (
@@ -15,6 +16,19 @@ const (
 	classBeaconLegacy Classification = "BEACON"
 )
 
+// ProxyKind is how FASTProxy (or gen emission) should treat a dialect under
+// selective proxying. See docs/TERMINOLOGY.md and internal/proxy package docs.
+type ProxyKind int
+
+const (
+	// ProxyNone means emit upstream; under proxy_all the proxy 302s to upstream.
+	ProxyNone ProxyKind = iota
+	// ProxyAmagiRewrite is beacon playlist rewrite + /seg shuttle (AMAGI_SSAI).
+	ProxyAmagiRewrite
+	// ProxySessionMint is Google DAI mint-on-tune-in then 302 to stream_manifest.
+	ProxySessionMint
+)
+
 // Canonical returns the current wire value for c (maps legacy BEACON → AMAGI_SSAI).
 func (c Classification) Canonical() Classification {
 	if c == classBeaconLegacy {
@@ -23,16 +37,42 @@ func (c Classification) Canonical() Classification {
 	return c
 }
 
-// RequiresAmagiProxy reports whether this dialect uses the Amagi SSAI rewrite path.
-func (c Classification) RequiresAmagiProxy() bool {
-	return c.Canonical() == ClassAmagiSSAI
+// ProxyKind reports the FASTProxy branch for this dialect.
+func (c Classification) ProxyKind() ProxyKind {
+	switch c.Canonical() {
+	case ClassAmagiSSAI:
+		return ProxyAmagiRewrite
+	case ClassSession:
+		return ProxySessionMint
+	default:
+		return ProxyNone
+	}
 }
 
-// ScheduleSegmentHealth reports whether scheduled Health L1 segment probes apply.
-// Amagi SSAI is excluded (avoid firing impression beacons); DRM is never probed.
+// RequiresAmagiProxy reports whether this dialect uses the Amagi SSAI rewrite path.
+func (c Classification) RequiresAmagiProxy() bool {
+	return c.ProxyKind() == ProxyAmagiRewrite
+}
+
+// RequiresProxy reports whether selective emission must embed a proxy /stream URL.
+// True for Amagi rewrite and SESSION mint; false for NATIVE / XUMO_SSAI / DRM.
+func (c Classification) RequiresProxy() bool {
+	switch c.ProxyKind() {
+	case ProxyAmagiRewrite, ProxySessionMint:
+		return true
+	default:
+		return false
+	}
+}
+
+// ScheduleSegmentHealth reports whether scheduled Health L1 segment probes may
+// apply for this dialect. Amagi SSAI is included so sweeps can cover proxy
+// EmittedURLs; the scheduler still skips Amagi when EmittedURL is empty (never
+// probe upstream beacons on the schedule). SESSION stays excluded (mint = fake
+// tune). DRM is never probed.
 func (c Classification) ScheduleSegmentHealth() bool {
 	switch c.Canonical() {
-	case ClassNative, ClassSession, ClassXumoSSAI:
+	case ClassNative, ClassXumoSSAI, ClassAmagiSSAI:
 		return true
 	default:
 		return false
