@@ -172,6 +172,35 @@
   background: var(--header);
 }
 
+.channels th .sort-th {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.channels th .sort-th:hover,
+.channels th .sort-th-active {
+  color: var(--ink);
+}
+
+.channels th .sort-indicator {
+  display: inline-block;
+  min-width: 0.75rem;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
 .channels tbody tr.excluded td {
   color: var(--muted);
 }

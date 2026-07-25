@@ -16,15 +16,20 @@ import {
 } from '../lib/channel'
 import type { Channel, HealthFilterValue, LineupStatusKind } from '../lib/channel'
 import {
-  channelsFiltersActive,
   channelsFiltersFromSearch,
-  channelsFiltersToSearch,
+  channelsListDirty,
+  channelsListToSearch,
+  channelsSortFromSearch,
   clearStoredChannelsFilters,
+  compareChannels,
   DEFAULT_CHANNELS_FILTERS,
-  readStoredChannelsFilters,
-  searchHasChannelsFilters,
-  writeStoredChannelsFilters,
+  nextChannelsSort,
+  readStoredChannelsList,
+  searchHasChannelsListState,
+  writeStoredChannelsList,
   type ChannelsLocationState,
+  type ChannelsSort,
+  type ChannelsSortKey,
 } from '../lib/channelsFilters'
 
 type ChannelsResponse = {
@@ -41,27 +46,62 @@ function groupLabel(key: string): string {
   return key === EMPTY_GROUP ? '(none)' : key
 }
 
+function SortTh({
+  label,
+  col,
+  sort,
+  onSort,
+}: {
+  label: string
+  col: ChannelsSortKey
+  sort: ChannelsSort
+  onSort: (key: ChannelsSortKey) => void
+}) {
+  const active = sort.key === col
+  const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
+  return (
+    <th scope="col" aria-sort={ariaSort}>
+      <button
+        type="button"
+        className={`sort-th${active ? ' sort-th-active' : ''}`}
+        onClick={() => onSort(col)}
+      >
+        {label}
+        <span className="sort-indicator" aria-hidden="true">
+          {active ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
+        </span>
+      </button>
+    </th>
+  )
+}
+
 export function ChannelsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<ChannelsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const didHydrate = useRef(false)
 
-  // Hydrate from sessionStorage when the URL has no filter keys (nav to bare /).
+  // Hydrate from sessionStorage when the URL has no list keys (nav to bare /).
   useEffect(() => {
     if (didHydrate.current) return
     didHydrate.current = true
-    if (searchHasChannelsFilters(searchParams)) {
-      writeStoredChannelsFilters(channelsFiltersFromSearch(searchParams))
+    if (searchHasChannelsListState(searchParams)) {
+      writeStoredChannelsList(
+        channelsFiltersFromSearch(searchParams),
+        channelsSortFromSearch(searchParams),
+      )
       return
     }
-    const stored = readStoredChannelsFilters()
-    if (stored && channelsFiltersActive(stored)) {
-      setSearchParams(channelsFiltersToSearch(stored), { replace: true })
+    const stored = readStoredChannelsList()
+    if (stored && channelsListDirty(stored.filters, stored.sort)) {
+      setSearchParams(channelsListToSearch(stored.filters, stored.sort), {
+        replace: true,
+      })
     }
   }, [searchParams, setSearchParams])
 
   const filters = useMemo(() => channelsFiltersFromSearch(searchParams), [searchParams])
+  const sort = useMemo(() => channelsSortFromSearch(searchParams), [searchParams])
   const providerFilter = filters.provider
   const groupFilter = filters.group
   const classFilter = filters.class
@@ -69,11 +109,21 @@ export function ChannelsPage() {
   const healthFilter = filters.health
   const q = filters.q
 
-  function patchFilters(patch: Partial<typeof DEFAULT_CHANNELS_FILTERS>) {
-    const next = { ...filters, ...patch }
-    const params = channelsFiltersToSearch(next)
+  function patchList(
+    nextFilters: typeof DEFAULT_CHANNELS_FILTERS,
+    nextSort: ChannelsSort,
+  ) {
+    const params = channelsListToSearch(nextFilters, nextSort)
     setSearchParams(params, { replace: true })
-    writeStoredChannelsFilters(next)
+    writeStoredChannelsList(nextFilters, nextSort)
+  }
+
+  function patchFilters(patch: Partial<typeof DEFAULT_CHANNELS_FILTERS>) {
+    patchList({ ...filters, ...patch }, sort)
+  }
+
+  function patchSort(key: ChannelsSortKey) {
+    patchList(filters, nextChannelsSort(sort, key))
   }
 
   function resetFilters() {
@@ -155,19 +205,22 @@ export function ChannelsPage() {
         )
       })
       .slice()
-      .sort((a, b) => {
-        const an = a.offset_number > 0 ? a.offset_number : Number.POSITIVE_INFINITY
-        const bn = b.offset_number > 0 ? b.offset_number : Number.POSITIVE_INFINITY
-        if (an !== bn) return an - bn
-        if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
-        return a.normalized_id.localeCompare(b.normalized_id)
-      })
-  }, [data, providerFilter, groupFilter, classFilter, statusFilter, healthFilter, q])
+      .sort((a, b) => compareChannels(a, b, sort))
+  }, [
+    data,
+    providerFilter,
+    groupFilter,
+    classFilter,
+    statusFilter,
+    healthFilter,
+    q,
+    sort,
+  ])
 
   const detailState: ChannelsLocationState = {
     channelsSearch: searchParams.toString(),
   }
-  const filtersDirty = channelsFiltersActive(filters)
+  const listDirty = channelsListDirty(filters, sort)
 
   return (
     <>
@@ -176,7 +229,7 @@ export function ChannelsPage() {
         Live lineup from the last successful refresh. Click a row for export
         status, reasons, URLs, health history, and identity. Class is the stream
         dialect (NATIVE / Amagi SSAI / SESSION / Xumo SSAI / DRM); Health comes from
-        segment/ffprobe checks.
+        segment/ffprobe checks. Click a column header to sort.
       </p>
 
       {error && (
@@ -285,7 +338,7 @@ export function ChannelsPage() {
               type="button"
               className="toolbar-reset"
               onClick={resetFilters}
-              disabled={!filtersDirty}
+              disabled={!listDirty}
             >
               Reset filters
             </button>
@@ -298,17 +351,22 @@ export function ChannelsPage() {
             <table className="channels">
               <thead>
                 <tr>
-                  <th scope="col">#</th>
-                  <th scope="col">Prov #</th>
+                  <SortTh label="#" col="number" sort={sort} onSort={patchSort} />
+                  <SortTh label="Prov #" col="prov" sort={sort} onSort={patchSort} />
                   <th scope="col" className="channel-logo-col">
                     Logo
                   </th>
-                  <th scope="col">Name</th>
-                  <th scope="col">Provider</th>
-                  <th scope="col">Group</th>
-                  <th scope="col">Class</th>
-                  <th scope="col">Health</th>
-                  <th scope="col">Status</th>
+                  <SortTh label="Name" col="name" sort={sort} onSort={patchSort} />
+                  <SortTh
+                    label="Provider"
+                    col="provider"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
+                  <SortTh label="Group" col="group" sort={sort} onSort={patchSort} />
+                  <SortTh label="Class" col="class" sort={sort} onSort={patchSort} />
+                  <SortTh label="Health" col="health" sort={sort} onSort={patchSort} />
+                  <SortTh label="Status" col="status" sort={sort} onSort={patchSort} />
                 </tr>
               </thead>
               <tbody>
