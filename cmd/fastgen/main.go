@@ -140,6 +140,7 @@ func main() {
 			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe", server.ChannelHealthProbeHandler(reg, sched))
 			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe/l1", server.ChannelHealthProbeL1Handler(reg, sched))
 			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe/l2", server.ChannelHealthProbeL2Handler(reg, sched))
+			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}/programmes", server.ChannelProgrammesHandler(reg))
 			mux.HandleFunc("GET /api/guide.xml", server.GuideXML(reg))
 			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(reg))
 			mux.HandleFunc("GET /metrics", server.MetricsHandler(reg))

@@ -18,6 +18,14 @@ import {
   reloadSummary,
   saveChannelEmit,
 } from '../lib/channelEmit'
+import {
+  fetchChannelProgrammes,
+  formatProgrammeRange,
+  isProgrammeNow,
+  programmeNext,
+  programmeNow,
+  type Programme,
+} from '../lib/channelProgrammes'
 
 type EmitDraft = {
   nameOn: boolean
@@ -173,6 +181,31 @@ function parseHistoryValue(value: HistoryEvent['value']): ChannelHealth {
   return {}
 }
 
+function ProgrammeSlot({
+  label,
+  programme,
+}: {
+  label: string
+  programme: Programme | null
+}) {
+  return (
+    <div className="guide-slot">
+      <div className="guide-slot-label">{label}</div>
+      {programme ? (
+        <div className="guide-slot-body">
+          <div className="guide-slot-title">{programme.title}</div>
+          <div className="meta">{formatProgrammeRange(programme.start, programme.stop)}</div>
+          {programme.desc ? (
+            <p className="guide-slot-desc">{programme.desc}</p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="subtle">—</div>
+      )}
+    </div>
+  )
+}
+
 export function ChannelDetailPage() {
   const { provider = '', normalizedId = '' } = useParams()
   const location = useLocation()
@@ -194,6 +227,9 @@ export function ChannelDetailPage() {
   const [emitBaseline, setEmitBaseline] = useState<EmitDraft | null>(null)
   const [emitSaving, setEmitSaving] = useState(false)
   const [emitToast, setEmitToast] = useState<{ ok: boolean; message: string } | null>(null)
+  const [programmes, setProgrammes] = useState<Programme[] | null>(null)
+  const [programmesError, setProgrammesError] = useState<string | null>(null)
+  const [guideExpanded, setGuideExpanded] = useState(false)
 
   const loadHistory = useCallback(() => {
     const path = `/api/channels/${encodeURIComponent(provider)}/${encodeURIComponent(normalizedId)}/health/history`
@@ -239,6 +275,29 @@ export function ChannelDetailPage() {
 
   useEffect(() => {
     let cancelled = false
+    setProgrammes(null)
+    setProgrammesError(null)
+    setGuideExpanded(false)
+    fetchChannelProgrammes(provider, normalizedId)
+      .then((list) => {
+        if (!cancelled) {
+          setProgrammes(list)
+          setProgrammesError(null)
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setProgrammes([])
+          setProgrammesError(err instanceof Error ? err.message : String(err))
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [provider, normalizedId])
+
+  useEffect(() => {
+    let cancelled = false
     fetch('/api/health/schedule')
       .then(async (res) => {
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
@@ -259,6 +318,15 @@ export function ChannelDetailPage() {
     if (!emitDraft || !emitBaseline) return false
     return !draftsEqual(emitDraft, emitBaseline)
   }, [emitDraft, emitBaseline])
+
+  const guideNow = useMemo(
+    () => (programmes ? programmeNow(programmes) : null),
+    [programmes],
+  )
+  const guideNext = useMemo(
+    () => (programmes ? programmeNext(programmes, new Date(), guideNow) : null),
+    [programmes, guideNow],
+  )
 
   async function saveEmit() {
     if (!emitDraft || !revision) return
@@ -969,6 +1037,73 @@ export function ChannelDetailPage() {
               </tbody>
             </table>
           </div>
+        ) : null}
+      </section>
+
+      <section className="detail-section">
+        <h2>Guide</h2>
+        <p className="meta">
+          In-memory programmes for this channel (default window: last hour through
+          next 12 hours).
+        </p>
+        {programmesError ? (
+          <p className="compare-error" role="alert">
+            Failed to load programmes: {programmesError}
+          </p>
+        ) : null}
+        {programmes === null && !programmesError ? (
+          <p className="meta" role="status">
+            Loading programmes…
+          </p>
+        ) : null}
+        {programmes && programmes.length === 0 && !programmesError ? (
+          <p className="meta" role="status">
+            No programmes in the current window for this channel.
+          </p>
+        ) : null}
+        {programmes && programmes.length > 0 ? (
+          <>
+            <div className="guide-strip">
+              <ProgrammeSlot label="Now" programme={guideNow} />
+              <ProgrammeSlot label="Next" programme={guideNext} />
+            </div>
+            <p className="probe-actions">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setGuideExpanded((v) => !v)}
+              >
+                {guideExpanded ? 'Hide programmes' : 'Show all programmes'}
+              </button>
+              <span className="meta"> {programmes.length} in window</span>
+            </p>
+            {guideExpanded ? (
+              <ol className="guide-programme-list">
+                {programmes.map((p) => {
+                  const current = isProgrammeNow(p)
+                  return (
+                    <li
+                      key={`${p.start}-${p.stop}-${p.title}`}
+                      className={current ? 'guide-programme-now' : undefined}
+                    >
+                      <div className="guide-programme-row">
+                        <div className="guide-programme-main">
+                          {current ? (
+                            <span className="badge badge-native">Now</span>
+                          ) : null}{' '}
+                          <span className="guide-slot-title">{p.title}</span>
+                        </div>
+                        <div className="meta">
+                          {formatProgrammeRange(p.start, p.stop)}
+                        </div>
+                        {p.desc ? <p className="guide-slot-desc">{p.desc}</p> : null}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            ) : null}
+          </>
         ) : null}
       </section>
     </>

@@ -428,9 +428,11 @@ provider, name, and channel number.
 
 Per-channel detail (`/channels/{provider}/{normalizedId}`): export status and
 full filter reason, DRM `license_url` evidence, upstream vs emitted URL, raw
-and normalized ids, logo URL or `logo_error`, health/probes, and **per-field
-Customize** controls on the Fastgen export column (name, number, group, logo,
-in-export). Uncheck uses the fastgen-produced default; save applies live.
+and normalized ids, logo URL or `logo_error`, health/probes, a compact **Guide**
+strip (Now / Next + expandable programme list from in-memory EPG), and
+**per-field Customize** controls on the Fastgen export column (name, number,
+group, logo, in-export). Uncheck uses the fastgen-produced default; save
+applies live.
 
 Provider list shows triage summaries (exported / excluded / stale / last
 success). Provider detail holds full rollups (classifications, filter
