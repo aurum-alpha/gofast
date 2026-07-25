@@ -24,8 +24,16 @@ COPY internal/ internal/
 COPY --from=web /src/internal/ui/dist/ internal/ui/dist/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV CGO_ENABLED=0
-RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastgen ./cmd/fastgen
-RUN go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/fastproxy ./cmd/fastproxy
+# Optional identity for local compose builds (CI injects via ldflags on binaries).
+ARG BUILD_NUMBER=local
+ARG GIT_COMMIT=
+ARG BUILD_TIME=
+RUN LDFLAGS="-s -w \
+      -X github.com/j27-aurum/gofast/internal/version.Build=${BUILD_NUMBER} \
+      -X github.com/j27-aurum/gofast/internal/version.Commit=${GIT_COMMIT} \
+      -X github.com/j27-aurum/gofast/internal/version.BuiltAt=${BUILD_TIME}" \
+    && go build -buildvcs=false -trimpath -ldflags="$LDFLAGS" -o /out/fastgen ./cmd/fastgen \
+    && go build -buildvcs=false -trimpath -ldflags="$LDFLAGS" -o /out/fastproxy ./cmd/fastproxy
 
 # fastgen needs ffprobe (Health L2). Use slim Debian + ffmpeg rather than
 # distroless/static (dynamically linked ffprobe will not run there).

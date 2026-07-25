@@ -15,19 +15,33 @@ type HealthzProvider = {
   exported_programmes: number
 }
 
+type BuildVersion = {
+  build?: string
+  commit?: string
+  built_at?: string
+}
+
 type HealthzResponse = {
   ok: boolean
+  version?: BuildVersion
   providers?: HealthzProvider[]
 }
 
 type ApiStatusResponse = {
   ready: boolean
+  version?: BuildVersion
   logos: {
     running: boolean
     done: number
     total: number
     provider?: string
   }
+}
+
+function formatBuildVersion(v?: BuildVersion): string {
+  if (!v?.build) return '—'
+  const commit = v.commit?.trim()
+  return commit ? `build ${v.build} · ${commit}` : `build ${v.build}`
 }
 
 type ChannelsResponse = {
@@ -271,6 +285,15 @@ export function StatusPage() {
               label="Process"
               value={healthz.ok ? 'up' : 'down'}
               title="HTTP process is serving — not all-providers-healthy"
+            />
+            <Metric
+              label="Build"
+              value={formatBuildVersion(healthz.version)}
+              title={
+                healthz.version?.built_at
+                  ? `Built ${healthz.version.built_at}`
+                  : 'CI run number + short git SHA (ldflags)'
+              }
             />
             <Metric
               label="Logo warm"

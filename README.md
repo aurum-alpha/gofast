@@ -22,10 +22,12 @@ Implementation proceeds **one Linear issue at a time**.
 
 Images are published to GHCR on every merge to `main` (after UI build + compile + test pass):
 
-| Service | Image |
-|---------|-------|
-| fastgen | `ghcr.io/j27-aurum/gofast/fastgen:latest` |
-| fastproxy | `ghcr.io/j27-aurum/gofast/fastproxy:latest` |
+| Service | Image tags |
+|---------|------------|
+| fastgen | `…/fastgen:latest`, `…/fastgen:build-N`, `…/fastgen:sha-<short>` |
+| fastproxy | `…/fastproxy:latest`, `…/fastproxy:build-N`, `…/fastproxy:sha-<short>` |
+
+`N` is the GitHub Actions run number (monotonic). Pin Portainer / `stack.env` with `IMAGE_TAG=build-N`. Running build identity is on `GET /healthz` (`version.build` / `version.commit`) and Status → System.
 
 Default ports: **8180** (gen), **8181** (proxy). With the optional nginx edge: **80/443**.
 

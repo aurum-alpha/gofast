@@ -1,6 +1,10 @@
 package refresh
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/j27-aurum/gofast/internal/version"
+)
 
 // Status is process-wide boot / logo-cache progress for GET /api/status.
 type Status struct {
@@ -21,19 +25,21 @@ type LogosView struct {
 
 // View is the GET /api/status JSON envelope.
 type View struct {
-	Ready bool      `json:"ready"`
-	Logos LogosView `json:"logos"`
+	Ready   bool         `json:"ready"`
+	Version version.Info `json:"version"`
+	Logos   LogosView    `json:"logos"`
 }
 
 // Snapshot returns a consistent copy for HTTP handlers.
 func (s *Status) Snapshot() View {
 	if s == nil {
-		return View{Ready: true}
+		return View{Ready: true, Version: version.Current()}
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return View{
-		Ready: !s.logosRunning,
+		Ready:   !s.logosRunning,
+		Version: version.Current(),
 		Logos: LogosView{
 			Running:  s.logosRunning,
 			Done:     s.logosDone,

@@ -25,13 +25,19 @@ func TestHealthzOK(t *testing.T) {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	var body struct {
-		OK bool `json:"ok"`
+		OK      bool `json:"ok"`
+		Version struct {
+			Build string `json:"build"`
+		} `json:"version"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
 	if !body.OK {
 		t.Fatalf("body = %#v", body)
+	}
+	if body.Version.Build != "local" {
+		t.Fatalf("version.build = %q want local", body.Version.Build)
 	}
 }
 

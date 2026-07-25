@@ -6,11 +6,13 @@ import (
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/provider"
+	"github.com/j27-aurum/gofast/internal/version"
 )
 
 // healthzResponse is the GET /healthz JSON envelope.
 type healthzResponse struct {
 	OK        bool              `json:"ok"`
+	Version   version.Info      `json:"version"`
 	Providers []healthzProvider `json:"providers,omitempty"`
 }
 
@@ -45,12 +47,13 @@ func HealthzHandler(reg *provider.Registry) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if reg == nil {
-			_ = json.NewEncoder(w).Encode(healthzResponse{OK: true})
+			_ = json.NewEncoder(w).Encode(healthzResponse{OK: true, Version: version.Current()})
 			return
 		}
 		feeds := reg.Feeds()
 		out := healthzResponse{
 			OK:        true,
+			Version:   version.Current(),
 			Providers: make([]healthzProvider, 0, len(feeds)),
 		}
 		for _, feed := range feeds {

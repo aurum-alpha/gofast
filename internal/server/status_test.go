@@ -26,6 +26,9 @@ func TestStatusAPI(t *testing.T) {
 	if view.Ready || !view.Logos.Running || view.Logos.Done != 3 || view.Logos.Total != 10 || view.Logos.Provider != "lg" {
 		t.Fatalf("%+v", view)
 	}
+	if view.Version.Build != "local" {
+		t.Fatalf("version.build = %q want local", view.Version.Build)
+	}
 	st.SetLogos(false, 10, 10, "")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))

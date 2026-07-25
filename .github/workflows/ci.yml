@@ -47,9 +47,16 @@ jobs:
       - name: Compile binaries
         run: |
           mkdir -p bin
-          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/fastgen ./cmd/fastgen
-          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/fastproxy ./cmd/fastproxy
+          COMMIT="${GITHUB_SHA::7}"
+          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w \
+            -X github.com/j27-aurum/gofast/internal/version.Build=${{ github.run_number }} \
+            -X github.com/j27-aurum/gofast/internal/version.Commit=${COMMIT} \
+            -X github.com/j27-aurum/gofast/internal/version.BuiltAt=${BUILT_AT}"
+          CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o bin/fastgen ./cmd/fastgen
+          CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o bin/fastproxy ./cmd/fastproxy
           chmod 755 bin/fastgen bin/fastproxy
+          echo "build=${{ github.run_number }} commit=${COMMIT} built_at=${BUILT_AT}"
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
@@ -140,6 +147,7 @@ jobs:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image_suffix }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=build-${{ github.run_number }},enable={{is_default_branch}}
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
 

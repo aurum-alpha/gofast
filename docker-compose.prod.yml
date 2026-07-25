@@ -6,6 +6,8 @@
 #   1. Add ghcr.io registry credentials in Portainer (PAT with read:packages)
 #   2. Create stack from this repo file, or paste compose + load stack.env
 #   3. Override IMAGE_TAG / ports in stack.env as needed
+#      IMAGE_TAG=latest | build-<CI_run_number> | sha-<short>
+#      (build identity also on GET /healthz → version)
 #
 # Profiles (COMPOSE_PROFILES in stack.env):
 #   (empty)       gen only
