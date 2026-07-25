@@ -5,6 +5,7 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
+	"gopkg.in/yaml.v3"
 )
 
 var allIDs = []model.ProviderID{
@@ -77,6 +78,19 @@ func TestSettingsHonorPresenceAndExplicitFalse(t *testing.T) {
 		if _, ok := readers[id]; ok {
 			t.Errorf("disabled %s reader should not be wired", id)
 		}
+	}
+}
+
+func TestSettingsHonorExplicitZeroChannelNumberOffset(t *testing.T) {
+	var overlay model.ProviderSettings
+	if err := yaml.Unmarshal([]byte("channel_number_offset: 0\n"), &overlay); err != nil {
+		t.Fatal(err)
+	}
+	settings := Settings(map[model.ProviderID]model.ProviderSettings{
+		model.ProviderLG: overlay,
+	})
+	if got := settings[model.ProviderLG].ChannelNumberOffset; got != 0 {
+		t.Fatalf("effective LG offset: got %d want 0 (default is 1000)", got)
 	}
 }
 

@@ -41,6 +41,8 @@ services:
       FASTGEN_BASE_URL: "${FASTGEN_BASE_URL:-}"
       # Public FASTProxy origin as reached by Jellyfin/ffmpeg.
       FASTGEN_PROXY_BASE_URL: "${FASTGEN_PROXY_BASE_URL:-}"
+      # Gen-side probes rewrite public → this Docker-internal origin (service name: proxy).
+      FASTGEN_PROXY_INTERNAL_URL: "${FASTGEN_PROXY_INTERNAL_URL:-http://proxy:8181}"
       FASTGEN_PROXY_ALL: "${FASTGEN_PROXY_ALL:-false}"
       FASTGEN_CACHE_LOGOS: "${FASTGEN_CACHE_LOGOS:-}"
     restart: unless-stopped

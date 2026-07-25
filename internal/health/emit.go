@@ -19,26 +19,38 @@ type Emitter struct {
 	Store               *channelattr.Store // for reading prior current; may be nil
 	ConsecutiveFailures int
 
-	mu sync.Mutex // guards ConsecutiveFailures after probes start
+	mu   sync.Mutex
+	live map[string]model.ChannelHealth // process-local prior (Store writes are async)
 }
 
 // EmitCheck folds check into current health and sends the result on the bus.
 // The returned ChannelHealth is the value that will be persisted (bus is async).
+// A process-local prior is kept so rapid/batched checks chain correctly before
+// the attr receiver persists Current.
 func (e *Emitter) EmitCheck(ctx context.Context, provider model.ProviderID, channelID string, check model.HealthCheck) (model.ChannelHealth, error) {
 	if e == nil || e.Bus == nil {
 		return model.ChannelHealth{}, fmt.Errorf("health: nil emitter or bus")
 	}
-	n := e.failN()
-	prev := model.ChannelHealth{}
-	if e.Store != nil {
-		if raw, ok := e.Store.Current(provider, channelID, channelattr.KindHealth); ok {
-			_ = json.Unmarshal(raw, &prev)
-		}
-	}
 	if check.At.IsZero() {
 		check.At = time.Now().UTC()
 	}
+
+	e.mu.Lock()
+	n := e.failNLocked()
+	key := string(provider) + "\x00" + channelID
+	prev, ok := e.live[key]
+	if !ok && e.Store != nil {
+		if raw, found := e.Store.Current(provider, channelID, channelattr.KindHealth); found {
+			_ = json.Unmarshal(raw, &prev)
+		}
+	}
 	next := prev.Apply(check, n)
+	if e.live == nil {
+		e.live = make(map[string]model.ChannelHealth)
+	}
+	e.live[key] = next
+	e.mu.Unlock()
+
 	value, err := json.Marshal(next)
 	if err != nil {
 		return model.ChannelHealth{}, err
@@ -71,6 +83,10 @@ func (e *Emitter) SetConsecutiveFailures(n int) {
 func (e *Emitter) failN() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	return e.failNLocked()
+}
+
+func (e *Emitter) failNLocked() int {
 	if e.ConsecutiveFailures < 1 {
 		return 3
 	}

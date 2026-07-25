@@ -279,3 +279,45 @@ func TestProbeURLBeaconUsesEmitted(t *testing.T) {
 		t.Fatal(ProbeURL(ch))
 	}
 }
+
+func TestRewriteProxyProbeURL(t *testing.T) {
+	t.Parallel()
+	pub := "http://localhost:8181"
+	internal := "http://fastproxy:8181"
+	cases := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{pub + "/stream/samsung/x.m3u8", internal + "/stream/samsung/x.m3u8"},
+		{pub, internal},
+		{"https://cdn.example/a.m3u8", "https://cdn.example/a.m3u8"},
+		{pub + "/stream/x", internal + "/stream/x"},
+	}
+	for _, tc := range cases {
+		got := RewriteProxyProbeURL(tc.in, pub, internal)
+		if got != tc.want {
+			t.Fatalf("RewriteProxyProbeURL(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+	if got := RewriteProxyProbeURL(pub+"/stream/x", pub, ""); got != pub+"/stream/x" {
+		t.Fatalf("empty internal should leave URL: %q", got)
+	}
+}
+
+func TestFFProbeCheckRewritesProxyURL(t *testing.T) {
+	// Use a stub that fails immediately so we can assert FinalURL was rewritten
+	// without needing a real stream (ffprobe exits non-zero on /bin/false).
+	p := &FFProbe{
+		Path:              "/bin/false",
+		Timeout:           time.Second,
+		ProxyPublicBase:   "http://localhost:8181",
+		ProxyInternalBase: "http://fastproxy:8181",
+	}
+	check := p.Check(context.Background(), model.Channel{
+		EmittedURL: "http://localhost:8181/stream/samsung/USBA300023G8.m3u8",
+	})
+	want := "http://fastproxy:8181/stream/samsung/USBA300023G8.m3u8"
+	if check.FinalURL != want {
+		t.Fatalf("FinalURL=%q want %q (failure_class=%s detail=%q)", check.FinalURL, want, check.FailureClass, check.Detail)
+	}
+}

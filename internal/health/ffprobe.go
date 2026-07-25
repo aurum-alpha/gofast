@@ -12,11 +12,18 @@ import (
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
+// Proxy probe bases (optional): when Public is the emit origin and Internal is
+// set, Check rewrites EmittedURL from Public → Internal for gen-side probes.
+
 // FFProbe is Health L2: decode check via ffprobe (opt-in / on-demand).
 type FFProbe struct {
 	Path        string
 	Timeout     time.Duration
 	SoftRetries int
+	// ProxyPublicBase / ProxyInternalBase rewrite EmittedURL for gen-side probes
+	// (public M3U origin → Docker-internal origin). Empty Internal = no rewrite.
+	ProxyPublicBase   string
+	ProxyInternalBase string
 }
 
 // Check runs ffprobe -show_format -show_streams -of json against ProbeURL(ch).
@@ -33,7 +40,11 @@ func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	streamURL := ProbeURL(ch)
+	var pub, internal string
+	if p != nil {
+		pub, internal = p.ProxyPublicBase, p.ProxyInternalBase
+	}
+	streamURL := RewriteProxyProbeURL(ProbeURL(ch), pub, internal)
 	if streamURL == "" {
 		return finishCheck(failCheck(check, "no_url", "channel has no stream_url or emitted_url"), start)
 	}
@@ -154,6 +165,23 @@ func ProbeURL(ch model.Channel) string {
 		return ch.EmittedURL
 	}
 	return ch.StreamURL
+}
+
+// RewriteProxyProbeURL replaces publicBase with internalBase when streamURL is
+// under the public proxy origin. Used so gen can probe via Docker DNS while M3U
+// still emits localhost/LAN for clients. Empty internalBase leaves streamURL unchanged.
+func RewriteProxyProbeURL(streamURL, publicBase, internalBase string) string {
+	if streamURL == "" || publicBase == "" || internalBase == "" {
+		return streamURL
+	}
+	if streamURL == publicBase {
+		return internalBase
+	}
+	prefix := publicBase + "/"
+	if strings.HasPrefix(streamURL, prefix) {
+		return internalBase + "/" + strings.TrimPrefix(streamURL, prefix)
+	}
+	return streamURL
 }
 
 // WithProbeURL returns a copy of ch with StreamURL/EmittedURL set to ProbeURL(ch).

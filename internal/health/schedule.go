@@ -40,6 +40,10 @@ type Scheduler struct {
 	Hosts           *HostLimiter
 	// StatePath is optional JSON for last/next Health L1/L2 (e.g. {data_dir}/channelattr/health_schedule.json).
 	StatePath string
+	// ProxyPublicBase / ProxyInternalBase are copied onto Segment/FFProbe on Reload
+	// so gen probes can rewrite client-facing proxy URLs to Docker-internal ones.
+	ProxyPublicBase   string
+	ProxyInternalBase string
 
 	mu       sync.Mutex
 	reconfig chan struct{}
@@ -104,19 +108,29 @@ func (s *Scheduler) Reload(ctx context.Context, cfg *config.Config) error {
 	s.L3Workers = cfg.HealthL2Workers()
 	s.L3HealthySample = cfg.HealthL2HealthySample()
 	s.Hosts = NewHostLimiter(cfg.HealthMaxPerHost())
+	s.ProxyPublicBase = cfg.ProxyBaseURL
+	s.ProxyInternalBase = cfg.ProxyInternalURL
 	if s.Segment != nil {
-		s.Segment = &SegmentProber{HTTP: s.Segment.HTTP, SoftRetries: cfg.HealthSoftRetries()}
+		s.Segment = &SegmentProber{
+			HTTP:              s.Segment.HTTP,
+			SoftRetries:       cfg.HealthSoftRetries(),
+			ProxyPublicBase:   s.ProxyPublicBase,
+			ProxyInternalBase: s.ProxyInternalBase,
+		}
 	}
 	s.FFProbe = &FFProbe{
-		Path:        cfg.HealthFFProbePath(),
-		Timeout:     cfg.HealthL2Timeout(),
-		SoftRetries: cfg.HealthSoftRetries(),
+		Path:              cfg.HealthFFProbePath(),
+		Timeout:           cfg.HealthL2Timeout(),
+		SoftRetries:       cfg.HealthSoftRetries(),
+		ProxyPublicBase:   s.ProxyPublicBase,
+		ProxyInternalBase: s.ProxyInternalBase,
 	}
 	s.mu.Unlock()
 
 	if s.Emitter != nil {
 		s.Emitter.SetConsecutiveFailures(cfg.HealthConsecutiveFailures())
 	}
+	cfg.WarnProxyProbeTopology()
 	if !l3WasOn && cfg.HealthL2Enabled() {
 		if err := EnsureFFProbe(cfg.HealthFFProbePath()); err != nil {
 			slog.Warn("ffprobe unavailable; Health L2 probes will fail until fixed",
@@ -509,7 +523,7 @@ func (s *Scheduler) probeL2(ctx context.Context, ch model.Channel) model.HealthC
 func (s *Scheduler) probeL3(ctx context.Context, ch model.Channel) model.HealthCheck {
 	release, err := s.acquireHost(ctx, ch)
 	if err != nil {
-		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "health_l2", FinalURL: ProbeURL(ch)}, "timeout", err.Error())
+		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "health_l2", FinalURL: s.probeTarget(ch)}, "timeout", err.Error())
 	}
 	defer release()
 	return s.ffprobe().Check(ctx, ch)
@@ -520,7 +534,18 @@ func (s *Scheduler) acquireHost(ctx context.Context, ch model.Channel) (func(), 
 	if limiter == nil {
 		return func() {}, nil
 	}
-	return limiter.Acquire(ctx, ProbeURL(ch))
+	return limiter.Acquire(ctx, s.probeTarget(ch))
+}
+
+// probeTarget is ProbeURL after optional public→internal proxy rewrite.
+func (s *Scheduler) probeTarget(ch model.Channel) string {
+	if s == nil {
+		return ProbeURL(ch)
+	}
+	s.mu.Lock()
+	pub, internal := s.ProxyPublicBase, s.ProxyInternalBase
+	s.mu.Unlock()
+	return RewriteProxyProbeURL(ProbeURL(ch), pub, internal)
 }
 
 // ProbeL1Now runs one L1 segment check and emits (on-demand; any class).

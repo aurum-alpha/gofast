@@ -3,9 +3,15 @@ package server
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/j27-aurum/gofast/internal/health"
+	"github.com/j27-aurum/gofast/internal/model"
+	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/proxyactivity"
 )
 
@@ -33,7 +39,9 @@ type proxyIngestEvent struct {
 }
 
 // ProxyEventsHandler serves POST /api/proxy/events (server-to-server from FASTProxy).
-func ProxyEventsHandler(store *proxyactivity.Store) http.HandlerFunc {
+// After glass ingest, mapped events feed the health FSM (source=playback).
+// emitter and reg may be nil (tests / glass-only).
+func ProxyEventsHandler(store *proxyactivity.Store, emitter *health.Emitter, reg *provider.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -73,7 +81,38 @@ func ProxyEventsHandler(store *proxyactivity.Store) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		applyPlaybackHealth(r, emitter, reg, events)
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func applyPlaybackHealth(r *http.Request, emitter *health.Emitter, reg *provider.Registry, events []proxyactivity.Event) {
+	if emitter == nil {
+		return
+	}
+	for _, e := range events {
+		if e.Provider == "" || e.ChannelID == "" {
+			continue
+		}
+		check, ok := health.HealthCheckFromProxyEvent(e.Kind, e.Reason, e.Message, e.Status, e.DurationMS, e.At)
+		if !ok {
+			continue
+		}
+		pid := model.ProviderID(e.Provider)
+		next, err := emitter.EmitCheck(r.Context(), pid, e.ChannelID, check)
+		if err != nil {
+			slog.Warn("proxy playback health",
+				"err", err, "provider", e.Provider, "channel_id", e.ChannelID, "kind", e.Kind)
+			continue
+		}
+		if reg == nil {
+			continue
+		}
+		feed, ok := reg.Feed(pid)
+		if !ok {
+			continue
+		}
+		feed.UpdateChannelHealth(e.ChannelID, next)
 	}
 }
 
@@ -95,5 +134,45 @@ func ProxyStatusHandler(store *proxyactivity.Store) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(st)
+	}
+}
+
+// ProxyEventsQueryHandler serves GET /api/proxy/events for the Proxy tab.
+// Query: kind, provider, failures=1, limit (default 100, max 2000).
+func ProxyEventsQueryHandler(store *proxyactivity.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if store == nil {
+			http.Error(w, "proxy activity unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		q := proxyactivity.Query{
+			Kind:     strings.TrimSpace(r.URL.Query().Get("kind")),
+			Provider: strings.TrimSpace(r.URL.Query().Get("provider")),
+		}
+		if f := r.URL.Query().Get("failures"); f == "1" || strings.EqualFold(f, "true") {
+			q.FailuresOnly = true
+		}
+		if lim := r.URL.Query().Get("limit"); lim != "" {
+			n, err := strconv.Atoi(lim)
+			if err != nil || n < 0 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+			q.Limit = n
+		}
+		events, err := store.QueryEvents(q)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if events == nil {
+			events = []proxyactivity.Event{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"events": events})
 	}
 }

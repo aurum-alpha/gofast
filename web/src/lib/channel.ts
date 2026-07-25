@@ -221,3 +221,20 @@ export function formatHealthWhen(iso?: string): string {
   if (Number.isNaN(d.getTime()) || d.getUTCFullYear() <= 1) return '—'
   return d.toLocaleString()
 }
+
+/** Human label for channelattr Event.Source (probe vs proxy playback). */
+export function formatHealthSource(source?: string): string {
+  if (!source) return '—'
+  switch (source) {
+    case 'playback':
+      return 'playback (proxy)'
+    case 'health_l1':
+      return 'health L1'
+    case 'health_l2':
+      return 'health L2'
+    case 'probe':
+      return 'probe'
+    default:
+      return source
+  }
+}

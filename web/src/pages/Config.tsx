@@ -32,7 +32,13 @@ const GENERAL_FIELDS: FieldSpec[] = [
     path: 'proxy_base_url',
     label: 'Proxy base URL',
     kind: 'text',
-    hint: 'FASTProxy origin; empty drops needs-proxy channels',
+    hint: 'FASTProxy origin for Jellyfin/M3U; empty drops needs-proxy channels',
+  },
+  {
+    path: 'proxy_internal_url',
+    label: 'Proxy internal URL',
+    kind: 'text',
+    hint: 'Optional gen-side probe origin (Docker DNS); rewrites public base for Manual L2',
   },
   { path: 'proxy_all', label: 'Proxy all streams', kind: 'bool' },
   { path: 'cache_logos', label: 'Cache logos', kind: 'bool' },
@@ -409,7 +415,11 @@ export function ConfigPage() {
                   </td>
                   <td>{p.settings.label || '—'}</td>
                   <td>{p.settings.refresh_interval || '—'}</td>
-                  <td className="number-cell">{p.settings.channel_number_offset || '—'}</td>
+                  <td className="number-cell">
+                    {p.settings.channel_number_offset != null
+                      ? p.settings.channel_number_offset
+                      : '—'}
+                  </td>
                   <td className="number-cell">{p.settings.min_channels}</td>
                   <td>
                     <Link to={`/config/providers/${encodeURIComponent(p.settings.id)}`}>

@@ -220,6 +220,9 @@ export function ProviderDetailPage() {
         >
           {refreshBusy ? 'Starting…' : 'Refresh now'}
         </button>
+        <Link to={`/config/providers/${encodeURIComponent(settings.id)}`}>
+          Edit settings
+        </Link>
       </p>
       {refreshNote ? <p className="meta" role="status">{refreshNote}</p> : null}
       {refreshError ? (
@@ -268,10 +271,29 @@ export function ProviderDetailPage() {
 
       <section className="detail-section">
         <h2>Settings</h2>
+        <p className="meta">
+          <Link to={`/config/providers/${encodeURIComponent(settings.id)}`}>
+            Edit settings
+          </Link>
+        </p>
         <dl className="settings-grid">
           <div><dt>Refresh interval</dt><dd>{settings.refresh_interval}</dd></div>
-          <div><dt>Channel offset</dt><dd>{settings.channel_number_offset || '—'}</dd></div>
-          <div><dt>Synthetic number base</dt><dd>{settings.synthesize_channel_numbers || '—'}</dd></div>
+          <div>
+            <dt>Channel offset</dt>
+            <dd>
+              {settings.channel_number_offset != null
+                ? settings.channel_number_offset
+                : '—'}
+            </dd>
+          </div>
+          <div>
+            <dt>Synthetic number base</dt>
+            <dd>
+              {settings.synthesize_channel_numbers != null
+                ? settings.synthesize_channel_numbers
+                : '—'}
+            </dd>
+          </div>
           <div><dt>Minimum channels</dt><dd>{settings.min_channels}</dd></div>
           <div><dt>Region</dt><dd>{settings.region || '—'}</dd></div>
           <div><dt>Slug template</dt><dd>{settings.slug_template || '—'}</dd></div>

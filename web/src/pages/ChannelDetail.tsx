@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   classBadge,
   displayNumber,
+  formatHealthSource,
   formatHealthWhen,
   healthBadge,
   lineupBadge,
@@ -999,7 +1000,9 @@ export function ChannelDetailPage() {
                         </td>
                         <td>{formatHealthWhen(ev.at)}</td>
                         <td>
-                          <code>{ev.source || '—'}</code>
+                          <code title={ev.source || undefined}>
+                            {formatHealthSource(ev.source)}
+                          </code>
                         </td>
                         <td>
                           <span className={`badge badge-${rowBadge.kind}`}>

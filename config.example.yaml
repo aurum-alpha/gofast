@@ -37,7 +37,14 @@ data_dir: /data
 # NATIVE remains direct by default.
 # proxy_base_url: "http://192.168.1.50:8181"
 #
-# Separate from proxy_base_url: the proxy process itself needs FASTPROXY_GEN_URL
+# Optional gen-side probe origin when proxy_base_url is only client-reachable
+# (e.g. http://localhost:8181). Manual L2 / scheduled probes rewrite EmittedURL
+# from proxy_base_url → proxy_internal_url. Compose defaults this via
+# FASTGEN_PROXY_INTERNAL_URL (http://fastproxy:8181 locally / http://proxy:8181 prod).
+# Empty = probe the public base (fine when gen and clients share a network).
+# proxy_internal_url: "http://fastproxy:8181"
+#
+# Separate from both: the proxy process itself needs FASTPROXY_GEN_URL
 # (env on the fastproxy container, e.g. http://fastgen:8180) to pull channel
 # origins and push telemetry into gen. That hop is Docker-internal; Jellyfin
 # never uses it. Gen Status shows proxy activity from those pushes.

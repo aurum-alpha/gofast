@@ -50,6 +50,9 @@ services:
     environment:
       PORT: "8180"
       FASTGEN_PROXY_BASE_URL: "${FASTGEN_PROXY_BASE_URL:-}"
+      # Gen-side health probes (Manual L2) — Docker DNS to the proxy service.
+      # Keep FASTGEN_PROXY_BASE_URL as the Jellyfin/browser-facing origin (e.g. localhost:8181).
+      FASTGEN_PROXY_INTERNAL_URL: "${FASTGEN_PROXY_INTERNAL_URL:-http://fastproxy:8181}"
       FASTGEN_PROXY_ALL: "${FASTGEN_PROXY_ALL:-false}"
       FASTGEN_BASE_URL: "${FASTGEN_BASE_URL:-}"
       # Leave empty by default so config.yaml cache_logos is not overridden
