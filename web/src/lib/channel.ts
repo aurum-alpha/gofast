@@ -107,7 +107,9 @@ export const HEALTH_FILTERS: { value: HealthFilterValue; label: string }[] = [
   { value: 'untested', label: 'Untested' },
 ]
 
-export function lineupStatus(ch: Channel): LineupStatusKind {
+export function lineupStatus(
+  ch: Pick<Channel, 'excluded' | 'emitted_url' | 'stream_url' | 'filter_reason' | 'classification'>,
+): LineupStatusKind {
   if (!ch.excluded) {
     return ch.emitted_url && ch.emitted_url !== ch.stream_url ? 'proxied' : 'in-lineup'
   }

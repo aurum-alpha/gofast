@@ -39,9 +39,12 @@ func NewHandler(origin Origin, store *Store, reporter *Reporter) *Handler {
 
 // Register mounts proxy routes on mux (after /healthz).
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /stream/{provider}/{id}", h.serveStream)
-	mux.HandleFunc("GET /s/{sid}/{n}", h.serveSessionMedia)
-	mux.HandleFunc("GET /seg/{token}", h.serveSeg)
+	mux.HandleFunc("GET /stream/{provider}/{id}", withCORS(h.serveStream))
+	mux.HandleFunc("OPTIONS /stream/{provider}/{id}", corsPreflight)
+	mux.HandleFunc("GET /s/{sid}/{n}", withCORS(h.serveSessionMedia))
+	mux.HandleFunc("OPTIONS /s/{sid}/{n}", corsPreflight)
+	mux.HandleFunc("GET /seg/{token}", withCORS(h.serveSeg))
+	mux.HandleFunc("OPTIONS /seg/{token}", corsPreflight)
 }
 
 func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {

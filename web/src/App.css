@@ -630,6 +630,38 @@
   margin-top: 1.75rem;
 }
 
+.channel-preview .preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.channel-preview .preview-source {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.channel-preview .preview-url {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.channel-preview .preview-video-wrap {
+  margin-top: 0.75rem;
+  max-width: 640px;
+  background: #0c0c0c;
+}
+
+.channel-preview .preview-video {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  aspect-ratio: 16 / 9;
+  background: #0c0c0c;
+}
+
 .detail-section h2,
 .breakdown-grid h2 {
   margin-bottom: 0.6rem;

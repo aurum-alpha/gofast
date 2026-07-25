@@ -30,6 +30,7 @@ import {
   programmeNow,
   type Programme,
 } from '../lib/channelProgrammes'
+import { ChannelPlayer } from '../components/ChannelPlayer'
 
 type EmitDraft = {
   nameOn: boolean
@@ -486,6 +487,8 @@ export function ChannelDetailPage() {
           ) : null}
         </div>
       </div>
+
+      <ChannelPlayer channel={channel} />
 
       <section className="detail-section">
         <h2>Provider vs Fastgen</h2>

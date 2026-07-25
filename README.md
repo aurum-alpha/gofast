@@ -101,6 +101,10 @@ Production files (pull-only, no secrets):
 | `/healthz` | Liveness + per-provider stale/export status |
 | `/metrics` | Prometheus text exposition |
 
+Channel detail includes an HLS **Preview** player (raw upstream vs emitted
+playback URL). Prefer Emitted when the channel is via FASTProxy — proxy
+`/stream` responses send CORS headers so the browser can audition them.
+
 ### Jellyfin Live TV (gen-only)
 
 1. Bring the stack up (prod or local compose). Local compose auto-seeds `./.data/config.yaml` from [`config.example.yaml`](config.example.yaml) on first run (a `seed-config` init service), so all providers are enabled out of the box. In prod, copy [`config.example.yaml`](config.example.yaml) to `/data/config.yaml` before first boot; otherwise fastgen generates a defaults-only `config.yaml` with **no providers enabled**.
