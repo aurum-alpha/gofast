@@ -48,6 +48,7 @@ type HealthSchedule = {
 
 type ClientAccessSummary = {
   file: string
+  hits_30d: number
   last_at?: string
   last_ip?: string
   last_status?: number
@@ -357,6 +358,7 @@ export function StatusPage() {
                 <thead>
                   <tr>
                     <th>File</th>
+                    <th>Hits (30d)</th>
                     <th>Last at</th>
                     <th>Last IP</th>
                     <th>Status</th>
@@ -368,6 +370,7 @@ export function StatusPage() {
                       <td>
                         <code>{row.file}</code>
                       </td>
+                      <td>{row.hits_30d.toLocaleString()}</td>
                       <td>{formatWhen(row.last_at)}</td>
                       <td>
                         <code>{row.last_ip || '—'}</code>
