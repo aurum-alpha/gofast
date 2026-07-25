@@ -21,7 +21,9 @@ func (t headFailTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	return t.rt.RoundTrip(req)
 }
 
-func TestHandlerBeaconE2E(t *testing.T) {
+// TestBeaconPlaylistIntegration is the J27-29 accept path: live httptest upstream
+// + proxy servers, Amagi/legacy-BEACON playlist rewrite, then segment fetch.
+func TestBeaconPlaylistIntegration(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
 			t.Fatal("HEAD to upstream")
@@ -44,40 +46,54 @@ func TestHandlerBeaconE2E(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
-	origin := NewStaticOrigin()
-	origin.Set(model.ProviderLG, "news", ChannelOrigin{
-		StreamURL:      upstream.URL + "/master.m3u8",
-		Classification: model.ClassAmagiSSAI,
-	})
-	store := NewStore()
-	rep := NewReporter("", store)
-	h := NewHandler(origin, store, rep)
-	// Force playlist/segment clients through head-failing default transport via custom servers only.
-	h.segments.http.Transport = headFailTransport{rt: http.DefaultTransport}
+	for _, class := range []model.Classification{model.ClassAmagiSSAI, "BEACON"} {
+		t.Run(string(class), func(t *testing.T) {
+			origin := NewStaticOrigin()
+			origin.Set(model.ProviderLG, "news", ChannelOrigin{
+				StreamURL:      upstream.URL + "/master.m3u8",
+				Classification: class,
+			})
+			store := NewStore()
+			rep := NewReporter("", store)
+			h := NewHandler(origin, store, rep)
+			h.segments.http.Transport = headFailTransport{rt: http.DefaultTransport}
 
-	mux := http.NewServeMux()
-	h.Register(mux)
+			mux := http.NewServeMux()
+			h.Register(mux)
+			proxySrv := httptest.NewServer(mux)
+			t.Cleanup(proxySrv.Close)
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/stream/lg/news.m3u8", nil)
-	req.Host = "proxy.test"
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("stream status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	body := rec.Body.String()
-	lines := nonCommentURILines(body)
-	if len(lines) != 1 || !strings.HasPrefix(lines[0], "http://proxy.test/seg/") {
-		t.Fatalf("rewritten media lines=%v body=%s", lines, body)
-	}
-	segURL := lines[0]
-	// Hit segment via handler path.
-	path := strings.TrimPrefix(segURL, "http://proxy.test")
-	rec2 := httptest.NewRecorder()
-	req2 := httptest.NewRequest(http.MethodGet, path, nil)
-	mux.ServeHTTP(rec2, req2)
-	if rec2.Code != http.StatusOK || rec2.Body.String() != "TSDATA" {
-		t.Fatalf("seg status=%d body=%q", rec2.Code, rec2.Body.String())
+			streamURL := proxySrv.URL + "/stream/lg/news.m3u8"
+			resp, err := http.Get(streamURL)
+			if err != nil {
+				t.Fatalf("GET stream: %v", err)
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("read stream: %v", err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("stream status=%d body=%s", resp.StatusCode, body)
+			}
+			lines := nonCommentURILines(string(body))
+			if len(lines) != 1 || !strings.HasPrefix(lines[0], proxySrv.URL+"/seg/") {
+				t.Fatalf("rewritten media lines=%v body=%s", lines, body)
+			}
+
+			segResp, err := http.Get(lines[0])
+			if err != nil {
+				t.Fatalf("GET seg: %v", err)
+			}
+			defer segResp.Body.Close()
+			segBody, err := io.ReadAll(segResp.Body)
+			if err != nil {
+				t.Fatalf("read seg: %v", err)
+			}
+			if segResp.StatusCode != http.StatusOK || string(segBody) != "TSDATA" {
+				t.Fatalf("seg status=%d body=%q", segResp.StatusCode, segBody)
+			}
+		})
 	}
 }
 
