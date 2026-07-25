@@ -97,18 +97,20 @@ func main() {
 	probeClient := httpx.NewClient(cfg.Timeouts.HTTPClient, 1)
 	softRetries := cfg.HealthSoftRetries()
 	sched := &health.Scheduler{
-		Reg:             reg,
-		Emitter:         healthEmitter,
-		Segment:         &health.SegmentProber{HTTP: probeClient, SoftRetries: softRetries},
-		FFProbe:         &health.FFProbe{Path: cfg.HealthFFProbePath(), Timeout: cfg.HealthL2Timeout(), SoftRetries: softRetries},
-		L2Every:         cfg.HealthL1Interval(),
-		L3Every:         cfg.HealthL2Interval(),
-		L3On:            cfg.HealthL2Enabled(),
-		L2Workers:       cfg.HealthL1Workers(),
-		L3Workers:       cfg.HealthL2Workers(),
-		L3HealthySample: cfg.HealthL2HealthySample(),
-		Hosts:           health.NewHostLimiter(cfg.HealthMaxPerHost()),
-		StatePath:       filepath.Join(cfg.DataDir, "channelattr", "health_schedule.json"),
+		Reg:               reg,
+		Emitter:           healthEmitter,
+		Segment:           &health.SegmentProber{HTTP: probeClient, SoftRetries: softRetries, ProxyPublicBase: cfg.ProxyBaseURL, ProxyInternalBase: cfg.ProxyInternalURL},
+		FFProbe:           &health.FFProbe{Path: cfg.HealthFFProbePath(), Timeout: cfg.HealthL2Timeout(), SoftRetries: softRetries, ProxyPublicBase: cfg.ProxyBaseURL, ProxyInternalBase: cfg.ProxyInternalURL},
+		L2Every:           cfg.HealthL1Interval(),
+		L3Every:           cfg.HealthL2Interval(),
+		L3On:              cfg.HealthL2Enabled(),
+		L2Workers:         cfg.HealthL1Workers(),
+		L3Workers:         cfg.HealthL2Workers(),
+		L3HealthySample:   cfg.HealthL2HealthySample(),
+		Hosts:             health.NewHostLimiter(cfg.HealthMaxPerHost()),
+		StatePath:         filepath.Join(cfg.DataDir, "channelattr", "health_schedule.json"),
+		ProxyPublicBase:   cfg.ProxyBaseURL,
+		ProxyInternalBase: cfg.ProxyInternalURL,
 	}
 	go sched.Run(ctx)
 	if cfg.HealthL2Enabled() {
@@ -165,8 +167,9 @@ func main() {
 			mux.HandleFunc("GET /metrics", server.MetricsHandler(reg))
 			mux.HandleFunc("GET /api/client-access", server.ClientAccessHandler(access))
 			mux.HandleFunc("GET /api/proxy/origin/{provider}/{normalizedId}", server.ProxyOriginHandler(reg))
-			mux.HandleFunc("POST /api/proxy/events", server.ProxyEventsHandler(proxyAct))
+			mux.HandleFunc("POST /api/proxy/events", server.ProxyEventsHandler(proxyAct, healthEmitter, reg))
 			mux.HandleFunc("GET /api/proxy/status", server.ProxyStatusHandler(proxyAct))
+			mux.HandleFunc("GET /api/proxy/events", server.ProxyEventsQueryHandler(proxyAct))
 			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(cc))
 			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc, access))
 			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc, access))

@@ -28,6 +28,9 @@ type SegmentProber struct {
 	// SoftRetries is extra attempts after a soft-fail (timeout/5xx/reset).
 	// Default 1 when unset via zero — callers should set explicitly from config.
 	SoftRetries int
+	// ProxyPublicBase / ProxyInternalBase rewrite EmittedURL for gen-side probes.
+	ProxyPublicBase   string
+	ProxyInternalBase string
 }
 
 // Check implements Source for a segment probe against ProbeURL(ch).
@@ -38,7 +41,7 @@ func (p *SegmentProber) Check(ctx context.Context, ch model.Channel) model.Healt
 	if p == nil || p.HTTP == nil {
 		return finishCheck(failCheck(check, "no_client", "segment prober has no HTTP client"), start)
 	}
-	streamURL := ProbeURL(ch)
+	streamURL := RewriteProxyProbeURL(ProbeURL(ch), p.ProxyPublicBase, p.ProxyInternalBase)
 	if streamURL == "" {
 		return finishCheck(failCheck(check, "no_url", "channel has no stream_url or emitted_url"), start)
 	}

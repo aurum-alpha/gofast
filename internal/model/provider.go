@@ -8,6 +8,8 @@ import (
 	"slices"
 	"sort"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ProviderSettings holds the config overlay for one known provider (providers.<id>).
@@ -18,6 +20,8 @@ import (
 // YAML tags load config; JSON tags are the HTTP/API shape. encoding/json does
 // not stringify time.Duration, so MarshalJSON/UnmarshalJSON handle
 // refresh_interval as a Go duration string and enabled as a resolved bool.
+// UnmarshalYAML tracks presence for int fields where 0 is a valid overlay
+// (channel_number_offset, synthesize_channel_numbers).
 type ProviderSettings struct {
 	// ID is the map key (providers.<id>). Not present inside the YAML block.
 	ID ProviderID `yaml:"-" json:"id"`
@@ -61,6 +65,10 @@ type ProviderSettings struct {
 	// ChannelEmit customizes what fastgen emits per normalized channel id
 	// (presentation + include/exclude). Keys may contain dots; persist as a map.
 	ChannelEmit map[string]ChannelEmit `yaml:"channel_emit,omitempty" json:"channel_emit,omitempty"`
+
+	// Presence flags for int overlays where 0 is meaningful (set by UnmarshalYAML).
+	channelNumberOffsetSet      bool `yaml:"-" json:"-"`
+	synthesizeChannelNumbersSet bool `yaml:"-" json:"-"`
 }
 
 // providerSettingsJSON is the explicit JSON wire shape for ProviderSettings.
@@ -119,8 +127,9 @@ func (p ProviderSettings) MarshalJSON() ([]byte, error) {
 }
 
 // Merge overlays the set fields of o (a YAML overlay) onto p (package defaults)
-// and returns the effective settings. Zero-valued overlay fields keep the default.
-// ID is never taken from the overlay (it lives on the map key / package default).
+// and returns the effective settings. Zero-valued overlay fields keep the default,
+// except channel_number_offset / synthesize_channel_numbers when YAML set them
+// explicitly (including 0). ID is never taken from the overlay.
 func (p ProviderSettings) Merge(o ProviderSettings) ProviderSettings {
 	if o.Enabled != nil {
 		p.Enabled = o.Enabled
@@ -128,10 +137,10 @@ func (p ProviderSettings) Merge(o ProviderSettings) ProviderSettings {
 	if o.Label != "" {
 		p.Label = o.Label
 	}
-	if o.ChannelNumberOffset != 0 {
+	if o.channelNumberOffsetSet || o.ChannelNumberOffset != 0 {
 		p.ChannelNumberOffset = o.ChannelNumberOffset
 	}
-	if o.SynthesizeChannelNumbers != 0 {
+	if o.synthesizeChannelNumbersSet || o.SynthesizeChannelNumbers != 0 {
 		p.SynthesizeChannelNumbers = o.SynthesizeChannelNumbers
 	}
 	if o.MinChannels != 0 {
@@ -222,6 +231,55 @@ func (p *ProviderSettings) CompileExclusions() error {
 		compiled = append(compiled, re)
 	}
 	p.ExclusionRegexes = compiled
+	return nil
+}
+
+// UnmarshalYAML loads a providers.<id> block and records which int overlays were
+// present so Merge can honor explicit zeros (e.g. channel_number_offset: 0).
+func (p *ProviderSettings) UnmarshalYAML(value *yaml.Node) error {
+	var raw struct {
+		Enabled                  *bool                  `yaml:"enabled"`
+		Label                    string                 `yaml:"label"`
+		ChannelNumberOffset      *int                   `yaml:"channel_number_offset"`
+		SynthesizeChannelNumbers *int                   `yaml:"synthesize_channel_numbers"`
+		MinChannels              int                    `yaml:"min_channels"`
+		RefreshInterval          time.Duration          `yaml:"refresh_interval"`
+		Exclusions               []string               `yaml:"exclusions"`
+		SlugTemplate             string                 `yaml:"slug_template"`
+		Region                   string                 `yaml:"region"`
+		ChannelsURL              string                 `yaml:"channels_url"`
+		EPGURL                   string                 `yaml:"epg_url"`
+		M3UURL                   string                 `yaml:"m3u_url"`
+		UserAgent                string                 `yaml:"user_agent"`
+		Headers                  map[string]string      `yaml:"headers"`
+		ChannelEmit              map[string]ChannelEmit `yaml:"channel_emit"`
+	}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*p = ProviderSettings{
+		Enabled:         raw.Enabled,
+		Label:           raw.Label,
+		MinChannels:     raw.MinChannels,
+		RefreshInterval: raw.RefreshInterval,
+		Exclusions:      raw.Exclusions,
+		SlugTemplate:    raw.SlugTemplate,
+		Region:          raw.Region,
+		ChannelsURL:     raw.ChannelsURL,
+		EPGURL:          raw.EPGURL,
+		M3UURL:          raw.M3UURL,
+		UserAgent:       raw.UserAgent,
+		Headers:         raw.Headers,
+		ChannelEmit:     raw.ChannelEmit,
+	}
+	if raw.ChannelNumberOffset != nil {
+		p.ChannelNumberOffset = *raw.ChannelNumberOffset
+		p.channelNumberOffsetSet = true
+	}
+	if raw.SynthesizeChannelNumbers != nil {
+		p.SynthesizeChannelNumbers = *raw.SynthesizeChannelNumbers
+		p.synthesizeChannelNumbersSet = true
+	}
 	return nil
 }
 

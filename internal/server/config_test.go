@@ -18,7 +18,7 @@ import (
 func newConfigStore(t *testing.T, body string) *config.Store {
 	t.Helper()
 	for _, env := range []string{
-		"PORT", "FASTGEN_BASE_URL", "FASTGEN_DATA_DIR", "FASTGEN_PROXY_BASE_URL",
+		"PORT", "FASTGEN_BASE_URL", "FASTGEN_DATA_DIR", "FASTGEN_PROXY_BASE_URL", "FASTGEN_PROXY_INTERNAL_URL",
 		"FASTGEN_PROXY_ALL", "FASTGEN_CACHE_LOGOS",
 	} {
 		t.Setenv(env, "")

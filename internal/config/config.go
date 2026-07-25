@@ -31,19 +31,23 @@ const (
 
 // Config is the configuration surface for fastgen.
 type Config struct {
-	Listen       string                                      `yaml:"listen"`
-	BaseURL      string                                      `yaml:"base_url"`
-	DataDir      string                                      `yaml:"data_dir"`
-	ProxyBaseURL string                                      `yaml:"proxy_base_url"`
-	ProxyAll     *bool                                       `yaml:"proxy_all"`
-	CacheLogos   *bool                                       `yaml:"cache_logos"`
-	ArtworkTLS   map[string]ArtworkTLS                       `yaml:"artwork_tls"`
-	Timeouts     Timeouts                                    `yaml:"timeouts"`
-	Logging      Logging                                     `yaml:"logging"`
-	Health       Health                                      `yaml:"health"`
-	Groups       groups.Doc                                  `yaml:"groups"`
-	Categories   categories.Doc                              `yaml:"categories"`
-	Providers    map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
+	Listen       string `yaml:"listen"`
+	BaseURL      string `yaml:"base_url"`
+	DataDir      string `yaml:"data_dir"`
+	ProxyBaseURL string `yaml:"proxy_base_url"`
+	// ProxyInternalURL is an optional gen-side origin for health probes when
+	// ProxyBaseURL is only reachable by clients (e.g. localhost). Empty = probe
+	// the public base. Does not affect M3U emit.
+	ProxyInternalURL string                                      `yaml:"proxy_internal_url"`
+	ProxyAll         *bool                                       `yaml:"proxy_all"`
+	CacheLogos       *bool                                       `yaml:"cache_logos"`
+	ArtworkTLS       map[string]ArtworkTLS                       `yaml:"artwork_tls"`
+	Timeouts         Timeouts                                    `yaml:"timeouts"`
+	Logging          Logging                                     `yaml:"logging"`
+	Health           Health                                      `yaml:"health"`
+	Groups           groups.Doc                                  `yaml:"groups"`
+	Categories       categories.Doc                              `yaml:"categories"`
+	Providers        map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
 }
 
 // Health holds channel-health FSM and probe knobs (attr store is separate).
@@ -202,6 +206,13 @@ func New(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: proxy_base_url: %w", err)
 	}
+	cfg.ProxyInternalURL, err = NormalizeProxyBaseURL(cfg.ProxyInternalURL)
+	if err != nil {
+		return nil, fmt.Errorf("config: proxy_internal_url: %w", err)
+	}
+	if cfg.ProxyInternalURL != "" && cfg.ProxyBaseURL == "" {
+		return nil, fmt.Errorf("config: proxy_internal_url requires proxy_base_url")
+	}
 	if cfg.ProxyAllEnabled() && cfg.ProxyBaseURL == "" {
 		return nil, fmt.Errorf("config: proxy_all requires proxy_base_url")
 	}
@@ -284,6 +295,9 @@ func envOverlay() (*Config, error) {
 	}
 	if v := os.Getenv("FASTGEN_PROXY_BASE_URL"); v != "" {
 		o.ProxyBaseURL = v
+	}
+	if v := os.Getenv("FASTGEN_PROXY_INTERNAL_URL"); v != "" {
+		o.ProxyInternalURL = v
 	}
 	if v := os.Getenv("FASTGEN_PROXY_ALL"); v != "" {
 		parsed, err := strconv.ParseBool(v)
@@ -422,6 +436,7 @@ func EnvShadow() map[string]string {
 	shadow("base_url", "FASTGEN_BASE_URL")
 	shadow("data_dir", "FASTGEN_DATA_DIR")
 	shadow("proxy_base_url", "FASTGEN_PROXY_BASE_URL")
+	shadow("proxy_internal_url", "FASTGEN_PROXY_INTERNAL_URL")
 	shadow("proxy_all", "FASTGEN_PROXY_ALL")
 	shadow("cache_logos", "FASTGEN_CACHE_LOGOS")
 	shadow("health.consecutive_failures", "FASTGEN_HEALTH_CONSECUTIVE_FAILURES")
@@ -459,6 +474,7 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"listen", c.Listen,
 		"base_url", c.BaseURL,
 		"proxy_base_url", c.ProxyBaseURL,
+		"proxy_internal_url", c.ProxyInternalURL,
 		"proxy_all", c.ProxyAllEnabled(),
 		"cache_logos", c.CacheLogosEnabled(),
 		"data_dir", c.DataDir,
@@ -469,6 +485,25 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"health_ffprobe_path", c.HealthFFProbePath(),
 		"provider_overlays", len(c.Providers),
 	)
+	c.WarnProxyProbeTopology()
+}
+
+// WarnProxyProbeTopology logs when public proxy_base_url is loopback but no
+// proxy_internal_url is set — gen-side probes will fail inside Docker.
+func (c *Config) WarnProxyProbeTopology() {
+	if c == nil || c.ProxyBaseURL == "" || c.ProxyInternalURL != "" {
+		return
+	}
+	parsed, err := url.Parse(c.ProxyBaseURL)
+	if err != nil {
+		return
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		return
+	}
+	slog.Warn("proxy_base_url is loopback but proxy_internal_url is unset; gen-side health probes (Manual L2 / scheduled) cannot reach the proxy inside Docker — set FASTGEN_PROXY_INTERNAL_URL (e.g. http://fastproxy:8181)",
+		"proxy_base_url", c.ProxyBaseURL)
 }
 
 // merge overlays non-zero / non-empty fields from o onto c.
@@ -488,6 +523,9 @@ func (c *Config) merge(o *Config) {
 	}
 	if o.ProxyBaseURL != "" {
 		c.ProxyBaseURL = o.ProxyBaseURL
+	}
+	if o.ProxyInternalURL != "" {
+		c.ProxyInternalURL = o.ProxyInternalURL
 	}
 	if o.ProxyAll != nil {
 		value := *o.ProxyAll

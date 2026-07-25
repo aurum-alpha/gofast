@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestProviderJSONRoundTrip(t *testing.T) {
@@ -102,5 +104,30 @@ func TestMergeConfiguredResolvesPresenceAndEnabled(t *testing.T) {
 	disabled := false
 	if got := defaults.MergeConfigured(ProviderSettings{Enabled: &disabled}, true); got.IsEnabled() {
 		t.Fatalf("explicit false should disable: %+v", got)
+	}
+}
+
+func TestMergeHonorsExplicitZeroChannelNumberOffset(t *testing.T) {
+	defaults := ProviderSettings{ChannelNumberOffset: 1000, SynthesizeChannelNumbers: 5000}
+	var overlay ProviderSettings
+	if err := yaml.Unmarshal([]byte("channel_number_offset: 0\nsynthesize_channel_numbers: 0\n"), &overlay); err != nil {
+		t.Fatal(err)
+	}
+	got := defaults.Merge(overlay)
+	if got.ChannelNumberOffset != 0 {
+		t.Fatalf("explicit YAML 0 offset should win: %+v", got)
+	}
+	if got.SynthesizeChannelNumbers != 0 {
+		t.Fatalf("explicit YAML 0 synthesize base should win: %+v", got)
+	}
+
+	// Absent keys still keep package defaults.
+	var empty ProviderSettings
+	if err := yaml.Unmarshal([]byte("label: Custom\n"), &empty); err != nil {
+		t.Fatal(err)
+	}
+	kept := defaults.Merge(empty)
+	if kept.ChannelNumberOffset != 1000 || kept.SynthesizeChannelNumbers != 5000 || kept.Label != "Custom" {
+		t.Fatalf("absent ints should keep defaults: %+v", kept)
 	}
 }

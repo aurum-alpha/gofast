@@ -195,6 +195,7 @@ func configFields(cfg *config.Config, fileKeys map[string]bool, writable bool) m
 	add("data_dir", cfg.DataDir)
 	add("base_url", cfg.BaseURL)
 	add("proxy_base_url", cfg.ProxyBaseURL)
+	add("proxy_internal_url", cfg.ProxyInternalURL)
 	add("proxy_all", cfg.ProxyAllEnabled())
 	add("cache_logos", cfg.CacheLogosEnabled())
 	add("timeouts.http_client", cfg.Timeouts.HTTPClient.String())

@@ -1,6 +1,8 @@
-// Package proxyactivity persists FASTProxy telemetry that gen shows on Status.
-// Proxy itself stays headless; this SQLite DB under {data_dir}/cache is the
-// control-plane glass for rewrite/segment activity (not the health FSM).
+// Package proxyactivity persists FASTProxy telemetry that gen shows on Status
+// and the Proxy tab. Proxy itself stays headless; this SQLite DB under
+// {data_dir}/cache is the control-plane glass. Playlist/origin failures also
+// feed the health FSM via the ingest handler (source=playback) — this package
+// only stores the glass rows.
 package proxyactivity
 
 import (
@@ -9,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,11 +19,20 @@ import (
 )
 
 const (
-	fileName   = "proxy_activity.db"
-	retention  = 48 * time.Hour
-	pruneEvery = time.Minute
-	recentMax  = 100
+	fileName      = "proxy_activity.db"
+	retention     = 48 * time.Hour
+	pruneEvery    = time.Minute
+	recentDefault = 100
+	queryMaxCap   = 2000
 )
+
+// Query filters Event results. Zero values mean unrestricted.
+type Query struct {
+	Kind         string
+	Provider     string
+	FailuresOnly bool
+	Limit        int
+}
 
 // Event is one ingested proxy telemetry row.
 type Event struct {
@@ -52,13 +64,14 @@ type Snapshot struct {
 	EventsDropped   uint64    `json:"events_dropped"`
 }
 
-// Status is the API view for the Status Proxy glass.
+// Status is the API view for the Status / Proxy glass.
 type Status struct {
-	Snapshot   *Snapshot `json:"snapshot,omitempty"`
-	Heartbeat  time.Time `json:"heartbeat,omitempty"`
-	Stale      bool      `json:"stale"`
-	Recent     []Event   `json:"recent"`
-	RecentFail []Event   `json:"recent_failures"`
+	Snapshot       *Snapshot `json:"snapshot,omitempty"`
+	Heartbeat      time.Time `json:"heartbeat,omitempty"`
+	HeartbeatCount uint64    `json:"heartbeat_count"`
+	Stale          bool      `json:"stale"`
+	Recent         []Event   `json:"recent"`
+	RecentFail     []Event   `json:"recent_failures"`
 }
 
 // Store is SQLite-backed proxy activity under cacheDir/proxy_activity.db.
@@ -114,21 +127,26 @@ CREATE TABLE IF NOT EXISTS proxy_event (
 );
 CREATE INDEX IF NOT EXISTS proxy_event_at ON proxy_event(at DESC);
 CREATE INDEX IF NOT EXISTS proxy_event_kind_at ON proxy_event(kind, at DESC);
+CREATE INDEX IF NOT EXISTS proxy_event_provider_at ON proxy_event(provider, at DESC);
 
 CREATE TABLE IF NOT EXISTS proxy_snapshot (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   proxy_id TEXT NOT NULL,
   at TEXT NOT NULL,
-  json TEXT NOT NULL
+  json TEXT NOT NULL,
+  heartbeat_count INTEGER NOT NULL DEFAULT 0
 );
 `)
 	if err != nil {
 		return fmt.Errorf("proxyactivity: migrate: %w", err)
 	}
+	// Older DBs created before heartbeat_count.
+	_, _ = s.db.Exec(`ALTER TABLE proxy_snapshot ADD COLUMN heartbeat_count INTEGER NOT NULL DEFAULT 0`)
 	return nil
 }
 
 // IngestBatch appends events and optionally replaces the current snapshot.
+// Each snapshot upsert increments heartbeat_count.
 func (s *Store) IngestBatch(proxyID string, events []Event, snap *Snapshot) error {
 	if s == nil {
 		return fmt.Errorf("proxyactivity: nil store")
@@ -170,8 +188,12 @@ VALUES(?,?,?,?,?,?,?,?,?,?)`,
 			return err
 		}
 		_, err = tx.Exec(`
-INSERT INTO proxy_snapshot(id, proxy_id, at, json) VALUES(1,?,?,?)
-ON CONFLICT(id) DO UPDATE SET proxy_id=excluded.proxy_id, at=excluded.at, json=excluded.json`,
+INSERT INTO proxy_snapshot(id, proxy_id, at, json, heartbeat_count) VALUES(1,?,?,?,1)
+ON CONFLICT(id) DO UPDATE SET
+  proxy_id=excluded.proxy_id,
+  at=excluded.at,
+  json=excluded.json,
+  heartbeat_count=proxy_snapshot.heartbeat_count + 1`,
 			snap.ProxyID, snap.At.UTC().Format(time.RFC3339Nano), string(raw))
 		if err != nil {
 			return fmt.Errorf("proxyactivity: upsert snapshot: %w", err)
@@ -184,15 +206,16 @@ ON CONFLICT(id) DO UPDATE SET proxy_id=excluded.proxy_id, at=excluded.at, json=e
 	return nil
 }
 
-// StatusView returns snapshot + recent events for the UI.
+// StatusView returns snapshot + compact recent events for the Status glass.
 func (s *Store) StatusView() (Status, error) {
 	var out Status
 	if s == nil {
 		return out, fmt.Errorf("proxyactivity: nil store")
 	}
-	row := s.db.QueryRow(`SELECT proxy_id, at, json FROM proxy_snapshot WHERE id = 1`)
+	row := s.db.QueryRow(`SELECT proxy_id, at, json, heartbeat_count FROM proxy_snapshot WHERE id = 1`)
 	var proxyID, atStr, raw string
-	err := row.Scan(&proxyID, &atStr, &raw)
+	var hbCount uint64
+	err := row.Scan(&proxyID, &atStr, &raw, &hbCount)
 	if err == nil {
 		var snap Snapshot
 		if json.Unmarshal([]byte(raw), &snap) == nil {
@@ -201,6 +224,7 @@ func (s *Store) StatusView() (Status, error) {
 			}
 			out.Snapshot = &snap
 		}
+		out.HeartbeatCount = hbCount
 		if t, e := time.Parse(time.RFC3339Nano, atStr); e == nil {
 			out.Heartbeat = t
 			out.Stale = time.Since(t) > 2*time.Minute
@@ -211,12 +235,12 @@ func (s *Store) StatusView() (Status, error) {
 		out.Stale = true
 	}
 
-	recent, err := s.recent("", recentMax)
+	recent, err := s.QueryEvents(Query{Limit: recentDefault})
 	if err != nil {
 		return out, err
 	}
 	out.Recent = recent
-	fails, err := s.recentFailures(40)
+	fails, err := s.QueryEvents(Query{FailuresOnly: true, Limit: 40})
 	if err != nil {
 		return out, err
 	}
@@ -224,34 +248,58 @@ func (s *Store) StatusView() (Status, error) {
 	return out, nil
 }
 
-func (s *Store) recent(kind string, limit int) ([]Event, error) {
-	if limit <= 0 || limit > recentMax {
-		limit = recentMax
+// QueryEvents returns recent events matching q (newest first).
+func (s *Store) QueryEvents(q Query) ([]Event, error) {
+	if s == nil {
+		return nil, fmt.Errorf("proxyactivity: nil store")
 	}
-	var rows *sql.Rows
-	var err error
-	if kind == "" {
-		rows, err = s.db.Query(`
-SELECT kind, at, provider, channel_id, reason, message, status, duration_ms, bytes, attrs
-FROM proxy_event ORDER BY at DESC LIMIT ?`, limit)
-	} else {
-		rows, err = s.db.Query(`
-SELECT kind, at, provider, channel_id, reason, message, status, duration_ms, bytes, attrs
-FROM proxy_event WHERE kind = ? ORDER BY at DESC LIMIT ?`, kind, limit)
+	limit := q.Limit
+	if limit <= 0 {
+		limit = recentDefault
 	}
-	if err != nil {
-		return nil, err
+	if limit > queryMaxCap {
+		limit = queryMaxCap
 	}
-	defer rows.Close()
-	return scanEvents(rows)
-}
+	kind := strings.TrimSpace(q.Kind)
+	provider := strings.TrimSpace(q.Provider)
 
-func (s *Store) recentFailures(limit int) ([]Event, error) {
-	rows, err := s.db.Query(`
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	switch {
+	case q.FailuresOnly && provider != "":
+		rows, err = s.db.Query(`
+SELECT kind, at, provider, channel_id, reason, message, status, duration_ms, bytes, attrs
+FROM proxy_event
+WHERE kind IN ('playlist_fail','seg_fail','origin_miss') AND provider = ?
+ORDER BY at DESC LIMIT ?`, provider, limit)
+	case q.FailuresOnly:
+		rows, err = s.db.Query(`
 SELECT kind, at, provider, channel_id, reason, message, status, duration_ms, bytes, attrs
 FROM proxy_event
 WHERE kind IN ('playlist_fail','seg_fail','origin_miss')
 ORDER BY at DESC LIMIT ?`, limit)
+	case kind != "" && provider != "":
+		rows, err = s.db.Query(`
+SELECT kind, at, provider, channel_id, reason, message, status, duration_ms, bytes, attrs
+FROM proxy_event WHERE kind = ? AND provider = ?
+ORDER BY at DESC LIMIT ?`, kind, provider, limit)
+	case kind != "":
+		rows, err = s.db.Query(`
+SELECT kind, at, provider, channel_id, reason, message, status, duration_ms, bytes, attrs
+FROM proxy_event WHERE kind = ?
+ORDER BY at DESC LIMIT ?`, kind, limit)
+	case provider != "":
+		rows, err = s.db.Query(`
+SELECT kind, at, provider, channel_id, reason, message, status, duration_ms, bytes, attrs
+FROM proxy_event WHERE provider = ?
+ORDER BY at DESC LIMIT ?`, provider, limit)
+	default:
+		rows, err = s.db.Query(`
+SELECT kind, at, provider, channel_id, reason, message, status, duration_ms, bytes, attrs
+FROM proxy_event ORDER BY at DESC LIMIT ?`, limit)
+	}
 	if err != nil {
 		return nil, err
 	}

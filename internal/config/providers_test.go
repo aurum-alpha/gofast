@@ -98,6 +98,22 @@ providers:
 	}
 }
 
+func TestNewExplicitZeroChannelNumberOffset(t *testing.T) {
+	clearDeployEnv(t)
+	path := writeConfig(t, `
+providers:
+  lg:
+    channel_number_offset: 0
+`)
+	cfg, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Providers["lg"].ChannelNumberOffset; got != 0 {
+		t.Fatalf("overlay offset: got %d want 0", got)
+	}
+}
+
 func TestNewBadExclusionRegex(t *testing.T) {
 	clearDeployEnv(t)
 	path := writeConfig(t, `

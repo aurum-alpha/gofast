@@ -23,6 +23,7 @@ func clearDeployEnv(t *testing.T) {
 	t.Setenv("FASTGEN_BASE_URL", "")
 	t.Setenv("FASTGEN_DATA_DIR", "")
 	t.Setenv("FASTGEN_PROXY_BASE_URL", "")
+	t.Setenv("FASTGEN_PROXY_INTERNAL_URL", "")
 	t.Setenv("FASTGEN_PROXY_ALL", "")
 	t.Setenv("FASTGEN_CACHE_LOGOS", "")
 	t.Setenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES", "")
@@ -141,6 +142,36 @@ proxy_all: true
 	}
 	if cfg.ProxyBaseURL != "https://proxy.from-env" || cfg.ProxyAllEnabled() {
 		t.Errorf("proxy env should win: base=%q all=%v", cfg.ProxyBaseURL, cfg.ProxyAllEnabled())
+	}
+}
+
+func TestNewProxyInternalURL(t *testing.T) {
+	clearDeployEnv(t)
+	path := writeConfig(t, `
+proxy_base_url: "http://localhost:8181"
+proxy_internal_url: "http://fastproxy:8181/"
+`)
+	cfg, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProxyBaseURL != "http://localhost:8181" || cfg.ProxyInternalURL != "http://fastproxy:8181" {
+		t.Fatalf("proxy bases: public=%q internal=%q", cfg.ProxyBaseURL, cfg.ProxyInternalURL)
+	}
+
+	t.Setenv("FASTGEN_PROXY_INTERNAL_URL", "http://proxy:8181///")
+	cfg, err = New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProxyInternalURL != "http://proxy:8181" {
+		t.Fatalf("env should win: %q", cfg.ProxyInternalURL)
+	}
+
+	clearDeployEnv(t)
+	_, err = New(writeConfig(t, `proxy_internal_url: "http://fastproxy:8181"`))
+	if err == nil || !strings.Contains(err.Error(), "proxy_internal_url requires proxy_base_url") {
+		t.Fatalf("expected require public base, got %v", err)
 	}
 }
 

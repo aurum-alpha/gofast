@@ -87,6 +87,7 @@ type ProxyEvent = {
 type ProxyStatusResponse = {
   snapshot?: ProxySnapshot | null
   heartbeat?: string
+  heartbeat_count?: number
   stale?: boolean
   recent?: ProxyEvent[]
   recent_failures?: ProxyEvent[]
@@ -102,6 +103,17 @@ function formatWhen(value?: string): string {
   const date = validDate(value)
   if (!date) return '—'
   return date.toLocaleString()
+}
+
+function formatAge(value?: string): string {
+  const date = validDate(value)
+  if (!date) return '—'
+  const sec = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000))
+  if (sec < 60) return `${sec}s ago`
+  const min = Math.round(sec / 60)
+  if (min < 60) return `${min}m ago`
+  const hr = Math.round(min / 60)
+  return `${hr}h ago`
 }
 
 function Metric({
@@ -387,79 +399,50 @@ export function StatusPage() {
 
           <h2 className="status-section-title">Proxy</h2>
           <p className="meta">
-            FASTProxy is headless; this is the control-plane glass for rewrite
-            and segment activity (not channel health badges).
+            <Link to="/proxy">Open Proxy</Link>
+            {' · '}
+            Playlist/origin failures also update channel health (
+            <code>source=playback</code>).
           </p>
-          {!proxyStatus || (!proxyStatus.snapshot && (proxyStatus.recent?.length ?? 0) === 0) ? (
+          {!proxyStatus ||
+          (!proxyStatus.snapshot && (proxyStatus.heartbeat_count ?? 0) === 0) ? (
             <div className="empty-panel" role="status">
-              <p>No proxy heartbeat yet. Enable the compose proxy profile and set proxy_base_url.</p>
+              <p>
+                No proxy heartbeat yet. Enable the compose proxy profile and set
+                proxy_base_url.
+              </p>
             </div>
           ) : (
-            <>
-              <div className="stat-row">
-                <Metric
-                  label="Heartbeat"
-                  value={formatWhen(proxyStatus.heartbeat)}
-                  warn={Boolean(proxyStatus.stale)}
-                  title={proxyStatus.stale ? 'Snapshot older than 2 minutes' : proxyStatus.snapshot?.proxy_id}
-                />
-                <Metric
-                  label="Sessions"
-                  value={proxyStatus.snapshot?.active_sessions ?? 0}
-                />
-                <Metric
-                  label="Seg tokens"
-                  value={proxyStatus.snapshot?.active_seg_tokens ?? 0}
-                />
-                <Metric
-                  label="Playlist fail"
-                  value={proxyStatus.snapshot?.playlist_fail ?? 0}
-                  warn={(proxyStatus.snapshot?.playlist_fail ?? 0) > 0}
-                />
-                <Metric
-                  label="Seg fail"
-                  value={proxyStatus.snapshot?.seg_fail ?? 0}
-                  warn={(proxyStatus.snapshot?.seg_fail ?? 0) > 0}
-                />
-              </div>
-              {(proxyStatus.recent_failures?.length ?? 0) > 0 ? (
-                <div className="table-wrap">
-                  <table className="channels client-access-table">
-                    <thead>
-                      <tr>
-                        <th>When</th>
-                        <th>Kind</th>
-                        <th>Channel</th>
-                        <th>Reason</th>
-                        <th>Detail</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {proxyStatus.recent_failures!.slice(0, 12).map((ev, i) => (
-                        <tr key={`${ev.at}-${ev.kind}-${i}`}>
-                          <td>{formatWhen(ev.at)}</td>
-                          <td>
-                            <code>{ev.kind}</code>
-                          </td>
-                          <td>
-                            <code>
-                              {ev.provider}/{ev.channel_id}
-                            </code>
-                          </td>
-                          <td>{ev.reason || '—'}</td>
-                          <td title={ev.message}>
-                            {ev.status ? `${ev.status} ` : ''}
-                            {ev.message || '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="meta">No recent proxy failures.</p>
-              )}
-            </>
+            <div className="stat-grid">
+              <Metric
+                label="Heartbeat age"
+                value={formatAge(proxyStatus.heartbeat)}
+                warn={Boolean(proxyStatus.stale)}
+                title={
+                  proxyStatus.stale
+                    ? 'Snapshot older than 2 minutes'
+                    : formatWhen(proxyStatus.heartbeat)
+                }
+              />
+              <Metric
+                label="Heartbeats"
+                value={(proxyStatus.heartbeat_count ?? 0).toLocaleString()}
+              />
+              <Metric
+                label="Sessions"
+                value={proxyStatus.snapshot?.active_sessions ?? 0}
+              />
+              <Metric
+                label="Playlist fail"
+                value={proxyStatus.snapshot?.playlist_fail ?? 0}
+                warn={(proxyStatus.snapshot?.playlist_fail ?? 0) > 0}
+              />
+              <Metric
+                label="Seg fail"
+                value={proxyStatus.snapshot?.seg_fail ?? 0}
+                warn={(proxyStatus.snapshot?.seg_fail ?? 0) > 0}
+              />
+            </div>
           )}
 
           <h2 className="status-section-title">Client access</h2>

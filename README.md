@@ -28,6 +28,29 @@ Images are published to GHCR on every merge to `main` (after UI build + compile 
 
 Default ports: **8180** (gen), **8181** (proxy). With the optional nginx edge: **80/443**.
 
+### Topologies
+
+| Mode | Compose | Playback |
+|------|---------|----------|
+| **Gen-only** (default) | `docker compose up` | NATIVE / SESSION / Xumo SSAI direct; Amagi SSAI (`AMAGI_SSAI`) filtered until proxy is configured |
+| **Gen + proxy** | `docker compose --profile proxy up` (or `COMPOSE_PROFILES=proxy`) | Set `FASTGEN_PROXY_BASE_URL` to the proxy origin **reachable by Jellyfin/ffmpeg** (embedded in M3U). Proxy uses internal `FASTPROXY_GEN_URL` (e.g. `http://fastgen:8180`) for origin pull + telemetry |
+
+**Three proxy-related URLs (do not conflate):**
+
+| Knob | Who uses it | Typical local compose |
+|------|-------------|------------------------|
+| `FASTGEN_PROXY_BASE_URL` / `proxy_base_url` | Jellyfin/browser (M3U emit) | `http://localhost:8181` |
+| `FASTGEN_PROXY_INTERNAL_URL` / `proxy_internal_url` | Gen health probes (Manual L2) rewrite | `http://fastproxy:8181` (compose default) |
+| `FASTPROXY_GEN_URL` | Proxy → gen (origins + event push) | `http://fastgen:8180` |
+
+`localhost` in `proxy_base_url` is fine for host players; gen inside Docker cannot dial that loopback for L2 — that is what `proxy_internal_url` fixes. Status/Proxy glass does not need gen→proxy; it uses proxy→gen events.
+
+There is no single-process gen+proxy mode. Gen is light (periodic pulls + emit); proxy is network-I/O byte shuttling.
+
+**`proxy_all` (optional, off by default):** emit every channel URL through the proxy. NATIVE gets a 302 to upstream (no media through proxy); Amagi is fully rewritten. Tradeoff: better playback observability and drift insulation, but the proxy becomes availability-critical for **all** channels. Default remains selective proxying (Amagi only).
+
+**UI:** Status shows a compact proxy heartbeat glance; the **Proxy** tab is the detailed event glass. Playlist/origin failures also move channel health badges (`source=playback`).
+
 ### Homelab (pull published images)
 
 Use [`docker-compose.prod.yml`](docker-compose.prod.yml) (pull-only; no build). The GitHub repo is private, so log in to GHCR once with a PAT that has `read:packages`:

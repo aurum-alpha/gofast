@@ -32,8 +32,15 @@ function draftFrom(entry: ConfigProviderEntry): Draft {
   return {
     enabled: s.enabled,
     label: s.label ?? '',
-    channel_number_offset: String(s.channel_number_offset ?? 0),
-    synthesize_channel_numbers: String(s.synthesize_channel_numbers ?? 0),
+    // 0 / unset → blank in the form ("off"); blank saves back as 0.
+    channel_number_offset:
+      s.channel_number_offset != null && s.channel_number_offset !== 0
+        ? String(s.channel_number_offset)
+        : '',
+    synthesize_channel_numbers:
+      s.synthesize_channel_numbers != null && s.synthesize_channel_numbers !== 0
+        ? String(s.synthesize_channel_numbers)
+        : '',
     refresh_interval: s.refresh_interval ?? '',
     exclusions: (s.exclusions ?? []).join('\n'),
     slug_template: s.slug_template ?? '',
@@ -68,6 +75,13 @@ function parseHeaders(text: string): Record<string, string> | null {
 function parseIntStrict(raw: string): number | null {
   const n = Number.parseInt(raw, 10)
   return Number.isFinite(n) && String(n) === raw.trim() ? n : null
+}
+
+/** Integer field where blank means 0 (feature off). */
+function parseOptionalInt(raw: string): number | null {
+  const t = raw.trim()
+  if (t === '') return 0
+  return parseIntStrict(t)
 }
 
 // Optional adapter fields keyed by field_support names, with control metadata.
@@ -132,18 +146,18 @@ export function ConfigProviderPage() {
       const pushText = (key: keyof Draft & string) => {
         if (draft[key] !== original[key]) ops.push({ path: prefix + key, value: draft[key] })
       }
-      const pushInt = (key: keyof Draft & string, label: string): boolean => {
+      const pushOptionalInt = (key: keyof Draft & string, label: string): boolean => {
         if (draft[key] === original[key]) return true
-        const n = parseIntStrict(String(draft[key]))
+        const n = parseOptionalInt(String(draft[key]))
         if (n === null) {
-          setToast({ ok: false, message: `${label}: must be an integer` })
+          setToast({ ok: false, message: `${label}: must be an integer (blank = 0 / off)` })
           return false
         }
         ops.push({ path: prefix + key, value: n })
         return true
       }
-      if (!pushInt('channel_number_offset', 'Channel number offset')) return
-      if (!pushInt('synthesize_channel_numbers', 'Synthesize channel numbers')) return
+      if (!pushOptionalInt('channel_number_offset', 'Channel number offset')) return
+      if (!pushOptionalInt('synthesize_channel_numbers', 'Synthesize channel numbers')) return
       pushText('label')
       pushText('refresh_interval')
       for (const f of OPTIONAL_FIELDS) pushText(f.key)
@@ -283,11 +297,15 @@ export function ConfigProviderPage() {
             <span className="field-hint">Live start/stop — no restart</span>
           </div>
           {textField('label', 'Label', 'Playlist display name')}
-          {textField('channel_number_offset', 'Channel number offset')}
+          {textField(
+            'channel_number_offset',
+            'Channel number offset',
+            'Added to upstream numbers for export; blank or 0 = off',
+          )}
           {textField(
             'synthesize_channel_numbers',
             'Synthesize channel numbers',
-            'Base for providers without numbers (0 = off)',
+            'Base for providers without numbers; blank or 0 = off',
           )}
           <div className="config-field">
             <span className="config-field-label">Min channels</span>
