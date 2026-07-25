@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,6 +72,33 @@ func TestMarshalAggregateGoldenAndDeterministic(t *testing.T) {
 	}
 	if string(again) != string(got) {
 		t.Fatalf("output changed after input reorder:\n%s\n---\n%s", got, again)
+	}
+}
+
+func TestMarshalEmitsProgrammeCategories(t *testing.T) {
+	start := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	data, err := xmltv.Marshal(
+		[]model.Channel{{ID: "a", NormalizedID: "a", Name: "A", StreamURL: "https://x/a"}},
+		[]model.Programme{{
+			ChannelID:         "a",
+			Title:             "Show",
+			Start:             start,
+			Stop:              start.Add(time.Hour),
+			Categories:        []string{"Series"},
+			EmittedCategories: []string{"Comedy", "Series"},
+		}},
+		"Test",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(data)
+	if !strings.Contains(out, "<category>Comedy</category>") || !strings.Contains(out, "<category>Series</category>") {
+		t.Fatalf("missing categories:\n%s", out)
+	}
+	// EmittedCategories wins over Categories alone.
+	if strings.Count(out, "<category>") != 2 {
+		t.Fatalf("want 2 category tags:\n%s", out)
 	}
 }
 

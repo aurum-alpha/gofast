@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/cache"
+	"github.com/j27-aurum/gofast/internal/categories"
 	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/groups"
@@ -300,7 +301,7 @@ func (p *providerRefresher) refreshLocked(ctx context.Context) error {
 		p.notify()
 	}
 	p.logPublished(lineup, len(m3uData), len(xmlData), duration)
-	if _, _, logos := p.pipe.snapshot(); logos != nil {
+	if _, _, _, logos := p.pipe.snapshot(); logos != nil {
 		go p.scheduleLogoRewrite(context.WithoutCancel(ctx))
 	}
 	return nil
@@ -528,12 +529,15 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, progs []model.Programme, assignments provider.ChannelNumberAssignments, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
 	id := p.feed.ID()
 	s := p.feed.Settings()
-	policy, groupsPolicy, _ := p.pipe.snapshot()
+	policy, groupsPolicy, categoriesPolicy, _ := p.pipe.snapshot()
 	if p.attrs != nil {
 		chs = p.attrs.Annotate(id, chs)
 	}
 	if groupsPolicy != nil {
 		chs = groups.Apply(chs, id, groupsPolicy)
+	}
+	if categoriesPolicy != nil {
+		progs = categories.Apply(progs, categoriesPolicy)
 	}
 	chs = model.ApplyChannelEmitGroup(chs, s.ChannelEmit)
 	chs = model.ApplyChannelEmitPreExport(chs, s.ChannelEmit)

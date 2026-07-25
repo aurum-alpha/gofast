@@ -13,6 +13,10 @@ import {
   type TimePreset,
 } from '../lib/guideFilters'
 import {
+  categorySlug,
+  categoryStyle,
+} from '../lib/categoryStyle'
+import {
   enabledProviderIds,
   loadProviderGuides,
   metaIndex,
@@ -22,6 +26,7 @@ import {
   type GuideRow,
   type ProviderStatus,
 } from '../lib/guideLoad'
+import type { XmltvProgramme } from '../lib/xmltv'
 
 const PX_PER_MIN = 4
 const LABEL_W = 220
@@ -36,6 +41,7 @@ type ProgDetail = {
   channelName: string
   title: string
   desc: string
+  categories: string[]
   start: Date
   stop: Date
   left: number
@@ -347,7 +353,7 @@ export function GuidePage() {
   function showProgrammeDetail(
     el: HTMLElement,
     channelName: string,
-    p: { title: string; desc: string; start: Date; stop: Date },
+    p: XmltvProgramme,
     pinned: boolean,
   ) {
     const rect = el.getBoundingClientRect()
@@ -357,6 +363,7 @@ export function GuidePage() {
       channelName,
       title: p.title,
       desc: p.desc,
+      categories: p.categories ?? [],
       start: p.start,
       stop: p.stop,
       left: Math.max(8, left),
@@ -651,13 +658,24 @@ export function GuidePage() {
                         if (width < 1) return null
                         if (left + width < viewLeft || left > viewRight) return null
                         const onNow = s <= now && now < e
+                        const firstCat = p.categories[0]
+                        const catClass = firstCat
+                          ? ` epg-cat-${categorySlug(firstCat)}`
+                          : ''
+                        const colors = categoryStyle(firstCat)
                         return (
                           <div
                             key={i}
                             role="button"
                             tabIndex={0}
-                            className={`epg-prog${onNow ? ' now' : ''}`}
-                            style={{ left, width: Math.max(width, MIN_PROG_W) }}
+                            className={`epg-prog${catClass}${onNow ? ' now' : ''}`}
+                            style={{
+                              left,
+                              width: Math.max(width, MIN_PROG_W),
+                              background: colors.background,
+                              borderColor: colors.borderColor,
+                              borderLeft: colors.borderLeft,
+                            }}
                             onMouseEnter={(e) => {
                               if (detail?.pinned) return
                               showProgrammeDetail(e.currentTarget, r.name, p, false)
@@ -707,6 +725,15 @@ export function GuidePage() {
           <div className="epg-detail-channel">{detail.channelName}</div>
           <div className="epg-detail-title">{detail.title}</div>
           <div className="epg-detail-time">{fmtRange(detail.start, detail.stop)}</div>
+          {detail.categories.length > 0 ? (
+            <div className="epg-detail-cats">
+              {detail.categories.map((c) => (
+                <span key={c} className="epg-cat-chip">
+                  {c}
+                </span>
+              ))}
+            </div>
+          ) : null}
           {detail.desc ? <p className="epg-detail-desc">{detail.desc}</p> : null}
           {detail.pinned ? (
             <button

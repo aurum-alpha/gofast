@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/cache"
+	"github.com/j27-aurum/gofast/internal/categories"
 	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/config"
@@ -22,32 +23,34 @@ import (
 )
 
 // pipeline is the shared, hot-reloadable emit environment for every
-// providerRefresher: the emission policy, the compiled group taxonomy, and the
-// logo cache (nil when cache_logos is off). Refreshers snapshot it once per
+// providerRefresher: the emission policy, compiled taxonomies, and the logo
+// cache (nil when cache_logos is off). Refreshers snapshot it once per
 // operation.
 type pipeline struct {
-	mu     sync.RWMutex
-	policy EmissionPolicy
-	groups *groups.Policy
-	logos  *logocache.Cache
+	mu         sync.RWMutex
+	policy     EmissionPolicy
+	groups     *groups.Policy
+	categories *categories.Policy
+	logos      *logocache.Cache
 }
 
 // snapshot returns the current emit environment (nil pipeline is all-zero).
-func (e *pipeline) snapshot() (EmissionPolicy, *groups.Policy, *logocache.Cache) {
+func (e *pipeline) snapshot() (EmissionPolicy, *groups.Policy, *categories.Policy, *logocache.Cache) {
 	if e == nil {
-		return EmissionPolicy{}, nil, nil
+		return EmissionPolicy{}, nil, nil, nil
 	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.policy, e.groups, e.logos
+	return e.policy, e.groups, e.categories, e.logos
 }
 
 // set atomically replaces the emit environment.
-func (e *pipeline) set(policy EmissionPolicy, gp *groups.Policy, logos *logocache.Cache) {
+func (e *pipeline) set(policy EmissionPolicy, gp *groups.Policy, cp *categories.Policy, logos *logocache.Cache) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.policy = policy
 	e.groups = gp
+	e.categories = cp
 	e.logos = logos
 }
 
@@ -103,7 +106,7 @@ func New(store *config.Store, reg *provider.Registry, clf *classifier.Client, cc
 	if store != nil {
 		cfg := store.Current()
 		s.logosSrc = buildLogoCache(cfg, cc)
-		s.pipe.set(emissionPolicyFrom(cfg), groups.Compile(cfg.Groups), s.gateLogos(cfg))
+		s.pipe.set(emissionPolicyFrom(cfg), groups.Compile(cfg.Groups), categories.Compile(cfg.Categories), s.gateLogos(cfg))
 		s.applied = cfg
 	}
 	return s
@@ -111,8 +114,14 @@ func New(store *config.Store, reg *provider.Registry, clf *classifier.Client, cc
 
 // GroupsPolicy returns the live compiled group taxonomy (for API handlers).
 func (s *Service) GroupsPolicy() *groups.Policy {
-	_, gp, _ := s.pipe.snapshot()
+	_, gp, _, _ := s.pipe.snapshot()
 	return gp
+}
+
+// CategoriesPolicy returns the live compiled category taxonomy (for API handlers).
+func (s *Service) CategoriesPolicy() *categories.Policy {
+	_, _, cp, _ := s.pipe.snapshot()
+	return cp
 }
 
 // ReapplyAll re-emits every running provider from its cached raw snapshot (no
@@ -198,12 +207,15 @@ func (s *Service) Reload(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 
-	// Emission / groups / cache_logos slices.
+	// Emission / groups / categories / cache_logos slices.
 	policy := emissionPolicyFrom(cfg)
 	if emissionPolicyFrom(prev) != policy {
 		reapplyAll = true
 	}
 	if !reflect.DeepEqual(prev.Groups, cfg.Groups) {
+		reapplyAll = true
+	}
+	if !reflect.DeepEqual(prev.Categories, cfg.Categories) {
 		reapplyAll = true
 	}
 	wasLogos := prev.CacheLogosEnabled()
@@ -218,7 +230,7 @@ func (s *Service) Reload(ctx context.Context, cfg *config.Config) error {
 	if logosRebuilt && nowLogos {
 		reapplyAll = true
 	}
-	s.pipe.set(policy, groups.Compile(cfg.Groups), s.gateLogos(cfg))
+	s.pipe.set(policy, groups.Compile(cfg.Groups), categories.Compile(cfg.Categories), s.gateLogos(cfg))
 	s.applied = cfg
 
 	if reapplyAll {

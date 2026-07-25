@@ -165,6 +165,11 @@ func buildTV(sources []Source, options Options) (tv, error) {
 		if description := strings.TrimSpace(item.programme.Desc); description != "" {
 			programme.Desc = []xmlDesc{{Value: description}}
 		}
+		for _, cat := range item.programme.ExportCategories() {
+			if s := strings.TrimSpace(cat); s != "" {
+				programme.Category = append(programme.Category, xmlCategory{Value: s})
+			}
+		}
 		document.Programmes = append(document.Programmes, programme)
 	}
 	return document, nil
@@ -307,11 +312,12 @@ type xmlIcon struct {
 }
 
 type xmlProgramme struct {
-	Channel string     `xml:"channel,attr"`
-	Start   string     `xml:"start,attr"`
-	Stop    string     `xml:"stop,attr"`
-	Title   []xmlTitle `xml:"title"`
-	Desc    []xmlDesc  `xml:"desc,omitempty"`
+	Channel  string        `xml:"channel,attr"`
+	Start    string        `xml:"start,attr"`
+	Stop     string        `xml:"stop,attr"`
+	Title    []xmlTitle    `xml:"title"`
+	Desc     []xmlDesc     `xml:"desc,omitempty"`
+	Category []xmlCategory `xml:"category,omitempty"`
 }
 
 type xmlTitle struct {
@@ -319,5 +325,9 @@ type xmlTitle struct {
 }
 
 type xmlDesc struct {
+	Value string `xml:",chardata"`
+}
+
+type xmlCategory struct {
 	Value string `xml:",chardata"`
 }

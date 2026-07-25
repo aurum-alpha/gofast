@@ -12,6 +12,7 @@ export type XmltvProgramme = {
   channel: string
   title: string
   desc: string
+  categories: string[]
   start: Date
   stop: Date
 }
@@ -51,6 +52,9 @@ export function parseXMLTV(text: string): Xmltv {
     channel: el.getAttribute('channel') ?? '',
     title: el.querySelector('title')?.textContent?.trim() ?? '',
     desc: el.querySelector('desc')?.textContent?.trim() ?? '',
+    categories: [...el.querySelectorAll('category')]
+      .map((c) => c.textContent?.trim() ?? '')
+      .filter(Boolean),
     start: parseXmltvTime(el.getAttribute('start') ?? ''),
     stop: parseXmltvTime(el.getAttribute('stop') ?? ''),
   }))

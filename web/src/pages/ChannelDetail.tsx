@@ -18,6 +18,7 @@ import {
   reloadSummary,
   saveChannelEmit,
 } from '../lib/channelEmit'
+import { exportCategories } from '../lib/categoryStyle'
 import {
   fetchChannelProgrammes,
   formatProgrammeRange,
@@ -188,6 +189,7 @@ function ProgrammeSlot({
   label: string
   programme: Programme | null
 }) {
+  const cats = programme ? exportCategories(programme) : []
   return (
     <div className="guide-slot">
       <div className="guide-slot-label">{label}</div>
@@ -195,6 +197,15 @@ function ProgrammeSlot({
         <div className="guide-slot-body">
           <div className="guide-slot-title">{programme.title}</div>
           <div className="meta">{formatProgrammeRange(programme.start, programme.stop)}</div>
+          {cats.length > 0 ? (
+            <div className="epg-detail-cats">
+              {cats.map((c) => (
+                <span key={c} className="epg-cat-chip">
+                  {c}
+                </span>
+              ))}
+            </div>
+          ) : null}
           {programme.desc ? (
             <p className="guide-slot-desc">{programme.desc}</p>
           ) : null}
@@ -1096,6 +1107,15 @@ export function ChannelDetailPage() {
                         <div className="meta">
                           {formatProgrammeRange(p.start, p.stop)}
                         </div>
+                        {exportCategories(p).length > 0 ? (
+                          <div className="epg-detail-cats">
+                            {exportCategories(p).map((c) => (
+                              <span key={c} className="epg-cat-chip">
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                         {p.desc ? <p className="guide-slot-desc">{p.desc}</p> : null}
                       </div>
                     </li>

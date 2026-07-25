@@ -57,11 +57,12 @@ func Parse(r io.Reader) (Document, error) {
 				continue
 			}
 			document.Programmes = append(document.Programmes, model.Programme{
-				ChannelID: raw.Channel,
-				Title:     title,
-				Desc:      firstParsedText(raw.Descriptions),
-				Start:     startTime,
-				Stop:      stopTime,
+				ChannelID:  raw.Channel,
+				Title:      title,
+				Desc:       firstParsedText(raw.Descriptions),
+				Start:      startTime,
+				Stop:       stopTime,
+				Categories: parsedCategories(raw.Categories),
 			})
 		}
 	}
@@ -202,8 +203,32 @@ type parsedProgramme struct {
 	Stop         string       `xml:"stop,attr"`
 	Titles       []parsedText `xml:"title"`
 	Descriptions []parsedText `xml:"desc"`
+	Categories   []parsedText `xml:"category"`
 }
 
 type parsedText struct {
 	Value string `xml:",chardata"`
+}
+
+func parsedCategories(raw []parsedText) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, c := range raw {
+		s := strings.TrimSpace(c.Value)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

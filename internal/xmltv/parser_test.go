@@ -56,3 +56,26 @@ func TestParseRejectsMalformedXML(t *testing.T) {
 		t.Fatal("malformed XML should fail")
 	}
 }
+
+func TestParseKeepsProgrammeCategories(t *testing.T) {
+	input := `<tv>
+  <channel id="a"/>
+  <programme channel="a" start="20260721120000 +0000" stop="20260721130000 +0000">
+    <title>Show</title>
+    <category>Series</category>
+    <category>Comedy</category>
+    <category> Series </category>
+  </programme>
+</tv>`
+	document, err := xmltv.Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Programmes) != 1 {
+		t.Fatalf("programmes: %+v", document.Programmes)
+	}
+	got := document.Programmes[0].Categories
+	if len(got) != 2 || got[0] != "Series" || got[1] != "Comedy" {
+		t.Fatalf("categories=%v (want Series, Comedy deduped)", got)
+	}
+}

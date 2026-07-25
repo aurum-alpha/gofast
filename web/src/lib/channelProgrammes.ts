@@ -4,6 +4,8 @@ export type Programme = {
   channel_id: string
   title: string
   desc?: string
+  categories?: string[]
+  emitted_categories?: string[]
   start: string
   stop: string
 }

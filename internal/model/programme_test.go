@@ -25,3 +25,14 @@ func TestProgrammeIsValid(t *testing.T) {
 		}
 	}
 }
+
+func TestProgrammeExportCategories(t *testing.T) {
+	p := Programme{Categories: []string{"Movie", "Drama"}}
+	if got := p.ExportCategories(); len(got) != 2 || got[0] != "Movie" {
+		t.Fatalf("upstream=%v", got)
+	}
+	p.EmittedCategories = []string{"Film"}
+	if got := p.ExportCategories(); len(got) != 1 || got[0] != "Film" {
+		t.Fatalf("emitted=%v", got)
+	}
+}

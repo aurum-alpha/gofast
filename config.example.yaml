@@ -91,17 +91,236 @@ health:
 # name, and `disabled` to drop a group's channels from export (they stay visible
 # in the UI with a "disabled group" reason). Match is trim + case-insensitive.
 # Omit the block (or set enabled: false) for the legacy per-provider grouping.
+# Starter merges fold common upstream synonyms across providers into ~25 folders.
+# Edit in the UI Groups page or here; disable selectors still work via `disabled`.
 groups:
-  enabled: false
-  # merges:
-  #   - name: News
-  #     members: [News, NEWS, "News & Info", Noticias]
-  #   - name: Shopping
-  #     members: [Shopping, QVC]
-  #     enabled: false          # disable the whole merged group
+  enabled: true
+  merges:
+    - name: News
+      members: [News, "News & Opinion", "News + Opinion", "News And Opinion", "Breaking News"]
+    - name: Local News
+      members: ["Local News"]
+    - name: Sports
+      members:
+        - Sports
+        - Sport
+        - "Sports & Outdoors"
+        - "Action Sports"
+        - "Combat Sports"
+        - "Motor Sports"
+        - Baseball
+        - Basketball
+        - Boxing
+        - Football
+        - Golf
+        - Soccer
+        - Olympics
+        - Fishing
+        - Hunting
+        - Billiards
+        - Bullfighting
+    - name: Movies
+      members: [Movies, "Movies and TV"]
+    - name: Kids
+      members: [Kids, Animated, Children-Music]
+    - name: Comedy
+      members: [Comedy, Sitcom, "Dark Comedy", "Comedy Drama"]
+    - name: Drama
+      members: [Drama]
+    - name: Crime
+      members: [Crime, "Crime TV", "True Crime", "Crime & Drama", "Crime Drama", Law]
+    - name: Reality
+      members: [Reality, "Reality TV", "Reality Competition", "Competition Reality"]
+    - name: Game Shows
+      members: ["Game Shows", "Game Show", "Daytime + Game Shows", "Game Shows & Competition", "Daytime TV"]
+    - name: Entertainment
+      members: [Entertainment, "Talk show & Entertainment", "Pop Culture"]
+    - name: Home & Food
+      members:
+        - "Home & Food"
+        - "Home + Food"
+        - "Home & Design"
+        - "Home Improvement"
+        - House/Garden
+        - Cooking
+        - Food
+    - name: Travel
+      members: [Travel, "Travel & Lifestyle"]
+    - name: Shopping
+      members: [Shopping, Auction]
+    - name: Lifestyle
+      members: [Lifestyle, "Lifestyle & Pop Culture", Hobby/Leisure, Health]
+    - name: Music
+      members:
+        - Music
+        - "Music Videos"
+        - "Music & Radio"
+        - "Music Talk"
+        - "Music and Arts"
+        - Ambiance
+        - Relaxation
+    - name: Sci-Fi & Horror
+      members:
+        - Sci-Fi
+        - "Sci-Fi & Horror"
+        - "Horror & Sci-Fi"
+        - "Horror and SciFi"
+        - Horror
+        - "Science Fiction"
+        - Paranormal
+    - name: Western
+      members: [Western, Westerns, "Western & Classic TV", "Westerns & Country"]
+    - name: Classic TV
+      members: ["Classic TV"]
+    - name: Documentary
+      members:
+        - Documentary
+        - Documentaries
+        - Educational
+        - Biography
+        - History
+        - "History & Learning"
+        - "History + Science"
+        - "Nature, History & Science"
+    - name: Nature
+      members:
+        - Animals
+        - "Animals & Nature"
+        - "Animals + Nature"
+        - Nature
+        - "Nature and Outdoors"
+        - Environment
+    - name: Anime & Gaming
+      members: [Anime, "Anime & Gaming", Gaming]
+    - name: Latino
+      members: [Latino, "En Español", "En Espanol"]
+    - name: Faith & Family
+      members: ["Faith & Family", "Family and Faith", Faith]
+    - name: Action
+      members: [Action, "Action & Drama", Adventure]
+    - name: Romance
+      members: [Romance]
   # disabled:
-  #   - "Weather"               # any provider's "Weather" group
-  #   - "samsung/Local"         # only Samsung's "Local" group
+  #   - "Weather"
+  #   - "Recommended"
+  #   - "New On Local Now"
+
+# Programme category taxonomy (XMLTV <category>). Merges only — normalize
+# provider labels into canonical names for emit + Guide colors. Pluto is the
+# main source today; other providers usually omit <category>.
+categories:
+  enabled: true
+  merges:
+    - name: News
+      members: [News, "News & Information"]
+    - name: Sports
+      members: [Sports]
+    - name: Movie
+      members: [Movie, Blockbusters, "Heist Films"]
+    - name: Series
+      members: [Series]
+    - name: Reality
+      members: [Reality, "Competition Reality", "Dating Show", "Medical Reality"]
+    - name: Drama
+      members:
+        - Drama
+        - "Independent Drama"
+        - "Courtroom Drama"
+        - "Historical Drama"
+        - "Inspirational Drama"
+        - "Biographical Drama"
+        - "Foreign Drama"
+        - "War Drama"
+        - Dramedy
+    - name: Comedy
+      members:
+        - Comedy
+        - "Romantic comedy"
+        - Screwball
+        - "Late Night Comedies"
+        - "Dark Humor & Black Comedies"
+        - "Foreign Comedies"
+        - "Political Comedies"
+        - "Best of British Humor"
+        - "Action Comedies"
+        - Mockumentaries
+    - name: Kids
+      members: [Children, Animated, "Kids' Music", "Animal Tales"]
+    - name: Documentary
+      members: [Documentary, Educational, History, Science, Arts, "Human Interest"]
+    - name: Crime
+      members: [Crime, "True Crime"]
+    - name: Sci-Fi
+      members:
+        - "Science fiction"
+        - "Classic Sci-Fi & Fantasy"
+        - "Family Sci-Fi & Fantasy"
+        - Fantasy
+        - "Comic Books and Superheroes"
+    - name: Anime
+      members:
+        - Anime
+        - "Anime Series"
+        - "Anime Action & Adventure"
+        - "Anime Drama"
+        - "Anime Comedy"
+        - "Anime Feature Films"
+        - "Anime Horror"
+    - name: Horror
+      members:
+        - Horror
+        - "Supernatural Horror"
+        - Zombies
+        - "Slashers and Serial Killers"
+        - "Foreign Horror"
+        - "Horror Classics"
+        - Monsters
+        - Paranormal
+    - name: Action
+      members:
+        - Action
+        - Adventure
+        - "Espionage Action"
+        - "Military & War Action"
+        - "Foreign Action & Adventure"
+        - War
+        - Thriller
+    - name: Music
+      members:
+        - Music
+        - Pop
+        - Country
+        - Hip-Hop/Rap
+        - Rock
+        - "R&B/Soul"
+        - Blues
+        - Jazz
+        - Classical
+        - "Easy Listening"
+        - World
+        - "Christian & Gospel"
+        - Singer/Songwriter
+        - Musical
+    - name: Lifestyle
+      members:
+        - "Home & Lifestyle"
+        - "Food & Cooking"
+        - "Home Improvement"
+        - Entertainment
+        - "Fails & Pranks"
+        - Variety
+        - "Variety Show"
+        - Talk
+    - name: Romance
+      members: [Romance, "Foreign Romance", "African-American Romance", "Indie Romance"]
+    - name: Western
+      members: [Western]
+    - name: Game Show
+      members: ["Game show"]
+    - name: Faith
+      members: ["Faith & Spirituality"]
+    - name: Latino
+      members: [Latino]
 
 # Provider implementations are code (compiled into the binary). This block only
 # customizes the settings of a known provider — offsets, exclusions, enabled,

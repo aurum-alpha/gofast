@@ -215,6 +215,13 @@ streams).
     customization wins over taxonomy for that channel's emitted `group-title`.
   - Managed in the UI Groups editor; saving writes the `groups` block back to
     `config.yaml` (comment-preserving) and applies **live** (re-emit, no restart).
+- **Programme category taxonomy (merges only, `categories` in `config.yaml`):**
+  optional, off by default. Upstream XMLTV `<category>` labels round-trip on
+  `Programme.categories`; when taxonomy is enabled, merges canonicalize labels
+  into `emitted_categories` for emit and Guide coloring (first label picks the
+  block color). There is **no disable** — a category is a label on an airing,
+  not a channel you can drop. Managed in the UI Categories editor; `GET/PUT
+  /api/categories` persists and hot-reloads like Groups.
 - **Per-channel emit customization (`channel_emit`, J27-40):** under each
   provider, a map keyed by normalized channel id customizes **what fastgen
   emits** (not upstream fetch/raw): display name, group-title, channel number,
@@ -358,7 +365,8 @@ in the file = restart.**
   subsystem `Reloader` (logging → health → refresh) to reconcile itself. Saves
   carry a revision (SHA-256 of the file bytes) and stale saves are rejected.
 - Everything the UI exposes applies live: base/proxy URLs, `proxy_all`,
-  `cache_logos`, HTTP timeout, log level, all health knobs, the `groups`
+  `cache_logos`, HTTP timeout, log level, all health knobs, the `groups` /
+  `categories`
   taxonomy, and every per-provider setting including **enable/disable**.
   Disabling a provider stops its refresh goroutine, hides its channels, and 404s
   `/{id}.m3u` + `/{id}.xml`; its cache generations and channel attributes stay on

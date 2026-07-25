@@ -932,7 +932,7 @@ func TestWarmLogosUpdatesStatus(t *testing.T) {
 	}
 
 	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
-	svc.pipe.set(EmissionPolicy{}, nil, logos)
+	svc.pipe.set(EmissionPolicy{}, nil, nil, logos)
 	done := make(chan struct{})
 	go func() {
 		svc.WarmLogos(context.Background())

@@ -11,7 +11,7 @@ import (
 // WarmLogos rewrites logos for every feed in the background. A no-op when
 // cache_logos is off (nil pipeline logo cache). Updates GET /api/status.
 func (s *Service) WarmLogos(ctx context.Context) {
-	if _, _, logos := s.pipe.snapshot(); logos == nil {
+	if _, _, _, logos := s.pipe.snapshot(); logos == nil {
 		return
 	}
 	feeds := s.reg.Feeds()
@@ -88,7 +88,7 @@ func (p *providerRefresher) scheduleLogoRewrite(ctx context.Context) {
 // Returns the number of logo targets processed. A no-op when the pipeline's
 // logo cache is nil (cache_logos off).
 func (p *providerRefresher) rewriteLogosAndRepublish(ctx context.Context, onEach func()) (int, error) {
-	_, _, logos := p.pipe.snapshot()
+	_, _, _, logos := p.pipe.snapshot()
 	if logos == nil {
 		return 0, nil
 	}

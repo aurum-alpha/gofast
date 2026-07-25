@@ -127,6 +127,8 @@ func main() {
 			mux.HandleFunc("PUT /api/config", server.ConfigSaveHandler(store, reg, sched))
 			mux.HandleFunc("GET /api/groups", server.GroupsHandler(store, svc.GroupsPolicy, reg))
 			mux.HandleFunc("PUT /api/groups", server.GroupsSaveHandler(store, svc.GroupsPolicy, reg))
+			mux.HandleFunc("GET /api/categories", server.CategoriesHandler(store, svc.CategoriesPolicy, reg))
+			mux.HandleFunc("PUT /api/categories", server.CategoriesSaveHandler(store, svc.CategoriesPolicy, reg))
 			mux.HandleFunc("GET /api/health/schedule", server.HealthScheduleHandler(sched))
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
 			mux.HandleFunc("GET /api/providers/{id}", server.ProviderDetailHandler(reg))
