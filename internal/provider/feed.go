@@ -43,6 +43,16 @@ type Stats struct {
 	RefreshIntervalClamped    bool   `json:"refresh_interval_clamped"`
 }
 
+// EmptyStats returns zero metrics with non-nil rollup maps so JSON encodes {}
+// instead of null (disabled providers have settings but no Feed).
+func EmptyStats() Stats {
+	return Stats{
+		ByClassification: map[string]int{},
+		ByGroup:          map[string]int{},
+		FilterReasons:    map[string]int{},
+	}
+}
+
 // Status is refresh-attempt state persisted separately from content snapshots.
 type Status struct {
 	LastAttemptAt time.Time `json:"last_attempt_at,omitempty"`

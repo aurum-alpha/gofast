@@ -54,7 +54,10 @@ func ProviderDetailHandler(reg *provider.Registry) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
-		detail := providerDetail{Settings: settings}
+		detail := providerDetail{
+			Settings: settings,
+			Stats:    provider.EmptyStats(),
+		}
 		if feed, ok := reg.Feed(settings.ID); ok {
 			detail.Stats = feed.Stats()
 		}
@@ -74,7 +77,10 @@ func ProvidersHandler(reg *provider.Registry) http.HandlerFunc {
 		known := reg.Providers().Providers
 		out := make([]providerListRow, 0, len(known))
 		for _, settings := range known {
-			row := providerListRow{Settings: settings}
+			row := providerListRow{
+				Settings: settings,
+				Stats:    provider.EmptyStats(),
+			}
 			if feed, ok := reg.Feed(settings.ID); ok {
 				row.Stats = feed.Stats()
 			}

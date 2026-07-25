@@ -24,9 +24,9 @@ type ProviderStats = {
   excluded_channels: number
   total_programmes: number
   exported_programmes: number
-  by_classification: Record<string, number>
-  by_group: Record<string, number>
-  filter_reasons: Record<string, number>
+  by_classification?: Record<string, number> | null
+  by_group?: Record<string, number> | null
+  filter_reasons?: Record<string, number> | null
   guide_start: string
   guide_end: string
   guide_hours_ahead?: number
@@ -82,11 +82,12 @@ function Breakdown({
   classifications = false,
 }: {
   title: string
-  values: Record<string, number>
+  values?: Record<string, number> | null
   classifications?: boolean
 }) {
   const rows = useMemo(
-    () => Object.entries(values).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+    () =>
+      Object.entries(values ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
     [values],
   )
   return (
