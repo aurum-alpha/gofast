@@ -33,6 +33,44 @@ func TestL3ShouldProbe(t *testing.T) {
 	}
 }
 
+func TestL1ShouldSchedule(t *testing.T) {
+	native := model.Channel{
+		Classification: model.ClassNative,
+		StreamURL:      "https://cdn.example/n.m3u8",
+	}
+	if !l1ShouldSchedule(native) {
+		t.Fatal("NATIVE should schedule")
+	}
+	amagiProxy := model.Channel{
+		Classification: model.ClassAmagiSSAI,
+		StreamURL:      "https://amagi.example/beacon.m3u8",
+		EmittedURL:     "https://proxy.example/stream/lg/a.m3u8",
+	}
+	if !l1ShouldSchedule(amagiProxy) {
+		t.Fatal("Amagi with EmittedURL should schedule")
+	}
+	amagiNoProxy := model.Channel{
+		Classification: model.ClassAmagiSSAI,
+		StreamURL:      "https://amagi.example/beacon.m3u8",
+	}
+	if l1ShouldSchedule(amagiNoProxy) {
+		t.Fatal("Amagi without EmittedURL must not schedule (would hit upstream beacon)")
+	}
+	session := model.Channel{
+		Classification: model.ClassSession,
+		StreamURL:      "https://dai.google.com/linear/hls/event/e/master.m3u8",
+		EmittedURL:     "https://proxy.example/stream/distrotv/e.m3u8",
+	}
+	if l1ShouldSchedule(session) {
+		t.Fatal("SESSION must not schedule L1")
+	}
+	excluded := native
+	excluded.Excluded = true
+	if l1ShouldSchedule(excluded) {
+		t.Fatal("excluded must not schedule")
+	}
+}
+
 func TestHostLimiterCapsPerHost(t *testing.T) {
 	lim := NewHostLimiter(1)
 	ctx := context.Background()

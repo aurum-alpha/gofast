@@ -19,6 +19,7 @@ type Handler struct {
 	Reporter  *Reporter
 	playlists *playlistClient
 	segments  *segmentClient
+	mint      *mintClient
 }
 
 // NewHandler wires origin lookup, session store, and optional reporter.
@@ -32,6 +33,7 @@ func NewHandler(origin Origin, store *Store, reporter *Reporter) *Handler {
 		Reporter:  reporter,
 		playlists: newPlaylistClient(30 * time.Second),
 		segments:  newSegmentClient(),
+		mint:      newMintClient(),
 	}
 }
 
@@ -59,7 +61,15 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !origin.Classification.RequiresAmagiProxy() {
+	// Dialect branch — see package doc.go and docs/TERMINOLOGY.md.
+	// ProxyAmagiRewrite: beacon rewrite + /seg.
+	// ProxySessionMint: DAI mint then 302 to stream_manifest (no /seg).
+	// ProxyNone: 302 to catalog upstream (NATIVE / XUMO under proxy_all).
+	switch origin.Classification.ProxyKind() {
+	case model.ProxySessionMint:
+		h.serveSessionMint(w, r, provider, id, origin, clientIP, ua, start)
+		return
+	case model.ProxyNone:
 		logEvent(slog.LevelInfo, EventStream302,
 			"provider", provider, "channel", id, "client_ip", clientIP,
 			"ua", ua, "upstream", urlHostPath(origin.StreamURL),
@@ -136,6 +146,76 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = io.WriteString(w, rewritten.Body)
+}
+
+// serveSessionMint handles ProxySessionMint: mint (or cache hit) then 302.
+func (h *Handler) serveSessionMint(w http.ResponseWriter, r *http.Request, provider model.ProviderID, id string, origin ChannelOrigin, clientIP, ua string, start time.Time) {
+	if manifest, ok := h.Store.GetMintedManifest(provider, id); ok {
+		logEvent(slog.LevelInfo, EventSessionMint,
+			"provider", provider, "channel", id, "client_ip", clientIP, "ua", ua,
+			"cached", true, "manifest", urlHostPath(manifest),
+			"duration_ms", time.Since(start).Milliseconds())
+		h.emit(Event{
+			Kind: EventSessionMint, Provider: string(provider), ChannelID: id,
+			DurationMS: time.Since(start).Milliseconds(),
+			Attrs:      map[string]any{"cached": true, "manifest": urlHostPath(manifest)},
+		})
+		http.Redirect(w, r, manifest, http.StatusFound)
+		return
+	}
+
+	eventID, err := daiEventID(origin.StreamURL)
+	if err != nil {
+		logEvent(slog.LevelWarn, EventSessionMintFail,
+			"provider", provider, "channel", id, "reason", ReasonSessionMintBadURL,
+			"upstream", urlHostPath(origin.StreamURL), "err", err.Error())
+		h.emit(Event{
+			Kind: EventSessionMintFail, Provider: string(provider), ChannelID: id,
+			Reason: ReasonSessionMintBadURL, Message: err.Error(),
+			DurationMS: time.Since(start).Milliseconds(),
+		})
+		http.Error(w, "session mint: bad catalog URL", http.StatusBadGateway)
+		return
+	}
+
+	manifest, status, err := h.mint.mint(r.Context(), eventID, origin.RequestHeaders)
+	if err != nil {
+		reason := classifyUpstreamErr(err, status)
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			reason = ReasonSessionMintAuth
+		}
+		logEvent(slog.LevelWarn, EventSessionMintFail,
+			"provider", provider, "channel", id, "reason", reason,
+			"status", status, "event_id", eventID, "err", err.Error())
+		h.emit(Event{
+			Kind: EventSessionMintFail, Provider: string(provider), ChannelID: id,
+			Reason: reason, Status: status, Message: err.Error(),
+			DurationMS: time.Since(start).Milliseconds(),
+			Attrs:      map[string]any{"event_id": eventID},
+		})
+		http.Error(w, "session mint failed", http.StatusBadGateway)
+		return
+	}
+
+	h.Store.PutMintedManifest(provider, id, manifest)
+	logEvent(slog.LevelInfo, EventSessionMint,
+		"provider", provider, "channel", id, "client_ip", clientIP, "ua", ua,
+		"event_id", eventID, "cached", false, "manifest", urlHostPath(manifest),
+		"status", status, "duration_ms", time.Since(start).Milliseconds())
+	h.emit(Event{
+		Kind: EventSessionMint, Provider: string(provider), ChannelID: id,
+		Status: status, DurationMS: time.Since(start).Milliseconds(),
+		Attrs: map[string]any{
+			"event_id": eventID, "cached": false, "manifest": urlHostPath(manifest),
+		},
+	})
+	// Also count as stream_302 for snapshot parity with NATIVE redirects.
+	h.emit(Event{
+		Kind: EventStream302, Provider: string(provider), ChannelID: id,
+		DurationMS: time.Since(start).Milliseconds(),
+		Attrs:      map[string]any{"upstream": urlHostPath(manifest), "via": "session_mint"},
+	})
+	http.Redirect(w, r, manifest, http.StatusFound)
 }
 
 var errRewriteEmpty = errStringer("rewrite produced no URI changes")

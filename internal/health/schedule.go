@@ -393,7 +393,7 @@ func (s *Scheduler) runL2(ctx context.Context) {
 	var jobs []model.Channel
 	for _, feed := range s.Reg.Feeds() {
 		for _, ch := range feed.Channels() {
-			if ch.Excluded || !ch.Classification.ScheduleSegmentHealth() || ProbeURL(ch) == "" {
+			if !l1ShouldSchedule(ch) {
 				continue
 			}
 			jobs = append(jobs, ch)
@@ -408,6 +408,19 @@ func (s *Scheduler) runL2(ctx context.Context) {
 		}
 	})
 	slog.Info("health L1 sweep done", "probed", n)
+}
+
+// l1ShouldSchedule reports whether a channel is a scheduled Health L1 candidate.
+// Amagi SSAI is included only when EmittedURL is set (proxy path); never probe
+// upstream beacon URLs on the schedule. SESSION remains off ScheduleSegmentHealth.
+func l1ShouldSchedule(ch model.Channel) bool {
+	if ch.Excluded || !ch.Classification.ScheduleSegmentHealth() || ProbeURL(ch) == "" {
+		return false
+	}
+	if ch.Classification.RequiresAmagiProxy() && ch.EmittedURL == "" {
+		return false
+	}
+	return true
 }
 
 func (s *Scheduler) runL3(ctx context.Context) {
@@ -425,7 +438,7 @@ func (s *Scheduler) runL3(ctx context.Context) {
 			if ProbeURL(ch) == "" {
 				continue
 			}
-			if ch.Classification.RequiresAmagiProxy() && ch.EmittedURL == "" {
+			if ch.Classification.RequiresProxy() && ch.EmittedURL == "" {
 				continue
 			}
 			st := s.priorHealth(ch)

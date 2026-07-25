@@ -3,13 +3,14 @@
 Self-hosted FAST channel aggregator for Jellyfin.
 
 - **fastgen** — primary service: channel lineups, EPG (M3U + XMLTV), logos, health, embedded UI
-- **fastproxy** — optional add-on: HLS rewriting for Amagi SSAI beacon streams
+- **fastproxy** — optional add-on: dialect translation for Amagi SSAI beacon rewrite and Google DAI SESSION mint
 
 ## Docs
 
 - [AGENTS.md](AGENTS.md) — how to work in this repo (Linear, branches, PRs, quality gates)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — dual-binary design, UI feathering, milestones
 - [docs/SPEC.md](docs/SPEC.md) — detailed product requirements and gotchas
+- [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md) — glossary (HLS, SSAI, dialects, mint, proxy URLs)
 
 ## Linear
 
@@ -32,8 +33,8 @@ Default ports: **8180** (gen), **8181** (proxy). With the optional nginx edge: *
 
 | Mode | Compose | Playback |
 |------|---------|----------|
-| **Gen-only** (default) | `docker compose up` | NATIVE / SESSION / Xumo SSAI direct; Amagi SSAI (`AMAGI_SSAI`) filtered until proxy is configured |
-| **Gen + proxy** | `docker compose --profile proxy up` (or `COMPOSE_PROFILES=proxy`) | Set `FASTGEN_PROXY_BASE_URL` to the proxy origin **reachable by Jellyfin/ffmpeg** (embedded in M3U). Proxy uses internal `FASTPROXY_GEN_URL` (e.g. `http://fastgen:8180`) for origin pull + telemetry |
+| **Gen-only** (default) | `docker compose up` | NATIVE / Xumo SSAI direct; Amagi SSAI + SESSION filtered until proxy is configured |
+| **Gen + proxy** | `docker compose --profile proxy up` (or `COMPOSE_PROFILES=proxy`) | Set `FASTGEN_PROXY_BASE_URL` to the proxy origin **reachable by Jellyfin/ffmpeg** (embedded in M3U). Proxy uses internal `FASTPROXY_GEN_URL` (e.g. `http://fastgen:8180`) for origin pull + telemetry. Amagi → rewrite; SESSION → DAI mint then 302 |
 
 **Three proxy-related URLs (do not conflate):**
 
@@ -47,7 +48,7 @@ Default ports: **8180** (gen), **8181** (proxy). With the optional nginx edge: *
 
 There is no single-process gen+proxy mode. Gen is light (periodic pulls + emit); proxy is network-I/O byte shuttling.
 
-**`proxy_all` (optional, off by default):** emit every channel URL through the proxy. NATIVE gets a 302 to upstream (no media through proxy); Amagi is fully rewritten. Tradeoff: better playback observability and drift insulation, but the proxy becomes availability-critical for **all** channels. Default remains selective proxying (Amagi only).
+**`proxy_all` (optional, off by default):** emit every channel URL through the proxy. NATIVE / XUMO get a 302 to upstream (no media through proxy); Amagi is fully rewritten; SESSION is minted then 302’d to `stream_manifest`. Tradeoff: better playback observability and drift insulation, but the proxy becomes availability-critical for **all** channels. Default remains selective proxying (**Amagi + SESSION**).
 
 **UI:** Status shows a compact proxy heartbeat glance; the **Proxy** tab is the detailed event glass. Playlist/origin failures also move channel health badges (`source=playback`).
 
@@ -109,8 +110,9 @@ Production files (pull-only, no secrets):
 5. **Guide data** → add **XMLTV** → matching guide URL:
    - Aggregate: `http://HOST:8180/epg.xml` or `https://gofast.example.com/epg.xml`
    - Single provider: `…/lg.xml` (etc.)
-6. Gen-only serves **NATIVE**, **SESSION**, and **Xumo SSAI** streams directly.
-   **Amagi SSAI** (`AMAGI_SSAI`, legacy `BEACON`) needs FASTProxy
+6. Gen-only serves **NATIVE** and **Xumo SSAI** streams directly.
+   **Amagi SSAI** (`AMAGI_SSAI`, legacy `BEACON`) and **SESSION** (Google DAI mint)
+   need FASTProxy — see [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md).
    (`COMPOSE_PROFILES` including `proxy` + `FASTGEN_PROXY_BASE_URL`). **DRM**
    stays dropped.
 
@@ -163,7 +165,7 @@ Runtime YAML on the gen data volume (not baked into the image). **Provider imple
 
 The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`; MJH providers store `channels.json.gz` + `guide.xml.gz`; published-pair providers store `playlist.m3u` plus `guide.xml.gz` (Xumo/DistroTV) or `guide.xml` (LocalNow). Published-pair refreshes log normalized playlist/guide ID match rates. Numberless channels use stable, persisted first-seen assignments from each provider's `synthesize_channel_numbers` base; removed IDs stay reserved.
 
-Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, `FASTGEN_CACHE_LOGOS`, …) stay in env — see `AGENTS.md`. `proxy_base_url` is the public FASTProxy origin; Amagi SSAI (`AMAGI_SSAI`) channels are filtered with an explicit reason when it is absent. `proxy_all` defaults off.
+Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, `FASTGEN_CACHE_LOGOS`, …) stay in env — see `AGENTS.md`. `proxy_base_url` is the public FASTProxy origin; Amagi SSAI and SESSION channels are filtered with an explicit reason when it is absent. `proxy_all` defaults off.
 
 **Logos:** `cache_logos` / `FASTGEN_CACHE_LOGOS` defaults **false** (upstream CDN URLs unchanged). When true, logos download under `{data_dir}/cache/{provider}/logos` and M3U/XMLTV/API rewrite to `{FASTGEN_BASE_URL}/logos/...` (requires `base_url`). Artwork-only TLS exceptions live under `artwork_tls` in YAML — they never apply to stream or EPG fetches.
 

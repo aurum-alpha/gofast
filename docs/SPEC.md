@@ -29,7 +29,8 @@ tokens. Probes upstreams with ranged GETs, never HEAD (SSAI endpoints reject
 HEAD with 404/405 while GET works).
 
 **The classifier** probes each channel at refresh time and buckets it by
-**stream dialect** (playback path), not health:
+**stream dialect** (playback path), not health. Plain-language glossary:
+[`docs/TERMINOLOGY.md`](TERMINOLOGY.md).
 
 - `NATIVE`: plain media segments — plays anywhere (also fail-open on fetch error)
 - `AMAGI_SSAI` (legacy wire `BEACON`): Amagi SSAI — segment lines are
@@ -37,11 +38,12 @@ HEAD with 404/405 while GET works).
   `allowed_segment_extensions` security check rejects; **FASTProxy** rewrites
 - `SESSION`: mint-on-tune-in dialects (Google DAI today: `dai.google.com` +
   `/linear/hls/…`). Static published masters often 404 without a fresh session;
-  **not** the Amagi rewrite path (mint support is a separate fastproxy follow-on)
+  **FASTProxy** POSTs DAI stream-create then HTTP 302s to `stream_manifest`
+  (not the Amagi rewrite path)
 - `XUMO_SSAI`: CloudFront/Xumo SSAI needing `ads.*` query params for origin
-  interpolation; emit upstream URL as-is (keep query — see LG adapter follow-on);
-  **not** Amagi rewrite. Future: AWS MediaTailor and similar stay out of this
-  bucket until we have a detection signal.
+  interpolation; emit upstream URL as-is (keep query); **not** Amagi rewrite
+  and **not** required to go through FASTProxy. Future: AWS MediaTailor and
+  similar stay out of this bucket until we have a detection signal.
 - `DRM`: Widevine `license_url` — never playable, no proxy can help
 
 **Emission decision table** (in FASTGen):
@@ -49,8 +51,11 @@ HEAD with 404/405 while GET works).
 - `DRM` → drop always
 - `AMAGI_SSAI` → if `proxy_base_url` configured, emit
   `{proxy_base_url}/stream/{provider}/{id}.m3u8`; else drop with a logged count
-- `SESSION` / `XUMO_SSAI` → emit upstream URL like NATIVE until a dialect-specific
-  proxy path exists (do **not** route through Amagi rewrite)
+- `SESSION` → same as Amagi: emit proxy `/stream/...` when `proxy_base_url`
+  is set; else drop (“needs FASTProxy”). Proxy mints then 302s — do **not**
+  use Amagi rewrite for SESSION
+- `XUMO_SSAI` → emit upstream URL like NATIVE (do **not** route through Amagi
+  rewrite)
 
 **Deployment topologies:** gen-only (default compose) or gen + proxy (compose
 `--profile proxy` or equivalent). When proxy is used, `proxy_base_url` in the
@@ -62,14 +67,15 @@ network-I/O-bound byte shuttling (goroutine-per-connection + io.Copy;
 bandwidth-limited, not CPU-limited).
 
 **proxy_all mode (optional, off by default):** emits ALL channel URLs as proxy
-URLs; the proxy answers NATIVE channels with a 302 to the upstream (zero media
-bytes through the proxy) and fully rewrites `AMAGI_SSAI` channels. Justifications:
+URLs; the proxy answers NATIVE / XUMO_SSAI channels with a 302 to the upstream
+(zero media bytes through the proxy), fully rewrites `AMAGI_SSAI` channels, and
+mints then 302s `SESSION` channels to `stream_manifest`. Justifications:
 (a) observability — every playback start touches the proxy, enabling per-channel
 now-playing/last-failure telemetry in the UI; (b) drift insulation — upstream
 URL-format changes become proxy-internal fixes rather than M3U regeneration
 events. Documented tradeoff: in this mode the proxy is availability-critical
 for ALL channels (an outage breaks playback start even for healthy native
-streams). Default remains selective proxying (`AMAGI_SSAI` only).
+streams). Default remains selective proxying (`AMAGI_SSAI` + `SESSION`).
 
 ## What FASTGen serves
 
@@ -149,10 +155,10 @@ labeling, numbering, and validation layered on top:
 - **DistroTV** (~170 ch): M3U + EPG from
   `https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.m3u`
   and `.../distrotv.xml.gz` (~72h depth). Streams via Google DAI (`SESSION`).
-  Published masters frequently 404 without mint-on-tune-in; leave the provider
-  disabled until a SESSION proxy path exists, or accept down health. Upstream
-  tvg-ids CONTAIN SPACES (`dtv_EPGACE TV`) -- see id normalization. No
-  tvg-chno (synthesize).
+  Published masters frequently 404 without mint-on-tune-in; enable with
+  gen+`--profile proxy` and `proxy_base_url` so FASTProxy can mint at tune-in.
+  Gen-only drops SESSION as “needs FASTProxy”. Upstream tvg-ids CONTAIN SPACES
+  (`dtv_EPGACE TV`) -- see id normalization. No tvg-chno (synthesize).
 - **LocalNow** (local news/weather by market -- the only local content in the
   set): M3U `https://www.apsattv.com/localnow.m3u` + EPG
   `https://raw.githubusercontent.com/BuddyChewChew/localnow-playlist-generator/refs/heads/main/epg.xml`.
@@ -464,15 +470,16 @@ under ten seconds.
 
 - Separate `cmd/fastproxy` binary and Docker image (not a gen mode flag).
 - Endpoints: `/stream/{provider}/{id}.m3u8` (master), rewritten variant paths,
-  `/seg/{token}` (segment shuttle), 302 redirects for NATIVE channels in
-  proxy_all mode.
-- Handle relative URL resolution in playlists, `#EXT-X-KEY` URI lines (rewrite
-  those too), and preserve all other playlist tags byte-for-byte.
-- Per-session upstream state keyed by client stream, TTL-expired; Amagi URLs
-  embed session tokens that must be reused across a session's segment fetches.
-- Never modify ad content: beacons are resolved (the tracking GET is made, the
-  redirect followed) so impressions still count; the proxy translates dialect,
-  it does not strip ads.
+  `/seg/{token}` (segment shuttle for Amagi), 302 redirects for NATIVE / XUMO
+  under `proxy_all`, and SESSION mint then 302 to `stream_manifest`.
+- **Amagi (`AMAGI_SSAI`):** relative URL resolution; rewrite variants/segments/
+  `#EXT-X-KEY`; preserve other tags; short-TTL rewrite sessions; never strip ads
+  (beacon GET still fires).
+- **SESSION:** parse DAI event id from catalog URL; `POST …/linear/v1/hls/event/{id}/stream`;
+  302 to `stream_manifest` (fallback `hls_master_playlist`); short-TTL mint
+  cache; no Amagi `/seg` path in v1; emit `session_mint` / `session_mint_fail`
+  telemetry.
+- Never HEAD stream endpoints (SSAI often rejects HEAD).
 - **Headless control-plane hop:** proxy has no `/data` and no product UI.
   `FASTPROXY_GEN_URL` (internal gen origin) is required: proxy pulls
   `GET /api/proxy/origin/{provider}/{id}` and asynchronously posts events /
@@ -482,7 +489,8 @@ under ten seconds.
 - Tests: golden rewrite tests from fixture playlists (beacon-style modeled on
   Amagi, clean, relative-URL, EXT-X-KEY); integration test proving a
   beacon-style fixture becomes a playlist whose every non-comment line targets
-  the proxy.
+  the proxy; SESSION mint httptest (catalog 404 shape → POST → 302).
+- Glossary: [`docs/TERMINOLOGY.md`](TERMINOLOGY.md).
 
 ## Additional test cases (from production failures)
 
@@ -518,10 +526,10 @@ installs must not collectively generate bot-fingerprint probe traffic or fake
 ad impressions against free services. Therefore:
 - The classifier runs every refresh. It inspects stream dialect and fetches no
   media; it is not part of the health ladder.
-- Health L1 (segment): daily for dialects that emit a direct upstream URL
-  (`NATIVE`, `SESSION`, `XUMO_SSAI`) — a plain segment GET fires no Amagi ad
-  beacon. Never schedule Health L1 on `AMAGI_SSAI` without an emitted proxy URL
-  (probing through the proxy fires impression beacons = fake views).
+- Health L1 (segment): daily for `NATIVE` / `XUMO_SSAI`, and for `AMAGI_SSAI`
+  when an emitted proxy URL is set (probe through FASTProxy — not the upstream
+  beacon catalog URL). Never schedule Health L1 on `SESSION` (mint would be a
+  fake tune). Manual/Test-now may use EmittedURL when set.
 - Health L2 (ffprobe): OFF by default; opt-in config for users who accept the
   tradeoff. Bounded worker pool, per-probe timeout, jitter over a configurable
   window (default 60m), randomized order — never a clockwork fingerprint.

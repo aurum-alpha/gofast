@@ -20,9 +20,10 @@ const (
 	softRetryDelay   = time.Second
 )
 
-// SegmentProber is Health L1: GET of the first media segment (NATIVE only on schedule).
-// Prefers a ranged GET; on HTTP 416 retries without Range. Soft-retries
-// timeout/5xx once when SoftRetries > 0. Uses ProbeURL (Emitted when set).
+// SegmentProber is Health L1: GET of the first media segment via ProbeURL
+// (Emitted when set). On the schedule: NATIVE / XUMO_SSAI, and AMAGI_SSAI when
+// EmittedURL (proxy) is set. Prefers a ranged GET; on HTTP 416 retries without
+// Range. Soft-retries timeout/5xx once when SoftRetries > 0.
 type SegmentProber struct {
 	HTTP *httpx.Client
 	// SoftRetries is extra attempts after a soft-fail (timeout/5xx/reset).

@@ -206,6 +206,24 @@ export function classBadge(classification?: string): { label: string; kind: stri
   }
 }
 
+/** Matches gen l1ShouldSchedule: Amagi only with emitted proxy URL; SESSION never. */
+export function channelOnScheduledL1(ch: Pick<Channel, 'classification' | 'emitted_url' | 'stream_url'>): boolean {
+  const cls = canonicalClassification(ch.classification)
+  if (cls === 'SESSION' || cls === 'DRM' || !cls) return false
+  if (cls === 'AMAGI_SSAI') return Boolean(ch.emitted_url)
+  return Boolean(ch.emitted_url || ch.stream_url)
+}
+
+export function l1SkipReason(ch: Pick<Channel, 'classification' | 'emitted_url'>): string {
+  const cls = canonicalClassification(ch.classification)
+  if (cls === 'SESSION') return 'not scheduled (SESSION mint — Manual / playback only)'
+  if (cls === 'AMAGI_SSAI' && !ch.emitted_url) {
+    return 'not scheduled (Amagi needs proxy EmittedURL)'
+  }
+  if (cls === 'DRM') return 'not scheduled (DRM)'
+  return 'not scheduled'
+}
+
 export function displayNumber(n: number): string {
   return n > 0 ? String(n) : '—'
 }

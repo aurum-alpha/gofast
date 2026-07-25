@@ -1,23 +1,38 @@
-// Package proxy implements FASTProxy: the optional HLS rewrite add-on that makes
-// Amagi SSAI “beacon” channels playable by ffmpeg/Jellyfin.
+// Package proxy implements FASTProxy: the optional dialect-translation add-on
+// that sits between Jellyfin/ffmpeg and upstream HLS.
 //
 // # Why this exists
 //
 // FASTGen aggregates channels and emits M3U/XMLTV. Most dialects put a normal
-// media URL in the playlist and ffmpeg is happy. Amagi SSAI is different: media
-// playlists list extensionless tracking URLs (often containing /beacon/ and
-// heavy query strings). A GET on those URLs records an ad/impression touch, then
-// the CDN redirects to real segment bytes. ffmpeg’s allowed_segment_extensions
-// check refuses the extensionless lines, so Jellyfin cannot play a stream that
-// is otherwise correctly classified and often healthy upstream.
+// media URL in the playlist and ffmpeg is happy. Two dialects need help at
+// tune-in; they need different help:
 //
-// FASTProxy’s job is dialect translation, not ad stripping. It fetches upstream
-// playlists on behalf of the player, rewrites every player-visible media URI to
-// a proxy path with a media-like extension (e.g. /seg/{token}.ts), and when the
-// player requests a segment it performs the beacon GET (impressions still count),
-// follows redirects, and shuttles bytes with io.Copy. Gen remains the brains of
-// the lineup; this package is a network-I/O appliance — loudly instrumented,
-// because when playback fails the operator opens gen’s Status glass first.
+//   - AMAGI_SSAI — playlists list extensionless tracking (“beacon”) segment
+//     URIs. ffmpeg’s allowed_segment_extensions check refuses them. FASTProxy
+//     rewrites player-visible URIs to /seg/{token}.ts, performs the beacon GET
+//     (impressions still count), follows redirects, and shuttles bytes.
+//   - SESSION (Google DAI) — published catalog masters often 404. FASTProxy
+//     POSTs DAI stream-create (mint-on-tune-in), then HTTP 302s to the live
+//     stream_manifest. No Amagi-style /seg rewrite in v1.
+//
+// XUMO_SSAI and NATIVE do not require this package under selective proxying
+// (gen emits upstream). Under proxy_all they hit /stream and get a plain 302
+// to upstream. DRM is never exported.
+//
+// FASTProxy’s job is dialect translation, not ad stripping. Gen remains the
+// brains of the lineup; this package is a network-I/O appliance — loudly
+// instrumented, because when playback fails the operator opens gen’s Status /
+// Proxy glass first.
+//
+// Glossary for SSAI / HLS / mint jargon: docs/TERMINOLOGY.md
+//
+// # Which dialects need us (selective mode)
+//
+//	NATIVE     — no
+//	XUMO_SSAI  — no (keep ads.* at gen; play direct)
+//	DRM        — no (drop; proxy cannot help)
+//	AMAGI_SSAI — yes → beacon rewrite + /seg
+//	SESSION    — yes → DAI mint → 302 to stream_manifest
 //
 // # Control plane
 //
@@ -30,10 +45,9 @@
 // # Request flow
 //
 // Gen emits stable URLs of the form {proxy_base_url}/stream/{provider}/{id}.m3u8
-// for AMAGI_SSAI (and for all channels when proxy_all is on). On /stream the
-// proxy resolves origin, then either rewrites (Amagi) or 302s to upstream
-// (NATIVE/SESSION/XUMO under proxy_all). Short-TTL in-memory sessions keep Amagi
-// query/session tokens coherent across variant and media playlist polls.
-// Segment tokens map opaque /seg/{token}.ts names to absolute upstream URLs.
-// HEAD is never used — SSAI endpoints commonly reject it while GET works.
+// for dialects that RequireProxy (Amagi + SESSION) and for all channels when
+// proxy_all is on. On /stream the proxy resolves origin, then branches on
+// model.ProxyKind (see serveStream). Short-TTL in-memory state keeps Amagi
+// rewrite sessions coherent and caches SESSION mint results briefly. HEAD is
+// never used — SSAI endpoints commonly reject it while GET (and mint POST) work.
 package proxy

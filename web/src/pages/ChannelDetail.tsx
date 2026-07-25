@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, Fragment, type ReactNode } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
+  channelOnScheduledL1,
   classBadge,
   displayNumber,
   formatHealthSource,
   formatHealthWhen,
   healthBadge,
+  l1SkipReason,
   lineupBadge,
 } from '../lib/channel'
 import type { Channel, ChannelEmit, ChannelHealth } from '../lib/channel'
@@ -872,19 +874,19 @@ export function ChannelDetailPage() {
             <div>
               <dt>Next L1 sweep</dt>
               <dd>
-                {channel.classification === 'NATIVE'
-                  ? schedule?.l1_running
+                {!channelOnScheduledL1(channel)
+                  ? l1SkipReason(channel)
+                  : schedule?.l1_running
                     ? 'running now'
-                    : formatHealthWhen(schedule?.next_l1_at)
-                  : 'not scheduled (L1 is NATIVE-only)'}
+                    : formatHealthWhen(schedule?.next_l1_at)}
               </dd>
             </div>
             <div>
               <dt>Last L1 sweep</dt>
               <dd>
-                {channel.classification === 'NATIVE'
-                  ? formatHealthWhen(schedule?.last_l1_at)
-                  : '—'}
+                {!channelOnScheduledL1(channel)
+                  ? '—'
+                  : formatHealthWhen(schedule?.last_l1_at)}
               </dd>
             </div>
             {schedule?.l2_enabled ? (
