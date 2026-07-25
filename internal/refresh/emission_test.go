@@ -41,6 +41,7 @@ func TestApplyEmissionPolicy(t *testing.T) {
 	tests := []struct {
 		name           string
 		classification model.Classification
+		streamURL      string // empty → default upstream without query
 		policy         EmissionPolicy
 		wantURL        string
 		wantExcluded   bool
@@ -99,7 +100,15 @@ func TestApplyEmissionPolicy(t *testing.T) {
 		{
 			name:           "xumo ssai direct",
 			classification: model.ClassXumoSSAI,
-			wantURL:        "https://upstream.test/live.m3u8",
+			streamURL:      "https://cdn.example/hls/master.m3u8?ads.xumo_channelId=99992260&ads.channelId=99992260",
+			wantURL:        "https://cdn.example/hls/master.m3u8?ads.xumo_channelId=99992260&ads.channelId=99992260",
+		},
+		{
+			name:           "xumo ssai through proxy all",
+			classification: model.ClassXumoSSAI,
+			streamURL:      "https://cdn.example/hls/master.m3u8?ads.xumo_channelId=99992260&ads.channelId=99992260",
+			policy:         EmissionPolicy{ProxyBaseURL: "https://proxy.test", ProxyAll: true},
+			wantURL:        "https://proxy.test/stream/lg/news.m3u8",
 		},
 		{
 			name:           "drm always excluded",
@@ -115,10 +124,14 @@ func TestApplyEmissionPolicy(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			streamURL := test.streamURL
+			if streamURL == "" {
+				streamURL = "https://upstream.test/live.m3u8"
+			}
 			input := model.Channel{
 				Provider:       model.ProviderLG,
 				NormalizedID:   "news",
-				StreamURL:      "https://upstream.test/live.m3u8",
+				StreamURL:      streamURL,
 				Classification: test.classification,
 			}
 			got, stats := applyEmissionPolicy([]model.Channel{input}, test.policy)

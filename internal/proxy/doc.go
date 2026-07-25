@@ -16,8 +16,9 @@
 //     stream_manifest. No Amagi-style /seg rewrite in v1.
 //
 // XUMO_SSAI and NATIVE do not require this package under selective proxying
-// (gen emits upstream). Under proxy_all they hit /stream and get a plain 302
-// to upstream. DRM is never exported.
+// (gen emits upstream; J27-64 confirmed no selective passthrough). Under
+// proxy_all they hit /stream and get a plain 302 to the full upstream URL
+// (ads.* query preserved for Xumo). DRM is never exported.
 //
 // FASTProxy’s job is dialect translation, not ad stripping. Gen remains the
 // brains of the lineup; this package is a network-I/O appliance — loudly

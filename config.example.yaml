@@ -33,9 +33,10 @@ data_dir: /data
 # Public FASTProxy origin as reached by Jellyfin/ffmpeg, not an internal-only
 # container address. AMAGI_SSAI (Amagi rewrite) and SESSION (DAI mint) are
 # filtered when this is unset. XUMO_SSAI emits upstream (keep ads.* — not Amagi
-# rewrite). See docs/TERMINOLOGY.md.
+# rewrite; no selective passthrough). See docs/TERMINOLOGY.md.
 # Set proxy_all to route every playable channel through the stable proxy URL;
-# NATIVE remains direct by default.
+# NATIVE/XUMO get a 302 to upstream (XUMO Location keeps ads.*); Amagi rewrites;
+# SESSION mints. Without proxy_all, NATIVE/XUMO stay direct.
 # proxy_base_url: "http://192.168.1.50:8181"
 #
 # Optional gen-side probe origin when proxy_base_url is only client-reachable

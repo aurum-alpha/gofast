@@ -109,8 +109,9 @@ mint. (Fallback field name: `hls_master_playlist`.)
 
 CloudFront / Xumo SSAI that needs **`ads.*` query params** for origin
 interpolation. Gen/LG adapter keeps those keys and neutralizes client macros.
-**Does not require FASTProxy** by default — emit upstream and play direct.
-Optional future passthrough is observability-only, not Amagi rewrite.
+**Does not require FASTProxy** — emit upstream and play direct (validated
+J27-64; no selective passthrough dialect). Under `proxy_all`, FASTProxy
+`ProxyNone` 302s to the full upstream URL so `ads.*` stay on `Location`.
 
 ### `ads.*` / macro neutralization
 
@@ -186,4 +187,4 @@ and FASTProxy never use HEAD against stream endpoints. SESSION mint uses
 - Classifier dialects: J27-49
 - Xumo `ads.*` keep: J27-55
 - SESSION mint: J27-65
-- Xumo validate / optional passthrough: J27-64
+- Xumo validate (no passthrough): J27-64

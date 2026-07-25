@@ -55,7 +55,9 @@ HEAD with 404/405 while GET works).
   is set; else drop (“needs FASTProxy”). Proxy mints then 302s — do **not**
   use Amagi rewrite for SESSION
 - `XUMO_SSAI` → emit upstream URL like NATIVE (do **not** route through Amagi
-  rewrite)
+  rewrite). J27-64: no selective passthrough dialect — play direct with
+  `ads.*` retained; under `proxy_all` the proxy 302 keeps the full query on
+  `Location`.
 
 **Deployment topologies:** gen-only (default compose) or gen + proxy (compose
 `--profile proxy` or equivalent). When proxy is used, `proxy_base_url` in the
@@ -68,8 +70,9 @@ bandwidth-limited, not CPU-limited).
 
 **proxy_all mode (optional, off by default):** emits ALL channel URLs as proxy
 URLs; the proxy answers NATIVE / XUMO_SSAI channels with a 302 to the upstream
-(zero media bytes through the proxy), fully rewrites `AMAGI_SSAI` channels, and
-mints then 302s `SESSION` channels to `stream_manifest`. Justifications:
+URL including query (`ads.*` intact for Xumo), fully rewrites `AMAGI_SSAI`
+channels, and mints then 302s `SESSION` channels to `stream_manifest`.
+Justifications:
 (a) observability — every playback start touches the proxy, enabling per-channel
 now-playing/last-failure telemetry in the UI; (b) drift insulation — upstream
 URL-format changes become proxy-internal fixes rather than M3U regeneration

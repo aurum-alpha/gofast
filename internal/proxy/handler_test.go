@@ -117,3 +117,30 @@ func TestHandlerNative302(t *testing.T) {
 		t.Fatalf("location=%s", loc)
 	}
 }
+
+// J27-64: under proxy_all, XUMO_SSAI uses ProxyNone 302 with ads.* query intact
+// (not Amagi rewrite). Hell's Kitchen–shaped CloudFront URL.
+func TestHandlerXumoSSAI302PreservesAdsQuery(t *testing.T) {
+	upstream := "https://d1bl6tskrpq9ze.cloudfront.net/hls/master.m3u8?ads.xumo_channelId=99992260&ads.channelId=99992260"
+	origin := NewStaticOrigin()
+	origin.Set(model.ProviderLG, "99992260", ChannelOrigin{
+		StreamURL:      upstream,
+		Classification: model.ClassXumoSSAI,
+	})
+	h := NewHandler(origin, NewStore(), nil)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/stream/lg/99992260.m3u8", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != upstream {
+		t.Fatalf("location=%q want %q", loc, upstream)
+	}
+	if body := rec.Body.String(); strings.Contains(body, "#EXTM3U") {
+		t.Fatal("XUMO must 302, not return a rewritten playlist body")
+	}
+}
