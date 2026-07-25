@@ -10,6 +10,7 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/model"
+	"github.com/j27-aurum/gofast/internal/provider"
 )
 
 const (
@@ -21,16 +22,27 @@ const (
 // cache. Go's ServeMux wildcards must end at '}' so we match /{file} and strip
 // the suffix. This single-segment pattern also catches SPA routes (e.g. /guide)
 // on a hard reload, so non-playlist paths are delegated to fallback (the embedded
-// UI). A nil fallback yields 404.
-func PlaylistFile(cc *cache.Cache, fallback http.Handler) http.HandlerFunc {
+// UI). A nil fallback yields 404. A disabled provider (no live feed in reg) is a
+// 404 even when its cached last-good files still exist on disk.
+func PlaylistFile(reg *provider.Registry, cc *cache.Cache, fallback http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		file := r.PathValue("file")
 		switch {
 		case strings.HasSuffix(file, ".m3u"):
-			data, err := cc.ReadM3U(model.ProviderID(strings.TrimSuffix(file, ".m3u")))
+			id := model.ProviderID(strings.TrimSuffix(file, ".m3u"))
+			if _, ok := reg.Feed(id); !ok {
+				http.NotFound(w, r)
+				return
+			}
+			data, err := cc.ReadM3U(id)
 			serveCache(w, r, data, err, mimeM3U)
 		case strings.HasSuffix(file, ".xml"):
-			data, err := cc.ReadXMLTV(model.ProviderID(strings.TrimSuffix(file, ".xml")))
+			id := model.ProviderID(strings.TrimSuffix(file, ".xml"))
+			if _, ok := reg.Feed(id); !ok {
+				http.NotFound(w, r)
+				return
+			}
+			data, err := cc.ReadXMLTV(id)
 			serveCache(w, r, data, err, mimeXML)
 		case fallback != nil:
 			fallback.ServeHTTP(w, r)

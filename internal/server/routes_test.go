@@ -18,7 +18,7 @@ func TestHandlerRouteRegistration(t *testing.T) {
 			mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
-			mux.HandleFunc("GET /{file}", server.PlaylistFile(cc, nil))
+			mux.HandleFunc("GET /{file}", server.PlaylistFile(playlistTestRegistry(), cc, nil))
 			mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}))

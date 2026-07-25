@@ -68,21 +68,23 @@ type groupsRequest struct {
 	Disabled []string `json:"disabled"`
 }
 
-// GroupsHandler serves GET /api/groups.
-func GroupsHandler(holder *groups.Holder, reg *provider.Registry, configPath string) http.HandlerFunc {
+// GroupsHandler serves GET /api/groups. The taxonomy doc comes from the config
+// snapshot; policy returns the live compiled policy (refresh.Service caches it).
+func GroupsHandler(store *config.Store, policy func() *groups.Policy, reg *provider.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		writeGroups(w, holder, reg, configPath)
+		writeGroups(w, store, policy(), reg)
 	}
 }
 
-// GroupsSaveHandler serves PUT /api/groups: validate → persist to config.yaml →
-// swap the live policy → re-emit + notify aggregate. apply runs the in-process
-// re-emit (re-apply all providers and notify the aggregator).
-func GroupsSaveHandler(holder *groups.Holder, reg *provider.Registry, configPath string, apply func()) http.HandlerFunc {
+// GroupsSaveHandler serves PUT /api/groups. The taxonomy is one managed config
+// key: the save routes through Store.Save (validate → persist comment-preserving
+// → reload snapshot → kick every Reloader), so refresh re-applies and the
+// aggregate republishes exactly like any other config edit.
+func GroupsSaveHandler(store *config.Store, policy func() *groups.Policy, reg *provider.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -98,19 +100,22 @@ func GroupsSaveHandler(holder *groups.Holder, reg *provider.Registry, configPath
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := config.WriteMapKey(configPath, "groups", doc); err != nil {
-			if errors.Is(err, config.ErrReadOnly) {
+		ops := []config.PathOp{{Path: "groups", Value: doc}}
+		if doc.IsZero() {
+			ops = []config.PathOp{{Path: "groups", Remove: true}}
+		}
+		if _, err := store.Save(r.Context(), "", ops); err != nil {
+			switch {
+			case errors.Is(err, config.ErrReadOnly):
 				http.Error(w, "config file is read-only; mount /data (or the config path) read-write to save groups", http.StatusConflict)
-				return
+			case errors.Is(err, config.ErrInvalid):
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			default:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		holder.Set(doc)
-		if apply != nil {
-			apply()
-		}
-		writeGroups(w, holder, reg, configPath)
+		writeGroups(w, store, policy(), reg)
 	}
 }
 
@@ -148,9 +153,8 @@ func (req groupsRequest) toDoc() (groups.Doc, error) {
 	return doc, nil
 }
 
-func writeGroups(w http.ResponseWriter, holder *groups.Holder, reg *provider.Registry, configPath string) {
-	doc := holder.Doc()
-	policy := holder.Policy()
+func writeGroups(w http.ResponseWriter, store *config.Store, policy *groups.Policy, reg *provider.Registry) {
+	doc := store.Current().Groups
 
 	out := groupsResponse{
 		Enabled:    doc.Enabled,
@@ -158,7 +162,7 @@ func writeGroups(w http.ResponseWriter, holder *groups.Holder, reg *provider.Reg
 		Disabled:   append([]string(nil), doc.Disabled...),
 		Discovered: discoverGroups(reg, policy),
 		Preview:    previewGroups(reg, policy),
-		ReadOnly:   configReadOnly(configPath),
+		ReadOnly:   configReadOnly(store.Path()),
 	}
 	if out.Disabled == nil {
 		out.Disabled = []string{}

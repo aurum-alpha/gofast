@@ -8,11 +8,25 @@ import (
 	"syscall"
 )
 
+// logLevel is the live minimum level for the default logger; SetLogLevel
+// adjusts it at runtime (config hot reload).
+var logLevel slog.LevelVar
+
 // SetupLogger configures the default slog logger for CLI binaries.
 func SetupLogger(service string) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: &logLevel,
 	})).With("service", service))
+}
+
+// SetLogLevel applies a config logging level ("debug", "info", "warn",
+// "error"). Unknown or empty values fall back to info.
+func SetLogLevel(level string) {
+	var l slog.Level
+	if level == "" || l.UnmarshalText([]byte(level)) != nil {
+		l = slog.LevelInfo
+	}
+	logLevel.Set(l)
 }
 
 // SignalContext returns a context cancelled on SIGINT or SIGTERM.

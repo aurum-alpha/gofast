@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,9 +11,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/groups"
 )
 
-func TestWriteMapKeyPreservesCommentsAndUnknownKeys(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
+func TestApplyPathOpsPreservesCommentsAndUnknownKeys(t *testing.T) {
 	original := `# top comment
 listen: ":8180"   # inline comment
 future_unknown_key: keep-me
@@ -20,18 +19,10 @@ providers:
   lg:
     label: LG
 `
-	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
 	doc := groups.Doc{Enabled: true, Merges: []groups.Merge{{Name: "News", Members: []string{"NEWS", "News & Info"}}}}
-	if err := WriteMapKey(path, "groups", doc); err != nil {
-		t.Fatalf("WriteMapKey: %v", err)
-	}
-
-	out, err := os.ReadFile(path)
+	out, err := ApplyPathOps([]byte(original), []PathOp{{Path: "groups", Value: doc}})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ApplyPathOps: %v", err)
 	}
 	got := string(out)
 	for _, want := range []string{"# top comment", "# inline comment", "future_unknown_key: keep-me", "groups:", "News & Info"} {
@@ -40,16 +31,11 @@ providers:
 		}
 	}
 
-	// .bak holds the prior bytes.
-	bak, err := os.ReadFile(path + ".bak")
-	if err != nil {
-		t.Fatalf("read .bak: %v", err)
-	}
-	if string(bak) != original {
-		t.Errorf(".bak does not match prior bytes:\n%s", bak)
-	}
-
 	// Round-trips back through the loader.
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err := New(path)
 	if err != nil {
 		t.Fatalf("New after write: %v", err)
@@ -59,13 +45,124 @@ providers:
 	}
 }
 
-func TestWriteMapKeyMissingFileCreates(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := WriteMapKey(path, "groups", groups.Doc{Enabled: true}); err != nil {
-		t.Fatalf("WriteMapKey on missing file: %v", err)
+func TestApplyPathOpsNestedSetAndRemove(t *testing.T) {
+	original := `# keep this comment
+health:
+  l1_interval: 12h   # probe often
+  l1_workers: 8
+providers:
+  lg:
+    label: LG West
+`
+	out, err := ApplyPathOps([]byte(original), []PathOp{
+		{Path: "health.l2_enabled", Value: true},
+		{Path: "providers.lg.channel_number_offset", Value: float64(1000)},
+		{Path: "providers.pluto.enabled", Value: true},
+		{Path: "health.l1_workers", Remove: true},
+	})
+	if err != nil {
+		t.Fatalf("ApplyPathOps: %v", err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("file not created: %v", err)
+	got := string(out)
+	for _, want := range []string{"# keep this comment", "# probe often", "l2_enabled: true", "channel_number_offset: 1000", "label: LG West"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "l1_workers") {
+		t.Errorf("removed leaf still present:\n%s", got)
+	}
+	if strings.Contains(got, "1000.0") || strings.Contains(got, "!!float") {
+		t.Errorf("integral float not normalized to int:\n%s", got)
+	}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := New(path)
+	if err != nil {
+		t.Fatalf("New after write: %v", err)
+	}
+	if !cfg.HealthL2Enabled() {
+		t.Fatal("l2_enabled not set")
+	}
+	if got := cfg.Providers["lg"].ChannelNumberOffset; got != 1000 {
+		t.Fatalf("lg offset = %d", got)
+	}
+	if !cfg.Providers["pluto"].IsEnabled() {
+		t.Fatal("pluto not enabled")
+	}
+}
+
+func TestApplyPathOpsRemovePrunesEmptyParents(t *testing.T) {
+	original := `listen: ":8180"
+providers:
+  pluto:
+    enabled: true
+`
+	out, err := ApplyPathOps([]byte(original), []PathOp{
+		{Path: "providers.pluto.enabled", Remove: true},
+	})
+	if err != nil {
+		t.Fatalf("ApplyPathOps: %v", err)
+	}
+	got := string(out)
+	if strings.Contains(got, "providers") || strings.Contains(got, "pluto") {
+		t.Errorf("empty parents not pruned:\n%s", got)
+	}
+	if !strings.Contains(got, "listen") {
+		t.Errorf("unrelated key lost:\n%s", got)
+	}
+}
+
+func TestApplyPathOpsEmptyDocument(t *testing.T) {
+	out, err := ApplyPathOps(nil, []PathOp{{Path: "cache_logos", Value: true}})
+	if err != nil {
+		t.Fatalf("ApplyPathOps: %v", err)
+	}
+	if !strings.Contains(string(out), "cache_logos: true") {
+		t.Fatalf("got:\n%s", out)
+	}
+}
+
+func TestApplyPathOpsRejectsScalarIntermediate(t *testing.T) {
+	if _, err := ApplyPathOps([]byte("listen: \":8180\"\n"), []PathOp{{Path: "listen.port", Value: 1}}); err == nil {
+		t.Fatal("expected error for scalar intermediate segment")
+	}
+	if _, err := ApplyPathOps(nil, []PathOp{{Path: "health..x", Value: 1}}); err == nil {
+		t.Fatal("expected error for empty path segment")
+	}
+}
+
+func TestFileKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `base_url: http://example:8180
+health:
+  l1_interval: 12h
+providers:
+  lg:
+    label: LG
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := FileKeys(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"base_url", "health.l1_interval", "providers.lg.label"} {
+		if !keys[want] {
+			t.Errorf("missing key %q in %v", want, keys)
+		}
+	}
+	if keys["cache_logos"] {
+		t.Error("cache_logos should not be present")
+	}
+
+	missing, err := FileKeys(filepath.Join(t.TempDir(), "nope.yaml"))
+	if err != nil || len(missing) != 0 {
+		t.Fatalf("missing file: keys=%v err=%v", missing, err)
 	}
 }
 
@@ -98,10 +195,14 @@ func TestWriteDefaultGeneratesThenPreserves(t *testing.T) {
 	}
 }
 
-func TestWriteMapKeyReadOnlyDir(t *testing.T) {
+func TestStoreSaveReadOnlyDir(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(path, []byte("listen: \":8180\"\n"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(path)
+	if err := store.Load(); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(dir, 0o555); err != nil {
@@ -109,7 +210,7 @@ func TestWriteMapKeyReadOnlyDir(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
 
-	err := WriteMapKey(path, "groups", groups.Doc{Enabled: true})
+	_, err := store.Save(context.Background(), "", []PathOp{{Path: "cache_logos", Value: false}})
 	if err == nil {
 		t.Skip("filesystem allowed write to read-only dir (running as root?)")
 	}

@@ -3,6 +3,7 @@ import { NavLink, Route, Routes } from 'react-router-dom'
 import { ChannelDetailPage } from './pages/ChannelDetail'
 import { ChannelsPage } from './pages/Channels'
 import { ConfigPage } from './pages/Config'
+import { ConfigProviderPage } from './pages/ConfigProvider'
 import { GroupsPage } from './pages/Groups'
 import { GuidePage } from './pages/Guide'
 import { HostsPage } from './pages/Hosts'
@@ -102,6 +103,7 @@ export default function App() {
           <Route path="/providers/:id" element={<ProviderDetailPage />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/config" element={<ConfigPage />} />
+          <Route path="/config/providers/:id" element={<ConfigProviderPage />} />
         </Routes>
       </main>
     </div>

@@ -277,6 +277,9 @@ export function ProvidersPage() {
                           >
                             {busy ? 'Starting…' : 'Refresh'}
                           </button>
+                          <Link to={`/config/providers/${encodeURIComponent(p.id)}`}>
+                            Settings
+                          </Link>
                         </span>
                       </td>
                     </tr>

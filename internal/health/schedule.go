@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/channelattr"
+	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 )
@@ -20,6 +21,10 @@ var ErrNoSegmentProber = errors.New("health: L1 segment prober not configured")
 // Scheduler runs L1 (NATIVE segment) and optional L2 (ffprobe) loops.
 // Timing is anchored on the last completed sweep (persisted under StatePath),
 // not process start — same idea as provider refresh from FetchedAt.
+//
+// Construct via a struct literal before Run starts; after that, every field
+// except Reg, Emitter, and StatePath is guarded by mu and mutated only through
+// Reload (config hot reload).
 type Scheduler struct {
 	Reg       *provider.Registry
 	Emitter   *Emitter
@@ -37,6 +42,7 @@ type Scheduler struct {
 	StatePath string
 
 	mu       sync.Mutex
+	reconfig chan struct{}
 	lastL2At time.Time
 	nextL2At time.Time
 	lastL3At time.Time
@@ -66,7 +72,7 @@ func (s *Scheduler) Snapshot() Schedule {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := Schedule{
-		L1Interval: s.l2Interval().String(),
+		L1Interval: orDuration(s.L2Every, 24*time.Hour).String(),
 		LastL1At:   s.lastL2At,
 		NextL1At:   s.nextL2At,
 		L1Running:  s.l2Busy,
@@ -74,11 +80,54 @@ func (s *Scheduler) Snapshot() Schedule {
 		L2Running:  s.l3Busy,
 	}
 	if s.L3On {
-		out.L2Interval = s.l3Interval().String()
+		out.L2Interval = orDuration(s.L3Every, 60*time.Minute).String()
 		out.LastL2At = s.lastL3At
 		out.NextL2At = s.nextL3At
 	}
 	return out
+}
+
+// Reload reconciles the scheduler to a new config snapshot: intervals, worker
+// counts, sample fraction, per-host cap, prober settings, and the L2 on/off
+// toggle. Timing stays anchored on the persisted last-run state, so re-arming
+// never loses schedule progress. The Run loop is woken to recompute timers.
+func (s *Scheduler) Reload(ctx context.Context, cfg *config.Config) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	l3WasOn := s.L3On
+	s.L2Every = cfg.HealthL1Interval()
+	s.L3Every = cfg.HealthL2Interval()
+	s.L3On = cfg.HealthL2Enabled()
+	s.L2Workers = cfg.HealthL1Workers()
+	s.L3Workers = cfg.HealthL2Workers()
+	s.L3HealthySample = cfg.HealthL2HealthySample()
+	s.Hosts = NewHostLimiter(cfg.HealthMaxPerHost())
+	if s.Segment != nil {
+		s.Segment = &SegmentProber{HTTP: s.Segment.HTTP, SoftRetries: cfg.HealthSoftRetries()}
+	}
+	s.FFProbe = &FFProbe{
+		Path:        cfg.HealthFFProbePath(),
+		Timeout:     cfg.HealthL2Timeout(),
+		SoftRetries: cfg.HealthSoftRetries(),
+	}
+	s.mu.Unlock()
+
+	if s.Emitter != nil {
+		s.Emitter.SetConsecutiveFailures(cfg.HealthConsecutiveFailures())
+	}
+	if !l3WasOn && cfg.HealthL2Enabled() {
+		if err := EnsureFFProbe(cfg.HealthFFProbePath()); err != nil {
+			slog.Warn("ffprobe unavailable; Health L2 probes will fail until fixed",
+				"path", cfg.HealthFFProbePath(), "err", err)
+		}
+	}
+	select {
+	case s.reconfigCh() <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 // Run blocks until ctx is cancelled.
@@ -91,7 +140,6 @@ func (s *Scheduler) Run(ctx context.Context) {
 	now := time.Now()
 	l2Delay := s.delayUntilNext(now, s.lastL2Locked(), s.l2Interval(), true)
 	s.setNextL2(now.Add(l2Delay))
-	s.saveState()
 	l2Timer := time.NewTimer(l2Delay)
 	defer l2Timer.Stop()
 	slog.Info("health L1 schedule",
@@ -100,13 +148,15 @@ func (s *Scheduler) Run(ctx context.Context) {
 		"interval", s.l2Interval().String(),
 	)
 
-	var l3Timer *time.Timer
-	if s.L3On {
+	// The L2 (ffprobe) timer always exists so the enable toggle can arm and
+	// disarm it live; it starts stopped when the sweep is off.
+	l3Timer := time.NewTimer(time.Hour)
+	stopTimer(l3Timer)
+	defer l3Timer.Stop()
+	if s.l3On() {
 		l3Delay := s.delayUntilNext(now, s.lastL3Locked(), s.l3Interval(), true)
 		s.setNextL3(now.Add(l3Delay))
-		s.saveState()
-		l3Timer = time.NewTimer(l3Delay)
-		defer l3Timer.Stop()
+		l3Timer.Reset(l3Delay)
 		slog.Info("health L2 schedule",
 			"last_l2_at", nullTime(s.lastL3Locked()),
 			"next_l2_at", now.Add(l3Delay).UTC(),
@@ -114,6 +164,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			"healthy_sample", s.l3HealthySample(),
 		)
 	}
+	s.saveState()
 
 	for {
 		select {
@@ -129,8 +180,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.finishL2(done, done.Add(delay))
 			s.saveState()
 			l2Timer.Reset(delay)
-		case <-l3Fire(l3Timer):
-			if s.L3On && s.FFProbe != nil {
+		case <-l3Timer.C:
+			if s.l3On() && s.ffprobe() != nil {
 				s.mu.Lock()
 				s.l3Busy = true
 				s.mu.Unlock()
@@ -141,15 +192,42 @@ func (s *Scheduler) Run(ctx context.Context) {
 				s.saveState()
 				l3Timer.Reset(delay)
 			}
+		case <-s.reconfigCh():
+			now := time.Now()
+			l2Delay := s.delayUntilNext(now, s.lastL2Locked(), s.l2Interval(), true)
+			s.setNextL2(now.Add(l2Delay))
+			stopTimer(l2Timer)
+			l2Timer.Reset(l2Delay)
+			if s.l3On() {
+				l3Delay := s.delayUntilNext(now, s.lastL3Locked(), s.l3Interval(), true)
+				s.setNextL3(now.Add(l3Delay))
+				stopTimer(l3Timer)
+				l3Timer.Reset(l3Delay)
+				slog.Info("health schedule reconfigured",
+					"next_l1_at", now.Add(l2Delay).UTC(),
+					"next_l2_at", now.Add(l3Delay).UTC(),
+				)
+			} else {
+				stopTimer(l3Timer)
+				s.setNextL3(time.Time{})
+				slog.Info("health schedule reconfigured",
+					"next_l1_at", now.Add(l2Delay).UTC(),
+					"l2_enabled", false,
+				)
+			}
+			s.saveState()
 		}
 	}
 }
 
-func l3Fire(t *time.Timer) <-chan time.Time {
-	if t == nil {
-		return nil
+// stopTimer stops t and drains a pending fire so a later Reset is clean.
+func stopTimer(t *time.Timer) {
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
 	}
-	return t.C
 }
 
 func (s *Scheduler) delayUntilNext(now, last time.Time, interval time.Duration, settle bool) time.Duration {
@@ -171,21 +249,38 @@ func (s *Scheduler) delayUntilNext(now, last time.Time, interval time.Duration, 
 	return jitter(first, 0.3)
 }
 
-func (s *Scheduler) l2Interval() time.Duration {
-	if s.L2Every > 0 {
-		return s.L2Every
+// reconfigCh lazily creates the buffered wake-up channel shared by Run and
+// Reload (either may run first).
+func (s *Scheduler) reconfigCh() chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reconfig == nil {
+		s.reconfig = make(chan struct{}, 1)
 	}
-	return 24 * time.Hour
+	return s.reconfig
+}
+
+func (s *Scheduler) l2Interval() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return orDuration(s.L2Every, 24*time.Hour)
 }
 
 func (s *Scheduler) l3Interval() time.Duration {
-	if s.L3Every > 0 {
-		return s.L3Every
-	}
-	return 60 * time.Minute
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return orDuration(s.L3Every, 60*time.Minute)
+}
+
+func (s *Scheduler) l3On() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.L3On
 }
 
 func (s *Scheduler) l2Workers() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.L2Workers < 1 {
 		return 4
 	}
@@ -193,6 +288,8 @@ func (s *Scheduler) l2Workers() int {
 }
 
 func (s *Scheduler) l3Workers() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.L3Workers < 1 {
 		return 2
 	}
@@ -200,6 +297,8 @@ func (s *Scheduler) l3Workers() int {
 }
 
 func (s *Scheduler) l3HealthySample() float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.L3HealthySample < 0 {
 		return 0.1
 	}
@@ -209,6 +308,24 @@ func (s *Scheduler) l3HealthySample() float64 {
 	// Zero is a valid "never sample healthy" — but unset default is 0.1.
 	// Callers must set L3HealthySample from config (default 0.1). Negative means use default.
 	return s.L3HealthySample
+}
+
+func (s *Scheduler) segment() *SegmentProber {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Segment
+}
+
+func (s *Scheduler) ffprobe() *FFProbe {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.FFProbe
+}
+
+func (s *Scheduler) hostLimiter() *HostLimiter {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Hosts
 }
 
 func (s *Scheduler) lastL2Locked() time.Time {
@@ -232,6 +349,10 @@ func (s *Scheduler) setNextL2(at time.Time) {
 func (s *Scheduler) setNextL3(at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if at.IsZero() {
+		s.nextL3At = time.Time{}
+		return
+	}
 	s.nextL3At = at.UTC()
 }
 
@@ -252,7 +373,7 @@ func (s *Scheduler) finishL3(last, next time.Time) {
 }
 
 func (s *Scheduler) runL2(ctx context.Context) {
-	if s.Segment == nil {
+	if s.segment() == nil {
 		return
 	}
 	var jobs []model.Channel
@@ -276,7 +397,7 @@ func (s *Scheduler) runL2(ctx context.Context) {
 }
 
 func (s *Scheduler) runL3(ctx context.Context) {
-	if s.FFProbe == nil {
+	if s.ffprobe() == nil {
 		return
 	}
 	sample := s.l3HealthySample()
@@ -382,7 +503,7 @@ func (s *Scheduler) probeL2(ctx context.Context, ch model.Channel) model.HealthC
 		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "health_l1"}, "timeout", err.Error())
 	}
 	defer release()
-	return s.Segment.Check(ctx, ch)
+	return s.segment().Check(ctx, ch)
 }
 
 func (s *Scheduler) probeL3(ctx context.Context, ch model.Channel) model.HealthCheck {
@@ -391,19 +512,20 @@ func (s *Scheduler) probeL3(ctx context.Context, ch model.Channel) model.HealthC
 		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: "health_l2", FinalURL: ProbeURL(ch)}, "timeout", err.Error())
 	}
 	defer release()
-	return s.FFProbe.Check(ctx, ch)
+	return s.ffprobe().Check(ctx, ch)
 }
 
 func (s *Scheduler) acquireHost(ctx context.Context, ch model.Channel) (func(), error) {
-	if s.Hosts == nil {
+	limiter := s.hostLimiter()
+	if limiter == nil {
 		return func() {}, nil
 	}
-	return s.Hosts.Acquire(ctx, ProbeURL(ch))
+	return limiter.Acquire(ctx, ProbeURL(ch))
 }
 
 // ProbeL1Now runs one L1 segment check and emits (on-demand; any class).
 func (s *Scheduler) ProbeL1Now(ctx context.Context, ch model.Channel) (model.HealthCheck, model.ChannelHealth, error) {
-	if s == nil || s.Segment == nil || s.Emitter == nil {
+	if s == nil || s.segment() == nil || s.Emitter == nil {
 		return model.HealthCheck{}, model.ChannelHealth{}, ErrNoSegmentProber
 	}
 	check := s.probeL2(ctx, ch)
@@ -418,12 +540,20 @@ func (s *Scheduler) ProbeL2Now(ctx context.Context, ch model.Channel) (model.Hea
 
 // ProbeNow runs one L2 check and emits (for "Test now").
 func (s *Scheduler) ProbeNow(ctx context.Context, ch model.Channel) (model.HealthCheck, model.ChannelHealth, error) {
-	if s == nil || s.FFProbe == nil || s.Emitter == nil {
+	if s == nil || s.ffprobe() == nil || s.Emitter == nil {
 		return model.HealthCheck{}, model.ChannelHealth{}, ErrNoProber
 	}
 	check := s.probeL3(ctx, ch)
 	health, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check)
 	return check, health, err
+}
+
+// orDuration returns v when positive, else def.
+func orDuration(v, def time.Duration) time.Duration {
+	if v > 0 {
+		return v
+	}
+	return def
 }
 
 func jitter(base time.Duration, frac float64) time.Duration {

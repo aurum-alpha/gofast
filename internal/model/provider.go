@@ -3,7 +3,9 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"time"
 )
@@ -171,6 +173,31 @@ func (p ProviderSettings) MergeConfigured(o ProviderSettings, configured bool) P
 	enabled := configured && o.IsEnabled()
 	p.Enabled = &enabled
 	return p
+}
+
+// Equal reports whether two effective settings are the same operator-visible
+// configuration. ExclusionRegexes are derived from Exclusions and ignored;
+// Enabled pointers compare by resolved value.
+func (p ProviderSettings) Equal(o ProviderSettings) bool {
+	if p.IsEnabled() != o.IsEnabled() {
+		return false
+	}
+	if p.ID != o.ID ||
+		p.Label != o.Label ||
+		p.ChannelNumberOffset != o.ChannelNumberOffset ||
+		p.SynthesizeChannelNumbers != o.SynthesizeChannelNumbers ||
+		p.MinChannels != o.MinChannels ||
+		p.RefreshInterval != o.RefreshInterval ||
+		p.ExpectedGuideHorizon != o.ExpectedGuideHorizon ||
+		p.SlugTemplate != o.SlugTemplate ||
+		p.Region != o.Region ||
+		p.ChannelsURL != o.ChannelsURL ||
+		p.EPGURL != o.EPGURL ||
+		p.M3UURL != o.M3UURL ||
+		p.UserAgent != o.UserAgent {
+		return false
+	}
+	return slices.Equal(p.Exclusions, o.Exclusions) && maps.Equal(p.Headers, o.Headers)
 }
 
 // CompileExclusions compiles Exclusions into ExclusionRegexes (case-insensitive).

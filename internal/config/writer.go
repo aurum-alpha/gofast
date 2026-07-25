@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"gopkg.in/yaml.v3"
@@ -15,39 +16,159 @@ import (
 // the UI can tell the operator to mount the config read-write.
 var ErrReadOnly = errors.New("config file is read-only")
 
-// WriteMapKey sets a single top-level mapping key in the YAML file at path to
-// value, preserving comments, key order, and unknown keys the operator added.
-// The write is atomic (temp file + rename) and keeps a .bak of the prior bytes.
-// A missing or empty file is treated as an empty document. A read-only target
-// returns ErrReadOnly.
-func WriteMapKey(path, key string, value any) error {
-	if path == "" {
-		return errors.New("config: no path")
-	}
-	prior, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("config: read %s: %w", path, classify(err))
-	}
+// PathOp is one edit to config.yaml addressed by a dotted leaf path
+// (e.g. "cache_logos", "health.l1_interval", "providers.lg.label").
+// Remove deletes the leaf (reset-to-default); otherwise Value is set.
+// Path segments cannot contain dots, so dotted-hostname keys (artwork_tls)
+// are not addressable through path ops.
+type PathOp struct {
+	Path   string `json:"path"`
+	Value  any    `json:"value,omitempty"`
+	Remove bool   `json:"remove,omitempty"`
+}
 
+// ApplyPathOps applies ops to the YAML document in prior and returns the new
+// document bytes, preserving comments, key order, and unknown keys on nodes it
+// does not touch. Empty/missing prior is an empty document. Set ops create
+// intermediate mappings as needed; remove ops delete the leaf and prune
+// intermediate mappings that become empty.
+func ApplyPathOps(prior []byte, ops []PathOp) ([]byte, error) {
 	var doc yaml.Node
 	if len(prior) > 0 {
 		if err := yaml.Unmarshal(prior, &doc); err != nil {
-			return fmt.Errorf("config: parse %s: %w", path, err)
+			return nil, fmt.Errorf("config: parse prior: %w", err)
 		}
 	}
 	root := ensureMappingRoot(&doc)
-
-	valueNode := &yaml.Node{}
-	if err := valueNode.Encode(value); err != nil {
-		return fmt.Errorf("config: encode %s: %w", key, err)
+	for _, op := range ops {
+		segments := strings.Split(op.Path, ".")
+		for _, s := range segments {
+			if strings.TrimSpace(s) == "" {
+				return nil, fmt.Errorf("config: invalid path %q", op.Path)
+			}
+		}
+		if op.Remove {
+			removePath(root, segments)
+			continue
+		}
+		valueNode := &yaml.Node{}
+		if err := valueNode.Encode(normalizeValue(op.Value)); err != nil {
+			return nil, fmt.Errorf("config: encode %s: %w", op.Path, err)
+		}
+		if err := setPath(root, segments, valueNode); err != nil {
+			return nil, fmt.Errorf("config: %s: %w", op.Path, err)
+		}
 	}
-	setMapKey(root, key, valueNode)
-
 	out, err := yaml.Marshal(&doc)
 	if err != nil {
-		return fmt.Errorf("config: marshal: %w", err)
+		return nil, fmt.Errorf("config: marshal: %w", err)
 	}
-	return atomicWriteWithBackup(path, out, prior)
+	return out, nil
+}
+
+// normalizeValue converts JSON-decoded numbers to integers when integral so
+// int-typed config fields round-trip through YAML without a !!float tag.
+func normalizeValue(v any) any {
+	switch t := v.(type) {
+	case float64:
+		if t == float64(int64(t)) {
+			return int64(t)
+		}
+		return t
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, e := range t {
+			out[k] = normalizeValue(e)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = normalizeValue(e)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// setPath sets the leaf at segments under root, creating intermediate mappings.
+func setPath(root *yaml.Node, segments []string, value *yaml.Node) error {
+	node := root
+	for _, key := range segments[:len(segments)-1] {
+		child := mapValue(node, key)
+		if child == nil {
+			child = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+			setMapKey(node, key, child)
+		} else if child.Kind != yaml.MappingNode {
+			return fmt.Errorf("segment %q is not a mapping", key)
+		}
+		node = child
+	}
+	setMapKey(node, segments[len(segments)-1], value)
+	return nil
+}
+
+// removePath deletes the leaf at segments and prunes intermediate mappings that
+// become empty. A missing path is a no-op.
+func removePath(root *yaml.Node, segments []string) {
+	chain := make([]*yaml.Node, 0, len(segments))
+	node := root
+	for _, key := range segments[:len(segments)-1] {
+		chain = append(chain, node)
+		child := mapValue(node, key)
+		if child == nil || child.Kind != yaml.MappingNode {
+			return
+		}
+		node = child
+	}
+	deleteMapKey(node, segments[len(segments)-1])
+	for i := len(chain) - 1; i >= 0; i-- {
+		if len(node.Content) > 0 {
+			return
+		}
+		deleteMapKey(chain[i], segments[i])
+		node = chain[i]
+	}
+}
+
+// FileKeys returns the set of dotted leaf paths present in the YAML file at
+// path (so the API can report whether a field's value came from the file).
+// A missing file yields an empty set.
+func FileKeys(path string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if path == "" {
+		return out, nil
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("config: read %s: %w", path, classify(err))
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+	}
+	if len(doc.Content) > 0 && doc.Content[0].Kind == yaml.MappingNode {
+		collectKeys(doc.Content[0], "", out)
+	}
+	return out, nil
+}
+
+func collectKeys(node *yaml.Node, prefix string, out map[string]bool) {
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key := node.Content[i].Value
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		out[path] = true
+		if v := node.Content[i+1]; v.Kind == yaml.MappingNode {
+			collectKeys(v, path, out)
+		}
+	}
 }
 
 // WriteDefault writes the baked-in code defaults to path when the file does not
@@ -88,8 +209,11 @@ func ensureMappingRoot(doc *yaml.Node) *yaml.Node {
 	return root
 }
 
-// setMapKey replaces the value for key in a mapping node, or appends it.
+// setMapKey replaces the value for key in a mapping node, or appends it. A
+// modified flow-style mapping (e.g. a generated "providers: {}") is switched to
+// block style so grown maps stay readable.
 func setMapKey(root *yaml.Node, key string, value *yaml.Node) {
+	root.Style = 0
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		if root.Content[i].Value == key {
 			root.Content[i+1] = value
@@ -100,6 +224,26 @@ func setMapKey(root *yaml.Node, key string, value *yaml.Node) {
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
 		value,
 	)
+}
+
+// mapValue returns the value node for key in a mapping node, or nil.
+func mapValue(root *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == key {
+			return root.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// deleteMapKey removes key (and its value) from a mapping node if present.
+func deleteMapKey(root *yaml.Node, key string) {
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == key {
+			root.Content = append(root.Content[:i], root.Content[i+2:]...)
+			return
+		}
+	}
 }
 
 // atomicWriteWithBackup writes data via temp+rename, backing up prior bytes to
