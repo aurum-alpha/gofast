@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,6 +77,42 @@ func TestChannelHealthHistory(t *testing.T) {
 	}
 	if len(body.Events) != 1 {
 		t.Fatalf("events=%+v", body.Events)
+	}
+}
+
+func TestChannelHealthHistoryEmptyIsJSONArray(t *testing.T) {
+	settings := model.ProviderSettings{ID: model.ProviderLG, Enabled: boolPtr(true), Label: "LG"}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: healthStubReader{}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	feed.Set(provider.Lineup{
+		Channels: []model.Channel{{
+			Provider:     model.ProviderLG,
+			NormalizedID: "news",
+			Name:         "News",
+			StreamURL:    "https://example/live.m3u8",
+		}},
+		FetchedAt: time.Now(),
+	})
+	store, err := channelattr.Open(filepath.Join(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	h := server.ChannelHealthHistoryHandler(reg, store)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/channels/lg/news/health/history", nil)
+	req.SetPathValue("provider", "lg")
+	req.SetPathValue("normalizedId", "news")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"events":[]`) {
+		t.Fatalf("want empty events array, got %s", rec.Body.String())
 	}
 }
 

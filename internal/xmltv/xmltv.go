@@ -112,7 +112,7 @@ func buildTV(sources []Source, options Options) (tv, error) {
 		channel := xmlChannel{
 			ID: item.id,
 			DisplayNames: []xmlDisplayName{{
-				Value: format.FormatDisplayName(item.channel.Name, item.label),
+				Value: format.FormatDisplayName(item.channel.DisplayName(), item.label),
 			}},
 		}
 		if item.channel.OffsetNumber > 0 {

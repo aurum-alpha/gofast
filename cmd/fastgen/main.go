@@ -134,6 +134,8 @@ func main() {
 			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(reg))
 			mux.HandleFunc("GET /api/channels/hosts", server.ChannelHostsHandler(reg))
 			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}", server.ChannelHandler(reg))
+			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}/emit", server.ChannelEmitHandler(store, reg))
+			mux.HandleFunc("PUT /api/channels/{provider}/{normalizedId}/emit", server.ChannelEmitSaveHandler(store, reg))
 			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}/health/history", server.ChannelHealthHistoryHandler(reg, attrs))
 			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe", server.ChannelHealthProbeHandler(reg, sched))
 			mux.HandleFunc("POST /api/channels/{provider}/{normalizedId}/health/probe/l1", server.ChannelHealthProbeL1Handler(reg, sched))

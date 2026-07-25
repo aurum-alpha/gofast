@@ -152,3 +152,38 @@ func TestEnvShadow(t *testing.T) {
 		t.Fatal("cache_logos should not be shadowed")
 	}
 }
+
+func TestStoreChannelEmitRoundTripAndOrphanRetention(t *testing.T) {
+	store := newTestStore(t, `providers:
+  lg:
+    enabled: true
+    min_channels: 1
+    channel_emit:
+      gone.channel:
+        name: Kept
+      live:
+        export: disabled
+`)
+	cfg := store.Current()
+	emits := cfg.Providers["lg"].ChannelEmit
+	if emits["gone.channel"].Name != "Kept" || emits["live"].Export != "disabled" {
+		t.Fatalf("loaded emit: %+v", emits)
+	}
+	// Unrelated save must retain the absent-channel key.
+	if _, err := store.Save(context.Background(), store.Revision(), []PathOp{
+		{Path: "logging.level", Value: "debug"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	emits = store.Current().Providers["lg"].ChannelEmit
+	if emits["gone.channel"].Name != "Kept" {
+		t.Fatalf("orphan emit lost: %+v", emits)
+	}
+	raw, err := os.ReadFile(store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "gone.channel") || !strings.Contains(string(raw), "Kept") {
+		t.Fatalf("yaml lost orphan emit:\n%s", raw)
+	}
+}

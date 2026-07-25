@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, Fragment, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, Fragment, type ReactNode } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   classBadge,
@@ -7,11 +7,87 @@ import {
   healthBadge,
   lineupBadge,
 } from '../lib/channel'
-import type { Channel, ChannelHealth } from '../lib/channel'
+import type { Channel, ChannelEmit, ChannelHealth } from '../lib/channel'
 import {
   channelsBackHref,
   type ChannelsLocationState,
 } from '../lib/channelsFilters'
+import {
+  ConfigSaveError,
+  fetchChannelEmit,
+  reloadSummary,
+  saveChannelEmit,
+} from '../lib/channelEmit'
+
+type EmitDraft = {
+  nameOn: boolean
+  name: string
+  groupOn: boolean
+  group: string
+  numberOn: boolean
+  number: string
+  logoOn: boolean
+  logo: string
+  exportOn: boolean
+  exportMode: 'enabled' | 'disabled'
+}
+
+function draftFromChannel(ch: Channel): EmitDraft {
+  const em = ch.emit
+  const d = ch.emit_defaults
+  return {
+    nameOn: Boolean(em?.name),
+    name: em?.name ?? d?.name ?? ch.emitted_name ?? ch.name ?? '',
+    groupOn: Boolean(em?.group),
+    group: em?.group ?? d?.group ?? ch.emitted_group ?? ch.group ?? '',
+    numberOn: em?.number != null,
+    number: String(em?.number ?? d?.number ?? ch.offset_number ?? 0),
+    logoOn: Boolean(em?.logo_url),
+    logo: em?.logo_url ?? d?.logo_url ?? ch.logo_url ?? '',
+    exportOn: em?.export === 'enabled' || em?.export === 'disabled',
+    exportMode: em?.export === 'disabled' ? 'disabled' : 'enabled',
+  }
+}
+
+function emitPayload(draft: EmitDraft): ChannelEmit | null {
+  const out: ChannelEmit = {}
+  if (draft.nameOn) out.name = draft.name.trim()
+  if (draft.groupOn) out.group = draft.group.trim()
+  if (draft.numberOn) {
+    const n = Number.parseInt(draft.number.trim(), 10)
+    if (!Number.isFinite(n) || String(n) !== draft.number.trim()) {
+      throw new Error('Channel number must be an integer')
+    }
+    out.number = n
+  }
+  if (draft.logoOn) out.logo_url = draft.logo.trim()
+  if (draft.exportOn) out.export = draft.exportMode
+  if (
+    !out.name &&
+    !out.group &&
+    out.number == null &&
+    !out.logo_url &&
+    !out.export
+  ) {
+    return null
+  }
+  return out
+}
+
+function draftsEqual(a: EmitDraft, b: EmitDraft): boolean {
+  return (
+    a.nameOn === b.nameOn &&
+    a.name === b.name &&
+    a.groupOn === b.groupOn &&
+    a.group === b.group &&
+    a.numberOn === b.numberOn &&
+    a.number === b.number &&
+    a.logoOn === b.logoOn &&
+    a.logo === b.logo &&
+    a.exportOn === b.exportOn &&
+    a.exportMode === b.exportMode
+  )
+}
 
 type HistoryEvent = {
   at: string
@@ -112,6 +188,12 @@ export function ChannelDetailPage() {
   const [probeNote, setProbeNote] = useState<string | null>(null)
   const [schedule, setSchedule] = useState<ProbeSchedule | null>(null)
   const [expandedHistory, setExpandedHistory] = useState<Record<string, boolean>>({})
+  const [revision, setRevision] = useState('')
+  const [writable, setWritable] = useState(false)
+  const [emitDraft, setEmitDraft] = useState<EmitDraft | null>(null)
+  const [emitBaseline, setEmitBaseline] = useState<EmitDraft | null>(null)
+  const [emitSaving, setEmitSaving] = useState(false)
+  const [emitToast, setEmitToast] = useState<{ ok: boolean; message: string } | null>(null)
 
   const loadHistory = useCallback(() => {
     const path = `/api/channels/${encodeURIComponent(provider)}/${encodeURIComponent(normalizedId)}/health/history`
@@ -129,27 +211,27 @@ export function ChannelDetailPage() {
       })
   }, [provider, normalizedId])
 
+  const loadChannel = useCallback(async () => {
+    const body = await fetchChannelEmit(provider, normalizedId)
+    setChannel(body.channel)
+    setRevision(body.revision)
+    setWritable(body.writable)
+    const draft = draftFromChannel(body.channel)
+    setEmitDraft(draft)
+    setEmitBaseline(draft)
+    setError(null)
+    return body
+  }, [provider, normalizedId])
+
   useEffect(() => {
     let cancelled = false
-    const path = `/api/channels/${encodeURIComponent(provider)}/${encodeURIComponent(normalizedId)}`
-    fetch(path)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-        return res.json() as Promise<Channel>
-      })
-      .then((body) => {
-        if (!cancelled) {
-          setChannel(body)
-          setError(null)
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-      })
+    loadChannel().catch((err: unknown) => {
+      if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+    })
     return () => {
       cancelled = true
     }
-  }, [provider, normalizedId])
+  }, [loadChannel])
 
   useEffect(() => {
     loadHistory()
@@ -172,6 +254,40 @@ export function ChannelDetailPage() {
       cancelled = true
     }
   }, [])
+
+  const emitDirty = useMemo(() => {
+    if (!emitDraft || !emitBaseline) return false
+    return !draftsEqual(emitDraft, emitBaseline)
+  }, [emitDraft, emitBaseline])
+
+  async function saveEmit() {
+    if (!emitDraft || !revision) return
+    setEmitSaving(true)
+    setEmitToast(null)
+    try {
+      const payload = emitPayload(emitDraft)
+      const result = await saveChannelEmit(provider, normalizedId, revision, payload)
+      setChannel(result.channel)
+      setRevision(result.revision)
+      setWritable(result.writable)
+      const draft = draftFromChannel(result.channel)
+      setEmitDraft(draft)
+      setEmitBaseline(draft)
+      setEmitToast(reloadSummary(result.reloads ?? []))
+    } catch (err: unknown) {
+      if (err instanceof ConfigSaveError && err.status === 409) {
+        await loadChannel().catch(() => {})
+        setEmitToast({
+          ok: false,
+          message: 'Config changed elsewhere — reloaded latest values; re-apply your edits.',
+        })
+      } else {
+        setEmitToast({ ok: false, message: err instanceof Error ? err.message : String(err) })
+      }
+    } finally {
+      setEmitSaving(false)
+    }
+  }
 
   async function runProbe(kind: 'l1' | 'l2') {
     setProbeBusy(kind)
@@ -234,6 +350,9 @@ export function ChannelDetailPage() {
     : channel.emitted_url || channel.stream_url
   const exportedLogo = channel.logo_url || undefined
   const inLineup = status.kind === 'in-lineup' || status.kind === 'proxied'
+  const defaults = channel.emit_defaults
+  const setEmit = <K extends keyof EmitDraft>(key: K, value: EmitDraft[K]) =>
+    setEmitDraft((prev) => (prev ? { ...prev, [key]: value } : prev))
 
   return (
     <>
@@ -287,6 +406,47 @@ export function ChannelDetailPage() {
 
       <section className="detail-section">
         <h2>Provider vs Fastgen</h2>
+        <p className="meta">
+          Customize Fastgen export values for this channel. Uncheck to use the
+          default fastgen produces. Does not change the upstream feed.
+        </p>
+        {!writable ? (
+          <div className="empty-panel" role="alert">
+            Config is read-only — mount the config path read-write to customize emit.
+          </div>
+        ) : null}
+        <div className="config-toolbar">
+          <button
+            type="button"
+            onClick={() => {
+              void saveEmit()
+            }}
+            disabled={emitSaving || !writable || !emitDirty || !emitDraft}
+          >
+            {emitSaving ? 'Saving…' : 'Save & apply'}
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => emitBaseline && setEmitDraft(emitBaseline)}
+            disabled={!emitDirty || !emitBaseline}
+          >
+            Discard
+          </button>
+          {emitToast ? (
+            <span
+              className={`meta config-toast${emitToast.ok ? '' : ' config-toast-error'}`}
+              role="status"
+            >
+              {emitToast.message}
+            </span>
+          ) : null}
+        </div>
+        {channel.emit?.export === 'enabled' && channel.excluded && channel.filter_reason ? (
+          <p className="status-reason" role="status">
+            Cannot emit: {channel.filter_reason}
+          </p>
+        ) : null}
         <div className="table-wrap">
           <table className="compare-table">
             <thead>
@@ -313,6 +473,41 @@ export function ChannelDetailPage() {
                 </td>
               </tr>
               <tr>
+                <th scope="row">Name</th>
+                <td>
+                  <CellValue>
+                    <span className="field-hint">Provider name</span>
+                    <Plain value={channel.name} />
+                  </CellValue>
+                </td>
+                <td>
+                  <CellValue>
+                    <label className="emit-customize">
+                      <input
+                        type="checkbox"
+                        checked={emitDraft?.nameOn ?? false}
+                        disabled={!writable || !emitDraft}
+                        onChange={(e) => setEmit('nameOn', e.target.checked)}
+                      />
+                      Customize
+                    </label>
+                    {emitDraft?.nameOn ? (
+                      <input
+                        type="text"
+                        value={emitDraft.name}
+                        disabled={!writable}
+                        onChange={(e) => setEmit('name', e.target.value)}
+                      />
+                    ) : (
+                      <>
+                        <span className="field-hint">Emitted display-name</span>
+                        <Plain value={defaults?.name || channel.name} />
+                      </>
+                    )}
+                  </CellValue>
+                </td>
+              </tr>
+              <tr>
                 <th scope="row">Channel number</th>
                 <td>
                   <CellValue>
@@ -322,8 +517,31 @@ export function ChannelDetailPage() {
                 </td>
                 <td>
                   <CellValue>
-                    <span className="field-hint">Export number (tvg-chno / LCN)</span>
-                    <Plain value={displayNumber(channel.offset_number)} />
+                    <label className="emit-customize">
+                      <input
+                        type="checkbox"
+                        checked={emitDraft?.numberOn ?? false}
+                        disabled={!writable || !emitDraft}
+                        onChange={(e) => setEmit('numberOn', e.target.checked)}
+                      />
+                      Customize
+                    </label>
+                    {emitDraft?.numberOn ? (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={emitDraft.number}
+                        disabled={!writable}
+                        onChange={(e) => setEmit('number', e.target.value)}
+                      />
+                    ) : (
+                      <>
+                        <span className="field-hint">Export number (tvg-chno / LCN)</span>
+                        <Plain
+                          value={displayNumber(defaults?.number ?? channel.offset_number)}
+                        />
+                      </>
+                    )}
                   </CellValue>
                 </td>
               </tr>
@@ -337,12 +555,35 @@ export function ChannelDetailPage() {
                 </td>
                 <td>
                   <CellValue>
-                    <span className="field-hint">
-                      {channel.emitted_group
-                        ? 'group-title (taxonomy)'
-                        : 'group-title (same unless labeled)'}
-                    </span>
-                    <Plain value={channel.emitted_group || channel.group || undefined} />
+                    <label className="emit-customize">
+                      <input
+                        type="checkbox"
+                        checked={emitDraft?.groupOn ?? false}
+                        disabled={!writable || !emitDraft}
+                        onChange={(e) => setEmit('groupOn', e.target.checked)}
+                      />
+                      Customize
+                    </label>
+                    {emitDraft?.groupOn ? (
+                      <input
+                        type="text"
+                        value={emitDraft.group}
+                        disabled={!writable}
+                        onChange={(e) => setEmit('group', e.target.value)}
+                      />
+                    ) : (
+                      <>
+                        <span className="field-hint">group-title</span>
+                        <Plain
+                          value={
+                            defaults?.group ||
+                            channel.emitted_group ||
+                            channel.group ||
+                            undefined
+                          }
+                        />
+                      </>
+                    )}
                   </CellValue>
                 </td>
               </tr>
@@ -376,21 +617,84 @@ export function ChannelDetailPage() {
                 </td>
                 <td>
                   <CellValue>
-                    <span className="field-hint">Exported tvg-logo / icon</span>
-                    {channel.logo_error && (
-                      <p className="compare-error" role="status">
-                        {channel.logo_error}
-                      </p>
-                    )}
-                    {exportedLogo && exportedLogo !== providerLogo ? (
-                      <LogoPreview src={exportedLogo} />
-                    ) : null}
-                    {exportedLogo ? (
-                      <Url value={exportedLogo} />
+                    <label className="emit-customize">
+                      <input
+                        type="checkbox"
+                        checked={emitDraft?.logoOn ?? false}
+                        disabled={!writable || !emitDraft}
+                        onChange={(e) => setEmit('logoOn', e.target.checked)}
+                      />
+                      Customize
+                    </label>
+                    {emitDraft?.logoOn ? (
+                      <input
+                        type="text"
+                        value={emitDraft.logo}
+                        disabled={!writable}
+                        onChange={(e) => setEmit('logo', e.target.value)}
+                      />
                     ) : (
-                      <span className="subtle">
-                        {channel.logo_error ? 'cleared (not exported)' : '—'}
-                      </span>
+                      <>
+                        <span className="field-hint">Exported tvg-logo / icon</span>
+                        {channel.logo_error && (
+                          <p className="compare-error" role="status">
+                            {channel.logo_error}
+                          </p>
+                        )}
+                        {(defaults?.logo_url || exportedLogo) &&
+                        (defaults?.logo_url || exportedLogo) !== providerLogo ? (
+                          <LogoPreview src={defaults?.logo_url || exportedLogo} />
+                        ) : null}
+                        {defaults?.logo_url || exportedLogo ? (
+                          <Url value={defaults?.logo_url || exportedLogo} />
+                        ) : (
+                          <span className="subtle">
+                            {channel.logo_error ? 'cleared (not exported)' : '—'}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </CellValue>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">In export</th>
+                <td>
+                  <CellValue>
+                    <span className="field-hint">Pipeline decision</span>
+                    <Plain value={inLineup ? 'included' : 'excluded'} />
+                  </CellValue>
+                </td>
+                <td>
+                  <CellValue>
+                    <label className="emit-customize">
+                      <input
+                        type="checkbox"
+                        checked={emitDraft?.exportOn ?? false}
+                        disabled={!writable || !emitDraft}
+                        onChange={(e) => setEmit('exportOn', e.target.checked)}
+                      />
+                      Customize
+                    </label>
+                    {emitDraft?.exportOn ? (
+                      <select
+                        value={emitDraft.exportMode}
+                        disabled={!writable}
+                        onChange={(e) =>
+                          setEmit(
+                            'exportMode',
+                            e.target.value === 'disabled' ? 'disabled' : 'enabled',
+                          )
+                        }
+                      >
+                        <option value="enabled">Include</option>
+                        <option value="disabled">Exclude</option>
+                      </select>
+                    ) : (
+                      <>
+                        <span className="field-hint">auto (pipeline decides)</span>
+                        <Plain value={inLineup ? 'included' : 'excluded'} />
+                      </>
                     )}
                   </CellValue>
                 </td>
@@ -560,10 +864,10 @@ export function ChannelDetailPage() {
           </p>
         ) : null}
         {!historyError && !history ? <p className="meta">Loading history…</p> : null}
-        {history && history.events.length === 0 ? (
+        {history && (history.events?.length ?? 0) === 0 ? (
           <p className="meta">No probe events yet.</p>
         ) : null}
-        {history && history.events.length > 0 ? (
+        {history && (history.events?.length ?? 0) > 0 ? (
           <div className="table-wrap">
             <table className="compare-table history-table">
               <thead>

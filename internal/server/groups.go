@@ -11,6 +11,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/format"
 	"github.com/j27-aurum/gofast/internal/groups"
+	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 )
 
@@ -240,7 +241,10 @@ func discoverGroups(reg *provider.Registry, policy *groups.Policy) []discoveredG
 	return out
 }
 
-// previewGroups counts channels per effective group-title under the live policy.
+// previewGroups counts channels per final emitted group-title (same bucket M3U
+// uses: Channel.EmittedGroup after taxonomy + per-channel emit, else legacy
+// "{label}: {group}"). Disabled-group channels leave EmittedGroup empty, so
+// those fall back to the policy lookup for the preview key.
 func previewGroups(reg *provider.Registry, policy *groups.Policy) map[string]groupPreview {
 	out := map[string]groupPreview{}
 	for _, f := range reg.Feeds() {
@@ -249,19 +253,7 @@ func previewGroups(reg *provider.Registry, policy *groups.Policy) map[string]gro
 			label = string(f.ID())
 		}
 		for _, ch := range f.Channels() {
-			var key string
-			var disabled bool
-			if policy.Enabled() {
-				name, mapped, d := policy.Lookup(f.ID(), ch.Group)
-				disabled = d
-				if mapped {
-					key = name
-				} else {
-					key = strings.TrimSpace(ch.Group)
-				}
-			} else {
-				key = format.FormatGroupTitle(label, ch.Group)
-			}
+			key, disabled := previewGroupKey(ch, label, f.ID(), policy)
 			entry := out[key]
 			switch {
 			case disabled:
@@ -275,6 +267,23 @@ func previewGroups(reg *provider.Registry, policy *groups.Policy) map[string]gro
 		}
 	}
 	return out
+}
+
+func previewGroupKey(ch model.Channel, label string, providerID model.ProviderID, policy *groups.Policy) (key string, disabled bool) {
+	if title := strings.TrimSpace(ch.EmittedGroup); title != "" {
+		return title, false
+	}
+	if policy != nil && policy.Enabled() {
+		name, mapped, d := policy.Lookup(providerID, ch.Group)
+		if mapped || d {
+			if name == "" {
+				name = strings.TrimSpace(ch.Group)
+			}
+			return name, d
+		}
+		return strings.TrimSpace(ch.Group), false
+	}
+	return format.FormatGroupTitle(label, ch.Group), false
 }
 
 // configReadOnly reports whether the config path cannot be written (best-effort

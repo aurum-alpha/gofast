@@ -54,6 +54,9 @@ func ChannelHealthHistoryHandler(reg *provider.Registry, attrs *channelattr.Stor
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if events == nil {
+			events = []channelattr.HistoryEvent{}
+		}
 		out := healthHistoryResponse{Events: events}
 		if rate, ok := channelattr.SuccessRate(events, time.Now().UTC().Add(-30*24*time.Hour)); ok {
 			out.SuccessRate30d = &rate

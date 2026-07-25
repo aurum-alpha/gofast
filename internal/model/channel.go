@@ -36,6 +36,9 @@ type Channel struct {
 	Number      int        `json:"number"`                // provider's upstream channel number
 	StreamURL   string     `json:"stream_url"`            // provider's upstream URL
 	EmittedURL  string     `json:"emitted_url,omitempty"` // selected direct/proxy playback URL
+	// EmittedName is the operator-customized display name for M3U/XMLTV. Empty
+	// means export uses Name. Upstream Name is never mutated.
+	EmittedName string `json:"emitted_name,omitempty"`
 	// EmittedGroup is the resolved M3U group-title after the group taxonomy
 	// (merge / drop-prefix). Empty means "use the legacy {label}: {group}".
 	// Upstream Group is never mutated so diagnosis still shows the source group.
@@ -65,6 +68,14 @@ type Channel struct {
 	// FilterReason is set when the channel is dropped from export (exclusion, DRM, etc.).
 	FilterReason string `json:"filter_reason,omitempty"`
 	Excluded     bool   `json:"excluded"`
+
+	// Emit is the configured channel_emit row for this channel (API paint only).
+	Emit *ChannelEmit `json:"emit,omitempty"`
+	// EmitDefaults are fastgen-produced export values before per-field customs.
+	EmitDefaults *EmitDefaults `json:"emit_defaults,omitempty"`
+
+	// ForceInclude is set when export:enabled so emission skips exclude_unhealthy.
+	ForceInclude bool `json:"-"`
 
 	// RequestHeaders are provider-supplied headers used for stream probes and,
 	// later, logo retrieval. They are operational metadata, not part of our API.

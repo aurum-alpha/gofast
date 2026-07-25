@@ -155,4 +155,15 @@ func TestApplyEmissionPolicyExcludeUnhealthy(t *testing.T) {
 	if got2[0].Excluded || stats2.UnhealthyDropped != 0 {
 		t.Fatalf("default must keep DOWN exported: %+v stats=%+v", got2[0], stats2)
 	}
+	got3, stats3 := applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderLG,
+		NormalizedID:   "news",
+		StreamURL:      "https://upstream.test/live.m3u8",
+		Classification: model.ClassNative,
+		Health:         model.ChannelHealth{Status: model.HealthDown},
+		ForceInclude:   true,
+	}}, EmissionPolicy{ExcludeUnhealthy: true})
+	if got3[0].Excluded || stats3.UnhealthyDropped != 0 || got3[0].EmittedURL == "" {
+		t.Fatalf("force-include should emit unhealthy: %+v stats=%+v", got3[0], stats3)
+	}
 }

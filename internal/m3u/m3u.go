@@ -49,10 +49,11 @@ func MarshalAll(sources []Source, options Options) ([]byte, error) {
 	buffer.WriteString("#EXTM3U\n")
 	for _, item := range entries {
 		channel := item.channel
+		displayName := channel.DisplayName()
 		line := fmt.Sprintf(
 			`#EXTINF:-1 tvg-id="%s" tvg-name="%s"`,
 			item.id,
-			format.M3UAttribute(channel.Name),
+			format.M3UAttribute(displayName),
 		)
 		if channel.OffsetNumber > 0 {
 			line += fmt.Sprintf(` tvg-chno="%s"`, strconv.Itoa(channel.OffsetNumber))
@@ -67,7 +68,7 @@ func MarshalAll(sources []Source, options Options) ([]byte, error) {
 		if group := format.M3UAttribute(groupTitle); group != "" {
 			line += fmt.Sprintf(` group-title="%s"`, group)
 		}
-		line += "," + format.M3UText(format.FormatDisplayName(channel.Name, item.label))
+		line += "," + format.M3UText(format.FormatDisplayName(displayName, item.label))
 		buffer.WriteString(line)
 		buffer.WriteByte('\n')
 		buffer.WriteString(channel.OutputURL())

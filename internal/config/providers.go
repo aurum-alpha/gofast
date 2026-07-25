@@ -18,6 +18,9 @@ func compileProviders(providers map[model.ProviderID]model.ProviderSettings) (ma
 		if err := p.CompileExclusions(); err != nil {
 			return nil, fmt.Errorf("providers.%s: %w", id, err)
 		}
+		if err := model.ValidateChannelEmitMap(p.ChannelEmit); err != nil {
+			return nil, fmt.Errorf("providers.%s: %w", id, err)
+		}
 		out[id] = p
 	}
 	return out, nil

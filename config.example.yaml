@@ -127,6 +127,15 @@ providers:
     exclusions:
       # Upstream junk that appears on LG feeds (must never reach Jellyfin).
       - dinospluto-lgus
+    # Per-channel emit customization (what fastgen writes to M3U/XMLTV).
+    # Keyed by normalized channel id. Edit in the channel detail UI instead.
+    # channel_emit:
+    #   some_channel_id:
+    #     export: disabled          # auto | enabled | disabled
+    #     name: "My Display Name"
+    #     group: News
+    #     number: 1005
+    #     logo_url: "https://example/logo.png"
 
   pluto:
     enabled: true

@@ -397,6 +397,39 @@
   font-size: 0.9rem;
 }
 
+.emit-customize {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.emit-customize input {
+  margin: 0;
+}
+
+.compare-table .compare-value input[type='text'],
+.compare-table .compare-value select {
+  width: 100%;
+  max-width: 28rem;
+  box-sizing: border-box;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.button-secondary {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
 .url-break {
   word-break: break-all;
   font-size: 0.85em;

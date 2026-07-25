@@ -37,7 +37,8 @@ func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]mod
 			}
 			continue
 		}
-		if policy.ExcludeUnhealthy && channel.Health.StatusOrUntested() == model.HealthDown {
+		if policy.ExcludeUnhealthy && !channel.ForceInclude &&
+			channel.Health.StatusOrUntested() == model.HealthDown {
 			channel.Excluded = true
 			if channel.FilterReason == "" {
 				channel.FilterReason = model.FilterReasonUnhealthy

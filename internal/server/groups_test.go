@@ -102,6 +102,50 @@ func TestGroupsHandlerGET(t *testing.T) {
 	}
 }
 
+func TestGroupsPreviewUsesEmittedGroup(t *testing.T) {
+	// Preview must bucket by final EmittedGroup (taxonomy/channel-emit), not
+	// upstream Channel.Group — otherwise Groups UI disagrees with the playlist.
+	settings := map[model.ProviderID]model.ProviderSettings{
+		model.ProviderLG: {ID: model.ProviderLG, Enabled: boolPtr(true), Label: "LG"},
+	}
+	reg := provider.NewRegistry(map[model.ProviderID]provider.Reader{
+		model.ProviderLG: healthStubReader{},
+	}, settings)
+	lg, _ := reg.Feed(model.ProviderLG)
+	lg.Set(provider.Lineup{Channels: []model.Channel{
+		{
+			Provider:     model.ProviderLG,
+			NormalizedID: "a",
+			Name:         "A",
+			Group:        "Animals & Nature",
+			EmittedGroup: "Nature",
+			StreamURL:    "https://x/a.m3u8",
+		},
+	}, FetchedAt: time.Now()})
+	store := groupsTestStore(t, "groups:\n  enabled: true\n")
+	h := server.GroupsHandler(store, livePolicy(store), reg)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/groups", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Preview map[string]struct {
+			EmittedCount  int `json:"emitted_count"`
+			DisabledCount int `json:"disabled_count"`
+		} `json:"preview"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Preview["Nature"].EmittedCount != 1 {
+		t.Fatalf("preview=%+v (want Nature emitted_count 1)", body.Preview)
+	}
+	if _, ok := body.Preview["Animals & Nature"]; ok {
+		t.Fatalf("preview must not bucket by upstream group: %+v", body.Preview)
+	}
+}
+
 func TestGroupsHandlerPUTPersistsAndApplies(t *testing.T) {
 	reg := groupsTestRegistry(t)
 	store := groupsTestStore(t, "listen: \":8180\"\n")

@@ -506,6 +506,7 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	chs = model.ApplyChannelEmitPresentation(chs, s.ChannelEmit)
 	normByRaw := make(map[string]string, len(chs))
 	for _, ch := range chs {
 		normByRaw[ch.ID] = ch.NormalizedID
@@ -534,6 +535,8 @@ func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, pr
 	if groupsPolicy != nil {
 		chs = groups.Apply(chs, id, groupsPolicy)
 	}
+	chs = model.ApplyChannelEmitGroup(chs, s.ChannelEmit)
+	chs = model.ApplyChannelEmitPreExport(chs, s.ChannelEmit)
 	var emission emissionStats
 	chs, emission = applyEmissionPolicy(chs, policy)
 	if emission.NeedsProxyDropped > 0 {
@@ -548,6 +551,7 @@ func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, pr
 			"count", emission.UnhealthyDropped,
 		)
 	}
+	chs = model.PaintChannelEmit(chs, s.ChannelEmit)
 
 	label := s.Label
 	if label == "" {

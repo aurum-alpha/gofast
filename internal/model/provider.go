@@ -57,26 +57,31 @@ type ProviderSettings struct {
 
 	// Headers are extra outbound request headers for this provider's fetches.
 	Headers map[string]string `yaml:"headers" json:"headers,omitempty"`
+
+	// ChannelEmit customizes what fastgen emits per normalized channel id
+	// (presentation + include/exclude). Keys may contain dots; persist as a map.
+	ChannelEmit map[string]ChannelEmit `yaml:"channel_emit,omitempty" json:"channel_emit,omitempty"`
 }
 
 // providerSettingsJSON is the explicit JSON wire shape for ProviderSettings.
 type providerSettingsJSON struct {
-	ID                       ProviderID        `json:"id"`
-	Enabled                  bool              `json:"enabled"`
-	Label                    string            `json:"label"`
-	ChannelNumberOffset      int               `json:"channel_number_offset"`
-	SynthesizeChannelNumbers int               `json:"synthesize_channel_numbers"`
-	MinChannels              int               `json:"min_channels"`
-	RefreshInterval          string            `json:"refresh_interval"`
-	ExpectedGuideHorizon     string            `json:"expected_guide_horizon,omitempty"`
-	Exclusions               []string          `json:"exclusions,omitempty"`
-	SlugTemplate             string            `json:"slug_template,omitempty"`
-	Region                   string            `json:"region,omitempty"`
-	ChannelsURL              string            `json:"channels_url,omitempty"`
-	EPGURL                   string            `json:"epg_url,omitempty"`
-	M3UURL                   string            `json:"m3u_url,omitempty"`
-	UserAgent                string            `json:"user_agent,omitempty"`
-	Headers                  map[string]string `json:"headers,omitempty"`
+	ID                       ProviderID             `json:"id"`
+	Enabled                  bool                   `json:"enabled"`
+	Label                    string                 `json:"label"`
+	ChannelNumberOffset      int                    `json:"channel_number_offset"`
+	SynthesizeChannelNumbers int                    `json:"synthesize_channel_numbers"`
+	MinChannels              int                    `json:"min_channels"`
+	RefreshInterval          string                 `json:"refresh_interval"`
+	ExpectedGuideHorizon     string                 `json:"expected_guide_horizon,omitempty"`
+	Exclusions               []string               `json:"exclusions,omitempty"`
+	SlugTemplate             string                 `json:"slug_template,omitempty"`
+	Region                   string                 `json:"region,omitempty"`
+	ChannelsURL              string                 `json:"channels_url,omitempty"`
+	EPGURL                   string                 `json:"epg_url,omitempty"`
+	M3UURL                   string                 `json:"m3u_url,omitempty"`
+	UserAgent                string                 `json:"user_agent,omitempty"`
+	Headers                  map[string]string      `json:"headers,omitempty"`
+	ChannelEmit              map[string]ChannelEmit `json:"channel_emit,omitempty"`
 }
 
 // IsEnabled reports whether the provider should run. Omitted enabled defaults to true.
@@ -105,6 +110,7 @@ func (p ProviderSettings) MarshalJSON() ([]byte, error) {
 		M3UURL:                   p.M3UURL,
 		UserAgent:                p.UserAgent,
 		Headers:                  p.Headers,
+		ChannelEmit:              p.ChannelEmit,
 	}
 	if p.ExpectedGuideHorizon > 0 {
 		j.ExpectedGuideHorizon = p.ExpectedGuideHorizon.String()
@@ -162,6 +168,9 @@ func (p ProviderSettings) Merge(o ProviderSettings) ProviderSettings {
 	if len(o.Headers) > 0 {
 		p.Headers = o.Headers
 	}
+	if o.ChannelEmit != nil {
+		p.ChannelEmit = o.ChannelEmit
+	}
 	return p
 }
 
@@ -197,7 +206,9 @@ func (p ProviderSettings) Equal(o ProviderSettings) bool {
 		p.UserAgent != o.UserAgent {
 		return false
 	}
-	return slices.Equal(p.Exclusions, o.Exclusions) && maps.Equal(p.Headers, o.Headers)
+	return slices.Equal(p.Exclusions, o.Exclusions) &&
+		maps.Equal(p.Headers, o.Headers) &&
+		ChannelEmitMapsEqual(p.ChannelEmit, o.ChannelEmit)
 }
 
 // CompileExclusions compiles Exclusions into ExclusionRegexes (case-insensitive).
@@ -254,6 +265,7 @@ func (p *ProviderSettings) UnmarshalJSON(data []byte) error {
 		M3UURL:                   j.M3UURL,
 		UserAgent:                j.UserAgent,
 		Headers:                  j.Headers,
+		ChannelEmit:              j.ChannelEmit,
 	}
 	return nil
 }

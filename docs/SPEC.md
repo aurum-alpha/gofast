@@ -211,10 +211,19 @@ streams).
     its channels from **both** M3U and XMLTV. Disable wins over emit. Disabled
     channels stay in the API/UI with `filter_reason = disabled group "X"`; upstream
     `Channel.group` is never mutated (detail still shows the source group).
-  - **Precedence vs per-channel override (J27-40, not built here):** a future
-    per-channel `group` override wins over taxonomy.
+  - **Precedence vs per-channel emit:** a `providers.<id>.channel_emit.<normalized_id>.group`
+    customization wins over taxonomy for that channel's emitted `group-title`.
   - Managed in the UI Groups editor; saving writes the `groups` block back to
     `config.yaml` (comment-preserving) and applies **live** (re-emit, no restart).
+- **Per-channel emit customization (`channel_emit`, J27-40):** under each
+  provider, a map keyed by normalized channel id customizes **what fastgen
+  emits** (not upstream fetch/raw): display name, group-title, channel number,
+  logo URL, and export include/exclude (`auto` / `enabled` / `disabled`).
+  Force-include may clear soft operator blocks (regex exclusions, disabled
+  group, `exclude_unhealthy`) but never DRM, missing identity/stream, or
+  needs-FASTProxy. Rows for temporarily absent channels are retained until
+  reset. Edited on the channel detail “Provider vs Fastgen” table (per-field
+  Customize checkbox); persisted via `config.Store` and applied live on re-emit.
 - **Exclusion filters:** per-provider list of case-insensitive regexes matched
   against stream URL + provider id + channel name (fast first pass; the
   classifier probe is the authoritative gate). Filtered channels are removed
@@ -419,15 +428,17 @@ provider, name, and channel number.
 
 Per-channel detail (`/channels/{provider}/{normalizedId}`): export status and
 full filter reason, DRM `license_url` evidence, upstream vs emitted URL, raw
-and normalized ids, logo URL or `logo_error`. Health/probes and force
-enable/disable overrides are later milestones.
+and normalized ids, logo URL or `logo_error`, health/probes, and **per-field
+Customize** controls on the Fastgen export column (name, number, group, logo,
+in-export). Uncheck uses the fastgen-produced default; save applies live.
 
 Provider list shows triage summaries (exported / excluded / stale / last
 success). Provider detail holds full rollups (classifications, filter
 reasons, guide coverage) mirroring the eventual rich `/healthz` shape.
 
-Config editing for the iterated-on settings (exclusion regexes, channel number offsets,
-labels, proxy settings, per-channel overrides), persisted to the YAML config.
+Config editing for operator settings (exclusion regexes, channel number offsets,
+labels, proxy settings, per-channel emit customizations), persisted to the YAML
+config through `config.Store`.
 
 Acceptance test for the UI: a user wondering why a specific LG channel is
 missing from Jellyfin can locate it in the table (provider / search), open

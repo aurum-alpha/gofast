@@ -15,6 +15,21 @@ export type ChannelHealth = {
   last_range_retried?: boolean
 }
 
+export type ChannelEmit = {
+  export?: 'auto' | 'enabled' | 'disabled' | ''
+  name?: string
+  group?: string
+  number?: number
+  logo_url?: string
+}
+
+export type EmitDefaults = {
+  name: string
+  group: string
+  number: number
+  logo_url: string
+}
+
 export type Channel = {
   provider: string
   id: string
@@ -25,6 +40,7 @@ export type Channel = {
   offset_number: number
   stream_url: string
   emitted_url?: string
+  emitted_name?: string
   emitted_group?: string
   logo_url?: string
   logo_source_url?: string
@@ -35,6 +51,8 @@ export type Channel = {
   excluded: boolean
   description?: string
   health?: ChannelHealth
+  emit?: ChannelEmit
+  emit_defaults?: EmitDefaults
 }
 
 export const FILTER_REASON_DRM = 'DRM'
