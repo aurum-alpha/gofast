@@ -56,6 +56,13 @@ func TestClampInterval(t *testing.T) {
 			want:       time.Minute,
 			clamped:    true,
 		},
+		{
+			name:       "clamped interval rounds to nearest minute",
+			configured: 6 * time.Hour,
+			horizon:    2*5*time.Hour + 2*16*time.Minute + 2*35*time.Second + 392348572*time.Nanosecond,
+			want:       5*time.Hour + 17*time.Minute,
+			clamped:    true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
