@@ -20,6 +20,17 @@ const (
 	HealthCheckFailure HealthCheckResult = "failure"
 )
 
+// L1RetryBackoffSteps is the Health L1 retry-lane delay table (J27-67).
+// On failure at step s use steps[s] (while s < len); after the last step parks
+// until the next baseline fleet L1 re-arms from step 0.
+var L1RetryBackoffSteps = []time.Duration{
+	15 * time.Minute,
+	30 * time.Minute,
+	1 * time.Hour,
+	2 * time.Hour,
+	6 * time.Hour,
+}
+
 // HealthCheck is one try of the stream (probe or playback). Feeds Apply; the
 // attr store persists ChannelHealth (current + history), not raw checks alone.
 type HealthCheck struct {
@@ -61,10 +72,20 @@ type ChannelHealth struct {
 	LastBytesRead    int    `json:"last_bytes_read,omitempty"`
 	LastRangeUsed    bool   `json:"last_range_used,omitempty"`
 	LastRangeRetried bool   `json:"last_range_retried,omitempty"`
+	// NextRetryAt is when the L1 retry lane may probe again (per-channel).
+	// Zero means not scheduled (healthy, parked after last backoff step, or never armed).
+	NextRetryAt time.Time `json:"next_retry_at,omitempty"`
+	// RetryStep is the backoff table index for the next failure arming (0 = 15m).
+	RetryStep int `json:"retry_step,omitempty"`
 }
 
 // Apply returns the next ChannelHealth after one check. n is the DOWN threshold
 // (minimum 1). Zero-value receiver is treated as untested.
+//
+// On success, L1 retry backoff fields are cleared. On failure that leaves the
+// channel degraded/down, NextRetryAt is armed from L1RetryBackoffSteps using
+// the prior RetryStep; after the last step the channel parks (no NextRetryAt)
+// until a later failure re-arms from step 0 (typically the next baseline sweep).
 func (h ChannelHealth) Apply(check HealthCheck, n int) ChannelHealth {
 	if n < 1 {
 		n = 1
@@ -87,6 +108,7 @@ func (h ChannelHealth) Apply(check HealthCheck, n int) ChannelHealth {
 	case HealthCheckSuccess:
 		out.Status = HealthHealthy
 		out.ConsecutiveFailures = 0
+		// NextRetryAt / RetryStep left zero.
 		return out
 	case HealthCheckFailure:
 		out.ConsecutiveFailures = h.ConsecutiveFailures + 1
@@ -97,6 +119,7 @@ func (h ChannelHealth) Apply(check HealthCheck, n int) ChannelHealth {
 		} else {
 			out.Status = HealthDegraded
 		}
+		out.armL1Retry(h.RetryStep, at)
 		return out
 	default:
 		// Unknown result: leave prior status, still record the check time/result.
@@ -104,6 +127,8 @@ func (h ChannelHealth) Apply(check HealthCheck, n int) ChannelHealth {
 		out.ConsecutiveFailures = h.ConsecutiveFailures
 		out.LastFailureClass = h.LastFailureClass
 		out.LastFailureDetail = h.LastFailureDetail
+		out.NextRetryAt = h.NextRetryAt
+		out.RetryStep = h.RetryStep
 		if out.LastHTTPStatus == 0 {
 			out.LastHTTPStatus = h.LastHTTPStatus
 		}
@@ -126,10 +151,42 @@ func (h ChannelHealth) Apply(check HealthCheck, n int) ChannelHealth {
 	}
 }
 
+// RetryDue reports whether the L1 retry lane may probe this channel at now.
+func (h ChannelHealth) RetryDue(now time.Time) bool {
+	if h.NextRetryAt.IsZero() {
+		return false
+	}
+	status := h.StatusOrUntested()
+	if status != HealthDegraded && status != HealthDown {
+		return false
+	}
+	return !h.NextRetryAt.After(now)
+}
+
 // StatusOrUntested returns Status, or HealthUntested when empty.
 func (h ChannelHealth) StatusOrUntested() Health {
 	if h.Status == "" {
 		return HealthUntested
 	}
 	return h.Status
+}
+
+// armL1Retry sets NextRetryAt / RetryStep after a failure (receiver is the
+// post-failure health being built; step is the prior RetryStep).
+func (h *ChannelHealth) armL1Retry(step int, at time.Time) {
+	steps := L1RetryBackoffSteps
+	if len(steps) == 0 {
+		return
+	}
+	if step < 0 {
+		step = 0
+	}
+	if step >= len(steps) {
+		// Parked after last backoff; clear so a later failure (baseline) re-arms from 0.
+		h.NextRetryAt = time.Time{}
+		h.RetryStep = 0
+		return
+	}
+	h.NextRetryAt = at.Add(steps[step])
+	h.RetryStep = step + 1
 }

@@ -7,7 +7,7 @@ import {
   formatHealthSource,
   formatHealthWhen,
   healthBadge,
-  l1SkipReason,
+  nextL1Label,
   lineupBadge,
 } from '../lib/channel'
 import type { Channel, ChannelEmit, ChannelHealth } from '../lib/channel'
@@ -426,6 +426,7 @@ export function ChannelDetailPage() {
   const status = lineupBadge(channel)
   const cls = classBadge(channel.classification)
   const hb = healthBadge(channel.health?.status)
+  const nextL1 = nextL1Label(channel, schedule ?? undefined)
   const providerLogo = channel.logo_source_url || channel.logo_url
   const exportedPlayback = channel.excluded
     ? undefined
@@ -872,14 +873,8 @@ export function ChannelDetailPage() {
               </dd>
             </div>
             <div>
-              <dt>Next L1 sweep</dt>
-              <dd>
-                {!channelOnScheduledL1(channel)
-                  ? l1SkipReason(channel)
-                  : schedule?.l1_running
-                    ? 'running now'
-                    : formatHealthWhen(schedule?.next_l1_at)}
-              </dd>
+              <dt>{nextL1.title}</dt>
+              <dd>{nextL1.value}</dd>
             </div>
             <div>
               <dt>Last L1 sweep</dt>

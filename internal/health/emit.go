@@ -23,6 +23,29 @@ type Emitter struct {
 	live map[string]model.ChannelHealth // process-local prior (Store writes are async)
 }
 
+// Current returns the latest ChannelHealth for a channel from the process-local
+// prior, falling back to the attr store. ok is false when neither has a value.
+func (e *Emitter) Current(provider model.ProviderID, channelID string) (model.ChannelHealth, bool) {
+	if e == nil {
+		return model.ChannelHealth{}, false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	key := string(provider) + "\x00" + channelID
+	if h, ok := e.live[key]; ok {
+		return h, true
+	}
+	if e.Store != nil {
+		if raw, found := e.Store.Current(provider, channelID, channelattr.KindHealth); found {
+			var h model.ChannelHealth
+			if json.Unmarshal(raw, &h) == nil {
+				return h, true
+			}
+		}
+	}
+	return model.ChannelHealth{}, false
+}
+
 // EmitCheck folds check into current health and sends the result on the bus.
 // The returned ChannelHealth is the value that will be persisted (bus is async).
 // A process-local prior is kept so rapid/batched checks chain correctly before

@@ -13,6 +13,8 @@ export type ChannelHealth = {
   last_bytes_read?: number
   last_range_used?: boolean
   last_range_retried?: boolean
+  next_retry_at?: string
+  retry_step?: number
 }
 
 export type ChannelEmit = {
@@ -224,6 +226,36 @@ export function l1SkipReason(ch: Pick<Channel, 'classification' | 'emitted_url'>
   return 'not scheduled'
 }
 
+/** True when channel health has an armed L1 retry-lane due time. */
+export function channelHasL1Retry(health?: ChannelHealth): boolean {
+  if (!health?.next_retry_at) return false
+  const d = new Date(health.next_retry_at)
+  return !Number.isNaN(d.getTime()) && d.getUTCFullYear() > 1
+}
+
+/** Channel-detail copy for the next L1 probe (retry lane vs fleet sweep). */
+export function nextL1Label(
+  ch: Pick<Channel, 'classification' | 'emitted_url' | 'stream_url' | 'health'>,
+  schedule?: { l1_running?: boolean; next_l1_at?: string },
+): { title: string; value: string } {
+  if (channelHasL1Retry(ch.health)) {
+    const step = ch.health?.retry_step
+    const stepHint =
+      step != null && step > 0 ? ` (backoff step ${step})` : ''
+    return {
+      title: 'Next L1 retry',
+      value: `${formatHealthWhen(ch.health?.next_retry_at)}${stepHint}`,
+    }
+  }
+  if (!channelOnScheduledL1(ch)) {
+    return { title: 'Next L1 sweep', value: l1SkipReason(ch) }
+  }
+  if (schedule?.l1_running) {
+    return { title: 'Next L1 sweep', value: 'running now' }
+  }
+  return { title: 'Next L1 sweep', value: formatHealthWhen(schedule?.next_l1_at) }
+}
+
 export function displayNumber(n: number): string {
   return n > 0 ? String(n) : '—'
 }
@@ -248,6 +280,8 @@ export function formatHealthSource(source?: string): string {
       return 'playback (proxy)'
     case 'health_l1':
       return 'health L1'
+    case 'health_l1_retry':
+      return 'health L1 retry'
     case 'health_l2':
       return 'health L2'
     case 'probe':

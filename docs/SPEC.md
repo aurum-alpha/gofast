@@ -526,10 +526,15 @@ installs must not collectively generate bot-fingerprint probe traffic or fake
 ad impressions against free services. Therefore:
 - The classifier runs every refresh. It inspects stream dialect and fetches no
   media; it is not part of the health ladder.
-- Health L1 (segment): daily for `NATIVE` / `XUMO_SSAI`, and for `AMAGI_SSAI`
-  when an emitted proxy URL is set (probe through FASTProxy — not the upstream
-  beacon catalog URL). Never schedule Health L1 on `SESSION` (mint would be a
-  fake tune). Manual/Test-now may use EmittedURL when set.
+- Health L1 (segment): daily baseline for `NATIVE` / `XUMO_SSAI`, and for
+  `AMAGI_SSAI` when an emitted proxy URL is set (probe through FASTProxy — not
+  the upstream beacon catalog URL). Never schedule Health L1 on `SESSION` (mint
+  would be a fake tune). Manual/Test-now may use EmittedURL when set.
+- Health L1 **retry lane:** channels left `degraded` / `down` after a check get
+  a per-channel `next_retry_at` with exponential backoff
+  (`15m → 30m → 1h → 2h → 6h`), then park until the next baseline fleet sweep.
+  Same eligibility gates as baseline (SESSION never; Amagi only with
+  EmittedURL). Healthy channels are not re-probed early.
 - Health L2 (ffprobe): OFF by default; opt-in config for users who accept the
   tradeoff. Bounded worker pool, per-probe timeout, jitter over a configurable
   window (default 60m), randomized order — never a clockwork fingerprint.

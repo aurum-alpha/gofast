@@ -9,6 +9,9 @@ import (
 // SourcePlayback is the channelattr Event.Source for proxy-driven health checks.
 const SourcePlayback = "playback"
 
+// SourceL1Retry is HealthCheck.Source for the L1 retry lane (J27-67).
+const SourceL1Retry = "health_l1_retry"
+
 // HealthCheckFromProxyEvent maps a FASTProxy telemetry event into a HealthCheck
 // for EmitCheck. ok is false when the event should not drive the FSM (too chatty
 // or not an upstream health signal).

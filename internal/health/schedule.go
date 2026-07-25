@@ -2,14 +2,12 @@ package health
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"math/rand"
 	"sync"
 	"time"
 
-	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
@@ -17,6 +15,11 @@ import (
 
 var ErrNoProber = errors.New("health: L2 ffprobe prober not configured")
 var ErrNoSegmentProber = errors.New("health: L1 segment prober not configured")
+
+const (
+	l1RetryTickEvery  = time.Minute
+	l1RetryMaxPerTick = 50
+)
 
 // Scheduler runs L1 (NATIVE segment) and optional L2 (ffprobe) loops.
 // Timing is anchored on the last completed sweep (persisted under StatePath),
@@ -180,6 +183,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 	s.saveState()
 
+	retryTicker := time.NewTicker(l1RetryTickEvery)
+	defer retryTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -206,6 +212,14 @@ func (s *Scheduler) Run(ctx context.Context) {
 				s.saveState()
 				l3Timer.Reset(delay)
 			}
+		case <-retryTicker.C:
+			s.mu.Lock()
+			busy := s.l2Busy
+			s.mu.Unlock()
+			if busy {
+				continue
+			}
+			s.runL1Retry(ctx)
 		case <-s.reconfigCh():
 			now := time.Now()
 			l2Delay := s.delayUntilNext(now, s.lastL2Locked(), s.l2Interval(), true)
@@ -410,6 +424,46 @@ func (s *Scheduler) runL2(ctx context.Context) {
 	slog.Info("health L1 sweep done", "probed", n)
 }
 
+// runL1Retry probes degraded/down channels whose per-channel NextRetryAt is due.
+// Skipped while the baseline L1 sweep is busy; due times remain until a later tick.
+func (s *Scheduler) runL1Retry(ctx context.Context) {
+	if s.segment() == nil || s.Emitter == nil {
+		return
+	}
+	now := time.Now().UTC()
+	var jobs []model.Channel
+	for _, feed := range s.Reg.Feeds() {
+		for _, ch := range feed.Channels() {
+			if !l1ShouldSchedule(ch) {
+				continue
+			}
+			h := s.priorChannelHealth(ch)
+			if !l1RetryCandidate(ch, h, now) {
+				continue
+			}
+			jobs = append(jobs, ch)
+			if len(jobs) >= l1RetryMaxPerTick {
+				break
+			}
+		}
+		if len(jobs) >= l1RetryMaxPerTick {
+			break
+		}
+	}
+	if len(jobs) == 0 {
+		return
+	}
+	workers := s.l2Workers()
+	slog.Info("health L1 retry start", "candidates", len(jobs), "workers", workers)
+	n := s.runJobs(ctx, jobs, workers, func(ctx context.Context, ch model.Channel) {
+		check := s.probeL1Retry(ctx, ch)
+		if _, err := s.Emitter.EmitCheck(ctx, ch.Provider, ch.NormalizedID, check); err != nil {
+			slog.Warn("health L1 retry emit", "provider", ch.Provider, "channel", ch.NormalizedID, "err", err)
+		}
+	})
+	slog.Info("health L1 retry done", "probed", n)
+}
+
 // l1ShouldSchedule reports whether a channel is a scheduled Health L1 candidate.
 // Amagi SSAI is included only when EmittedURL is set (proxy path); never probe
 // upstream beacon URLs on the schedule. SESSION remains off ScheduleSegmentHealth.
@@ -421,6 +475,11 @@ func l1ShouldSchedule(ch model.Channel) bool {
 		return false
 	}
 	return true
+}
+
+// l1RetryCandidate reports whether ch may enter the L1 retry lane at now.
+func l1RetryCandidate(ch model.Channel, h model.ChannelHealth, now time.Time) bool {
+	return l1ShouldSchedule(ch) && h.RetryDue(now)
 }
 
 func (s *Scheduler) runL3(ctx context.Context) {
@@ -485,15 +544,16 @@ func l3ShouldProbe(status model.Health, healthySample, roll float64) bool {
 }
 
 func (s *Scheduler) priorHealth(ch model.Channel) model.Health {
-	if s.Emitter != nil && s.Emitter.Store != nil {
-		if raw, ok := s.Emitter.Store.Current(ch.Provider, ch.NormalizedID, channelattr.KindHealth); ok {
-			var h model.ChannelHealth
-			if json.Unmarshal(raw, &h) == nil {
-				return h.StatusOrUntested()
-			}
+	return s.priorChannelHealth(ch).StatusOrUntested()
+}
+
+func (s *Scheduler) priorChannelHealth(ch model.Channel) model.ChannelHealth {
+	if s.Emitter != nil {
+		if h, ok := s.Emitter.Current(ch.Provider, ch.NormalizedID); ok {
+			return h
 		}
 	}
-	return ch.Health.StatusOrUntested()
+	return ch.Health
 }
 
 func (s *Scheduler) runJobs(ctx context.Context, jobs []model.Channel, workers int, fn func(context.Context, model.Channel)) int {
@@ -531,6 +591,17 @@ func (s *Scheduler) probeL2(ctx context.Context, ch model.Channel) model.HealthC
 	}
 	defer release()
 	return s.segment().Check(ctx, ch)
+}
+
+func (s *Scheduler) probeL1Retry(ctx context.Context, ch model.Channel) model.HealthCheck {
+	release, err := s.acquireHost(ctx, ch)
+	if err != nil {
+		return failCheck(model.HealthCheck{At: time.Now().UTC(), Source: SourceL1Retry}, "timeout", err.Error())
+	}
+	defer release()
+	check := s.segment().Check(ctx, ch)
+	check.Source = SourceL1Retry
+	return check
 }
 
 func (s *Scheduler) probeL3(ctx context.Context, ch model.Channel) model.HealthCheck {

@@ -64,9 +64,9 @@ upstream URL. FASTProxy not required.
 Amagi-style SSAI: media playlist lines are often **extensionless tracking URLs**
 (see beacon). ffmpeg rejects them. **Needs FASTProxy** → beacon rewrite.
 
-Scheduled Health L1 includes Amagi **only when** an emitted proxy URL is set
-(probes go through FASTProxy). Without proxy, Amagi stays off the L1 schedule
-so we never hit upstream beacons on a timer.
+Scheduled Health L1 (baseline and retry lane) includes Amagi **only when** an
+emitted proxy URL is set (probes go through FASTProxy). Without proxy, Amagi
+stays off the L1 timers so we never hit upstream beacons on a schedule.
 
 ### Beacon
 

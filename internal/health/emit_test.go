@@ -48,9 +48,37 @@ func TestEmitCheckAppliesAndPersists(t *testing.T) {
 		if got.Status != model.HealthDegraded || got.ConsecutiveFailures != 1 {
 			t.Fatalf("got %+v", got)
 		}
+		if !got.NextRetryAt.Equal(at.Add(15*time.Minute)) || got.RetryStep != 1 {
+			t.Fatalf("retry arm: %+v", got)
+		}
 		return
 	}
 	t.Fatal("timed out")
+}
+
+func TestEmitCheckSuccessClearsRetry(t *testing.T) {
+	bus := channelattr.NewBus(8)
+	em := &Emitter{Bus: bus, ConsecutiveFailures: 3}
+	ctx := context.Background()
+	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	fail, err := em.EmitCheck(ctx, model.ProviderLG, "ch-retry", model.HealthCheck{
+		Result: model.HealthCheckFailure, FailureClass: "x", At: at, Source: "health_l1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fail.NextRetryAt.IsZero() {
+		t.Fatal("expected next_retry_at after failure")
+	}
+	ok, err := em.EmitCheck(ctx, model.ProviderLG, "ch-retry", model.HealthCheck{
+		Result: model.HealthCheckSuccess, At: at.Add(time.Minute), Source: "health_l1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok.NextRetryAt.IsZero() || ok.RetryStep != 0 || ok.Status != model.HealthHealthy {
+		t.Fatalf("success should clear retry: %+v", ok)
+	}
 }
 
 func TestEmitCheckChainsBeforeStoreCatchUp(t *testing.T) {

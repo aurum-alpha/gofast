@@ -78,8 +78,10 @@ health:
   consecutive_failures: 3
   # When true, HealthDown channels are pruned from M3U/XMLTV (causes Jellyfin lineup churn).
   exclude_unhealthy: false
-  # Health L1: daily segment GET for NATIVE / XUMO_SSAI, and AMAGI_SSAI when
-  # EmittedURL (proxy) is set. Not SESSION. Prefer Range; retry plain GET on 416.
+  # Health L1: daily baseline segment GET for NATIVE / XUMO_SSAI, and AMAGI_SSAI
+  # when EmittedURL (proxy) is set. Not SESSION. Prefer Range; retry plain GET on 416.
+  # Degraded/down channels also get a per-channel retry lane (15m→30m→1h→2h→6h,
+  # then park until the next baseline sweep); healthy channels stay on baseline only.
   l1_interval: 24h
   l1_workers: 4
   # Soft-retry timeout/5xx once before counting a hard failure (0 disables).

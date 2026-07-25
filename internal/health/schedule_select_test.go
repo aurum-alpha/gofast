@@ -71,6 +71,39 @@ func TestL1ShouldSchedule(t *testing.T) {
 	}
 }
 
+func TestL1RetryCandidate(t *testing.T) {
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	native := model.Channel{
+		Classification: model.ClassNative,
+		StreamURL:      "https://cdn.example/n.m3u8",
+	}
+	due := model.ChannelHealth{Status: model.HealthDegraded, NextRetryAt: now}
+	if !l1RetryCandidate(native, due, now) {
+		t.Fatal("degraded NATIVE due should retry")
+	}
+	if l1RetryCandidate(native, model.ChannelHealth{Status: model.HealthHealthy, NextRetryAt: now}, now) {
+		t.Fatal("healthy must not retry")
+	}
+	if l1RetryCandidate(native, model.ChannelHealth{Status: model.HealthDegraded}, now) {
+		t.Fatal("no next_retry_at must not retry")
+	}
+	session := model.Channel{
+		Classification: model.ClassSession,
+		StreamURL:      "https://dai.google.com/linear/hls/event/e/master.m3u8",
+		EmittedURL:     "https://proxy.example/stream/distrotv/e.m3u8",
+	}
+	if l1RetryCandidate(session, due, now) {
+		t.Fatal("SESSION must not enter retry lane")
+	}
+	amagiNoProxy := model.Channel{
+		Classification: model.ClassAmagiSSAI,
+		StreamURL:      "https://amagi.example/beacon.m3u8",
+	}
+	if l1RetryCandidate(amagiNoProxy, due, now) {
+		t.Fatal("Amagi without EmittedURL must not retry")
+	}
+}
+
 func TestHostLimiterCapsPerHost(t *testing.T) {
 	lim := NewHostLimiter(1)
 	ctx := context.Background()
