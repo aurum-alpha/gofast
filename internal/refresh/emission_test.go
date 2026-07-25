@@ -167,3 +167,34 @@ func TestApplyEmissionPolicyExcludeUnhealthy(t *testing.T) {
 		t.Fatalf("force-include should emit unhealthy: %+v stats=%+v", got3[0], stats3)
 	}
 }
+
+// Under proxy_all the playlist URL is stable: a NATIVE→Amagi (or legacy BEACON)
+// classification flip must not rewrite the emitted stream URL (J27-29).
+func TestApplyEmissionPolicyProxyAllNativeToAmagiFlipStableURL(t *testing.T) {
+	policy := EmissionPolicy{ProxyBaseURL: "https://proxy.test/", ProxyAll: true}
+	base := model.Channel{
+		Provider:     model.ProviderLG,
+		NormalizedID: "news",
+		StreamURL:    "https://upstream.test/live.m3u8",
+	}
+	want := "https://proxy.test/stream/lg/news.m3u8"
+
+	for _, class := range []model.Classification{
+		model.ClassNative,
+		model.ClassAmagiSSAI,
+		"BEACON",
+	} {
+		ch := base
+		ch.Classification = class
+		got, stats := applyEmissionPolicy([]model.Channel{ch}, policy)
+		if got[0].Excluded || stats.NeedsProxyDropped != 0 {
+			t.Fatalf("class=%q excluded: %+v stats=%+v", class, got[0], stats)
+		}
+		if got[0].EmittedURL != want {
+			t.Fatalf("class=%q EmittedURL=%q want %q", class, got[0].EmittedURL, want)
+		}
+		if got[0].StreamURL != base.StreamURL {
+			t.Fatalf("class=%q upstream mutated: %q", class, got[0].StreamURL)
+		}
+	}
+}
