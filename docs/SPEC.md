@@ -81,6 +81,11 @@ streams). Default remains selective proxying (`AMAGI_SSAI` only).
 - `GET /healthz` — JSON: per-provider status, last successful refresh, channel
   count, programme count, staleness flag (rich payload; stub `{"ok":true}` today)
 - `GET /metrics` — Prometheus format (refresh duration, failures, channel counts)
+- `GET /api/client-access` — last 30 days of non-UI pulls of root emit files
+  (`/playlist.m3u`, `/epg.xml`, `/{provider}.m3u|xml`): per-file hit counts +
+  last IP/time, plus a filterable event list (`file`, `ip`, `status`, `limit`).
+  Guide UI uses `/api/guide/…` and is not counted. Status shows the summary;
+  Access (`/access`) is the pull history table.
 
 ## Providers (initial set; architecture must make adding more trivial)
 

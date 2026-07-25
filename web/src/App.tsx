@@ -4,6 +4,7 @@ import { ChannelDetailPage } from './pages/ChannelDetail'
 import { ChannelsPage } from './pages/Channels'
 import { ConfigPage } from './pages/Config'
 import { ConfigProviderPage } from './pages/ConfigProvider'
+import { AccessPage } from './pages/Access'
 import { CategoriesPage } from './pages/Categories'
 import { GroupsPage } from './pages/Groups'
 import { GuidePage } from './pages/Guide'
@@ -78,6 +79,7 @@ export default function App() {
         </NavLink>
         <nav className="nav" aria-label="Primary">
           <NavLink to="/status">Status</NavLink>
+          <NavLink to="/access">Access</NavLink>
           <NavLink to="/providers">Providers</NavLink>
           <NavLink to="/" end>
             Channels
@@ -101,6 +103,7 @@ export default function App() {
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/hosts" element={<HostsPage />} />
           <Route path="/status" element={<StatusPage />} />
+          <Route path="/access" element={<AccessPage />} />
           <Route path="/providers" element={<ProvidersPage />} />
           <Route path="/providers/:id" element={<ProviderDetailPage />} />
           <Route path="/groups" element={<GroupsPage />} />

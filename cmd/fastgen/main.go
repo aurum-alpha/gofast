@@ -12,6 +12,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
+	"github.com/j27-aurum/gofast/internal/clientaccess"
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/health"
 	"github.com/j27-aurum/gofast/internal/httpx"
@@ -38,7 +39,15 @@ func main() {
 	cfg.LogLoaded(store.Path(), store.FromFile())
 
 	client := httpx.NewClient(cfg.Timeouts.HTTPClient, 0)
-	cc := cache.New(filepath.Join(cfg.DataDir, "cache"))
+	cacheDir := filepath.Join(cfg.DataDir, "cache")
+	cc := cache.New(cacheDir)
+
+	access, err := clientaccess.Open(cacheDir)
+	if err != nil {
+		slog.Error("clientaccess open", "err", err)
+		os.Exit(1)
+	}
+	defer access.Close()
 
 	attrs, err := channelattr.Open(cfg.DataDir)
 	if err != nil {
@@ -146,10 +155,11 @@ func main() {
 			mux.HandleFunc("GET /api/guide.xml", server.GuideXML(reg))
 			mux.HandleFunc("GET /api/guide/{file}", server.GuideProviderXML(reg))
 			mux.HandleFunc("GET /metrics", server.MetricsHandler(reg))
+			mux.HandleFunc("GET /api/client-access", server.ClientAccessHandler(access))
 			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(cc))
-			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc))
-			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc))
-			mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, uiHandler))
+			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc, access))
+			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc, access))
+			mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, uiHandler, access))
 			mux.Handle("/", uiHandler)
 		},
 	}

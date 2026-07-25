@@ -34,7 +34,7 @@ func TestPlaylistHandlers(t *testing.T) {
 	reg := playlistTestRegistry()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, nil))
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, nil, nil))
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/lg.m3u", nil))
@@ -81,7 +81,7 @@ func TestPlaylistDisabledProviderIs404(t *testing.T) {
 	reg.Remove(model.ProviderLG, model.ProviderSettings{ID: model.ProviderLG, Enabled: &disabled})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, nil))
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, nil, nil))
 
 	for _, path := range []string{"/lg.m3u", "/lg.xml"} {
 		rec := httptest.NewRecorder()
@@ -97,7 +97,7 @@ func TestAggregateHandlers(t *testing.T) {
 
 	// Not ready before the aggregator runs.
 	rec := httptest.NewRecorder()
-	server.AggregatePlaylist(cc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil))
+	server.AggregatePlaylist(cc, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("want 503 before generation, got %d", rec.Code)
 	}
@@ -106,12 +106,12 @@ func TestAggregateHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec = httptest.NewRecorder()
-	server.AggregatePlaylist(cc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil))
+	server.AggregatePlaylist(cc, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "AGG") {
 		t.Fatalf("aggregate m3u: %d %q", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	server.AggregateGuide(cc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/epg.xml", nil))
+	server.AggregateGuide(cc, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/epg.xml", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<tv/>") {
 		t.Fatalf("aggregate xml: %d %q", rec.Code, rec.Body.String())
 	}
@@ -125,7 +125,7 @@ func TestPlaylistFallsBackToSPA(t *testing.T) {
 	reg := playlistTestRegistry()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, spa))
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, spa, nil))
 
 	// A single-segment SPA route (e.g. hard reload of /guide) must serve the app.
 	for _, path := range []string{"/guide", "/providers", "/config"} {
@@ -154,7 +154,7 @@ func TestPlaylistETag304(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{file}", server.PlaylistFile(playlistTestRegistry(), cc, nil))
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(playlistTestRegistry(), cc, nil, nil))
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/lg.m3u", nil))
@@ -202,7 +202,7 @@ func TestAggregateETag304(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	server.AggregatePlaylist(cc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil))
+	server.AggregatePlaylist(cc, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil))
 	if rec.Code != http.StatusOK || rec.Header().Get("ETag") != wantETag {
 		t.Fatalf("aggregate: %d etag=%q", rec.Code, rec.Header().Get("ETag"))
 	}
@@ -210,7 +210,7 @@ func TestAggregateETag304(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil)
 	req.Header.Set("If-None-Match", wantETag)
 	rec = httptest.NewRecorder()
-	server.AggregatePlaylist(cc).ServeHTTP(rec, req)
+	server.AggregatePlaylist(cc, nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotModified {
 		t.Fatalf("aggregate If-None-Match: want 304, got %d", rec.Code)
 	}

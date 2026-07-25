@@ -46,6 +46,17 @@ type HealthSchedule = {
   l2_running?: boolean
 }
 
+type ClientAccessSummary = {
+  file: string
+  last_at?: string
+  last_ip?: string
+  last_status?: number
+}
+
+type ClientAccessResponse = {
+  summary: ClientAccessSummary[]
+}
+
 function validDate(value?: string): Date | null {
   if (!value) return null
   const date = new Date(value)
@@ -82,6 +93,7 @@ export function StatusPage() {
   const [boot, setBoot] = useState<ApiStatusResponse | null>(null)
   const [channels, setChannels] = useState<Channel[] | null>(null)
   const [schedule, setSchedule] = useState<HealthSchedule | null>(null)
+  const [access, setAccess] = useState<ClientAccessResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -107,13 +119,18 @@ export function StatusPage() {
           if (!res.ok) throw new Error(`schedule ${res.status}`)
           return res.json() as Promise<HealthSchedule>
         }),
+        fetch('/api/client-access').then(async (res) => {
+          if (!res.ok) throw new Error(`client-access ${res.status}`)
+          return res.json() as Promise<ClientAccessResponse>
+        }),
       ])
-        .then(([hz, st, ch, sched]) => {
+        .then(([hz, st, ch, sched, ca]) => {
           if (cancelled) return
           setHealthz(hz)
           setBoot(st)
           setChannels(ch.channels)
           setSchedule(sched)
+          setAccess(ca)
           setError(null)
           const delay = st.logos.running ? 1000 : 5000
           timer = window.setTimeout(poll, delay)
@@ -324,6 +341,43 @@ export function StatusPage() {
             </div>
           ) : (
             <p className="meta">Probe schedule unavailable.</p>
+          )}
+
+          <h2 className="status-section-title">Client access</h2>
+          <p className="meta">
+            <Link to="/access">Pull history</Link>
+          </p>
+          {!access || access.summary.length === 0 ? (
+            <div className="empty-panel" role="status">
+              <p>No playlist/EPG pulls recorded yet.</p>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="channels client-access-table">
+                <thead>
+                  <tr>
+                    <th>File</th>
+                    <th>Last at</th>
+                    <th>Last IP</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {access.summary.map((row) => (
+                    <tr key={row.file}>
+                      <td>
+                        <code>{row.file}</code>
+                      </td>
+                      <td>{formatWhen(row.last_at)}</td>
+                      <td>
+                        <code>{row.last_ip || '—'}</code>
+                      </td>
+                      <td>{row.last_status ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
 
           <h2 className="status-section-title">Providers</h2>

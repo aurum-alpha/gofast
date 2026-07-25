@@ -542,6 +542,36 @@
   font-size: 1.05rem;
 }
 
+.client-access-table {
+  margin: 0.75rem 0 0.5rem;
+}
+
+.access-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+  margin: 1rem 0;
+}
+
+.access-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.access-filters select,
+.access-filters input {
+  min-width: 10rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.5rem;
+}
+
 .provider-chip-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
