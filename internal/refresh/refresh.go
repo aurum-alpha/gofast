@@ -1,6 +1,7 @@
 // Package refresh schedules per-provider refreshes: each Refresher fetches its
 // provider, classifies + gates the result, emits per-provider m3u/xml, persists
-// the last-known-good via the cache, and notifies the aggregator.
+// the last-known-good via the cache, and notifies the aggregator. The Service
+// (service.go) supervises the goroutines and reconciles config hot reloads.
 package refresh
 
 import (
@@ -17,7 +18,6 @@ import (
 	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/groups"
-	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/m3u"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
@@ -51,122 +51,15 @@ type Refresher interface {
 	GuideEnd() time.Time
 }
 
-// Service schedules a set of Refreshers, each on its own goroutine.
-type Service struct {
-	refreshers []*providerRefresher
-	byID       map[model.ProviderID]*providerRefresher
-}
-
-// New builds one Refresher per enabled feed. notify is called after each
-// successful publish (wire it to the aggregator); refresh never imports aggregate.
-// logos may be nil when cache_logos is disabled — logo rewrite runs in the
-// background after each publish (see rewriteLogosAndRepublish).
-// attrs may be nil; when set, current channel attrs are Annotate'd before Feed.Set.
-// attrBus may be nil; when set with attrs, classification changes are Emitted after classify.
-// st may be nil; when set, background logo work updates GET /api/status.
-func New(reg *provider.Registry, clf *classifier.Client, cc *cache.Cache, policy EmissionPolicy, groupsHolder *groups.Holder, logos *logocache.Cache, attrs *channelattr.Store, attrBus channelattr.Bus, notify func(), st *Status) *Service {
-	feeds := reg.Feeds()
-	rs := make([]*providerRefresher, 0, len(feeds))
-	byID := make(map[model.ProviderID]*providerRefresher, len(feeds))
-	for _, f := range feeds {
-		pr := &providerRefresher{
-			feed: f, clf: clf, cache: cc, policy: policy, groups: groupsHolder, logos: logos,
-			attrs: attrs, attrBus: attrBus, notify: notify, status: st,
-		}
-		rs = append(rs, pr)
-		byID[f.ID()] = pr
-	}
-	return &Service{refreshers: rs, byID: byID}
-}
-
-// TriggerAsync starts one network refresh for id in a background goroutine.
-// Returns ErrUnknownProvider or ErrRefreshInFlight without starting work.
-// runCtx should be the process lifetime context (cancelled on shutdown).
-func (s *Service) TriggerAsync(runCtx context.Context, id model.ProviderID) error {
-	if s == nil {
-		return ErrUnknownProvider
-	}
-	p, ok := s.byID[id]
-	if !ok {
-		return ErrUnknownProvider
-	}
-	if err := p.beginRefresh(); err != nil {
-		return err
-	}
-	go func() {
-		defer p.endRefresh()
-		start := time.Now()
-		err := p.refreshLocked(runCtx)
-		if err != nil {
-			slog.Warn("on-demand refresh failed; keeping last-good",
-				"provider", id,
-				"err", err,
-				"duration", time.Since(start),
-			)
-			return
-		}
-		slog.Info("on-demand refresh completed",
-			"provider", id,
-			"duration", time.Since(start),
-		)
-	}()
-	return nil
-}
-
-// Restore rebuilds each feed from its cached raw upstream snapshot — re-parsed
-// through the same pipeline as a network fetch (no network). Classifications
-// come from the channel-attr store (Annotate); URL dialect heuristics
-// (SESSION / XUMO_SSAI) then override when the stream URL shape is definitive,
-// so adapter URL fixes take effect without waiting for a network refresh.
-// Legacy meta.json maps are seeded into the store once when Current is missing.
-// Providers with no cached raw are left empty (they fetch on boot);
-// unreadable/unparseable entries are skipped.
-//
-// Call Restore before starting channelattr.Receive so meta seed Handle calls
-// do not race the AttrReceiver writer.
-// Logo HTTP is not run here — call WarmLogos in the background after listen so
-// /healthz and the UI come up immediately.
-func Restore(reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, groupsHolder *groups.Holder, attrs *channelattr.Store) {
-	for _, f := range reg.Feeds() {
-		raw, meta, _, err := cc.LoadProvider(f.ID())
-		if err != nil {
-			continue // no cached snapshot; will fetch on boot
-		}
-		if status, ok := cc.LoadStatus(f.ID()); ok {
-			if !status.LastErrorAt.IsZero() && !status.LastErrorAt.After(meta.FetchedAt) {
-				status.LastError = ""
-				status.LastErrorAt = time.Time{}
-			}
-			f.SetStatus(status)
-		}
-		pr := &providerRefresher{feed: f, cache: cc, policy: policy, groups: groupsHolder, attrs: attrs}
-		if err := pr.rehydrate(raw, meta); err != nil {
-			slog.Warn("cache restore failed", "provider", f.ID(), "err", err)
-			continue
-		}
-		slog.Info("restored from cache", "provider", f.ID(), "channels", len(f.Channels()), "fetched_at", f.FetchedAt())
-	}
-}
-
-// Run starts one goroutine per Refresher until ctx is cancelled.
-func (s *Service) Run(ctx context.Context) {
-	for _, r := range s.refreshers {
-		go run(ctx, r)
-	}
-}
-
 // run schedules one Refresher: first fire is derived from the persisted
 // FetchedAt (so a restart mid-interval resumes rather than restarting), then it
 // loops every interval with +/-10% jitter. A local 5-minute ticker logs the
-// next upstream refresh ETA without blocking other providers.
-func run(ctx context.Context, r Refresher) {
+// next upstream refresh ETA without blocking other providers. A signal on kick
+// (config hot reload changed the interval) recomputes the timer from FetchedAt
+// without losing schedule progress; kick may be nil.
+func run(ctx context.Context, r Refresher, kick <-chan struct{}) {
 	interval := applyRefreshClamp(r)
-	first := time.Duration(0)
-	if fa := r.FetchedAt(); !fa.IsZero() {
-		if remaining := interval - time.Since(fa); remaining > 0 {
-			first = remaining
-		}
-	}
+	first := delayFromFetched(r.FetchedAt(), interval)
 	nextRefreshAt := time.Now().Add(first)
 	t := time.NewTimer(first)
 	defer t.Stop()
@@ -182,6 +75,22 @@ func run(ctx context.Context, r Refresher) {
 		case now := <-heartbeat.C:
 			logRefreshSchedule(r.ID(), now, nextRefreshAt, refreshing)
 			warnIfGuideExhausted(r)
+		case <-kick:
+			interval = applyRefreshClamp(r)
+			delay := delayFromFetched(r.FetchedAt(), interval)
+			nextRefreshAt = time.Now().Add(delay)
+			if !t.Stop() {
+				select {
+				case <-t.C:
+				default:
+				}
+			}
+			t.Reset(delay)
+			slog.Info("refresh schedule reconfigured",
+				"provider", r.ID(),
+				"next_refresh_at", nextRefreshAt.UTC(),
+				"interval", interval.String(),
+			)
 		case <-t.C:
 			refreshing = true
 			start := time.Now()
@@ -207,6 +116,18 @@ func run(ctx context.Context, r Refresher) {
 			t.Reset(delay)
 		}
 	}
+}
+
+// delayFromFetched returns the remaining time until fetchedAt+interval (zero
+// when overdue or never fetched).
+func delayFromFetched(fetchedAt time.Time, interval time.Duration) time.Duration {
+	if fetchedAt.IsZero() {
+		return 0
+	}
+	if remaining := interval - time.Since(fetchedAt); remaining > 0 {
+		return remaining
+	}
+	return 0
 }
 
 func applyRefreshClamp(r Refresher) time.Duration {
@@ -275,14 +196,14 @@ func jitter(d time.Duration) time.Duration {
 }
 
 // providerRefresher composes a feed with the shared pipeline (classify, gate,
-// emit, persist, notify). It never lives in the adapter packages.
+// emit, persist, notify). It never lives in the adapter packages. pipe holds
+// the hot-reloadable emit environment (a nil pipe means zero policy, no groups,
+// no logos — the test default).
 type providerRefresher struct {
 	feed     *provider.Feed
 	clf      *classifier.Client
 	cache    *cache.Cache
-	policy   EmissionPolicy
-	groups   *groups.Holder
-	logos    *logocache.Cache
+	pipe     *pipeline
 	attrs    *channelattr.Store
 	attrBus  channelattr.Bus
 	notify   func()
@@ -379,7 +300,7 @@ func (p *providerRefresher) refreshLocked(ctx context.Context) error {
 		p.notify()
 	}
 	p.logPublished(lineup, len(m3uData), len(xmlData), duration)
-	if p.logos != nil {
+	if _, _, logos := p.pipe.snapshot(); logos != nil {
 		go p.scheduleLogoRewrite(context.WithoutCancel(ctx))
 	}
 	return nil
@@ -406,21 +327,6 @@ func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) erro
 	}
 	p.setLineup(lineup)
 	return nil
-}
-
-// ReapplyAll re-emits every provider from its cached raw snapshot (no network),
-// recomputing group taxonomy + exclusions from scratch with the current policy,
-// then republishing. Used after a live group-taxonomy change. Per-provider
-// failures are logged and skipped (last-good is preserved for that provider).
-func (s *Service) ReapplyAll() {
-	if s == nil {
-		return
-	}
-	for _, p := range s.refreshers {
-		if err := p.reapplyFromCache(); err != nil {
-			slog.Warn("group reapply failed; keeping last-good", "provider", p.feed.ID(), "err", err)
-		}
-	}
 }
 
 // reapplyFromCache re-parses the cached raw snapshot through the shared pipeline
@@ -616,18 +522,20 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 }
 
 // prepare applies export rules, runs quality gates, and renders one immutable
-// candidate without mutating the feed or cache.
+// candidate without mutating the feed or cache. The emit environment (emission
+// policy + group taxonomy) is snapshotted once from the pipeline.
 func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, progs []model.Programme, assignments provider.ChannelNumberAssignments, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
 	id := p.feed.ID()
 	s := p.feed.Settings()
+	policy, groupsPolicy, _ := p.pipe.snapshot()
 	if p.attrs != nil {
 		chs = p.attrs.Annotate(id, chs)
 	}
-	if p.groups != nil {
-		chs = groups.Apply(chs, id, p.groups.Policy())
+	if groupsPolicy != nil {
+		chs = groups.Apply(chs, id, groupsPolicy)
 	}
 	var emission emissionStats
-	chs, emission = applyEmissionPolicy(chs, p.policy)
+	chs, emission = applyEmissionPolicy(chs, policy)
 	if emission.NeedsProxyDropped > 0 {
 		slog.Warn("channels need FASTProxy; dropping from export",
 			"provider", id,

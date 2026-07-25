@@ -6,7 +6,6 @@ package groups
 
 import (
 	"strings"
-	"sync"
 
 	"github.com/j27-aurum/gofast/internal/model"
 )
@@ -194,48 +193,4 @@ func splitSelector(sel string) (id model.ProviderID, group string, ok bool) {
 
 func providerKey(id model.ProviderID, group string) string {
 	return string(id) + "\x00" + normalizeKey(group)
-}
-
-// Holder guards a live Doc + compiled Policy so an API save can swap the
-// taxonomy in-process without a restart.
-type Holder struct {
-	mu     sync.RWMutex
-	doc    Doc
-	policy *Policy
-}
-
-// NewHolder compiles doc and returns a live holder.
-func NewHolder(doc Doc) *Holder {
-	return &Holder{doc: doc.Clone(), policy: Compile(doc)}
-}
-
-// Policy returns the current compiled policy snapshot.
-func (h *Holder) Policy() *Policy {
-	if h == nil {
-		return nil
-	}
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.policy
-}
-
-// Doc returns a copy of the current document.
-func (h *Holder) Doc() Doc {
-	if h == nil {
-		return Doc{}
-	}
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.doc.Clone()
-}
-
-// Set replaces the live document and recompiles the policy.
-func (h *Holder) Set(doc Doc) {
-	if h == nil {
-		return
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.doc = doc.Clone()
-	h.policy = Compile(doc)
 }

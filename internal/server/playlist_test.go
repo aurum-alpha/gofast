@@ -9,18 +9,32 @@ import (
 	"testing"
 
 	"github.com/j27-aurum/gofast/internal/cache"
+	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/server"
 )
+
+// playlistTestRegistry wires enabled feeds for lg and pluto (no cache for pluto).
+func playlistTestRegistry() *provider.Registry {
+	settings := map[model.ProviderID]model.ProviderSettings{
+		model.ProviderLG:    {ID: model.ProviderLG, Enabled: boolPtr(true)},
+		model.ProviderPluto: {ID: model.ProviderPluto, Enabled: boolPtr(true)},
+	}
+	return provider.NewRegistry(map[model.ProviderID]provider.Reader{
+		model.ProviderLG:    healthStubReader{},
+		model.ProviderPluto: healthStubReader{},
+	}, settings)
+}
 
 func TestPlaylistHandlers(t *testing.T) {
 	cc := cache.New(t.TempDir())
 	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
+	reg := playlistTestRegistry()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{file}", server.PlaylistFile(cc, nil))
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, nil))
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/lg.m3u", nil))
@@ -34,16 +48,47 @@ func TestPlaylistHandlers(t *testing.T) {
 		t.Fatalf("xml: %d %q", rec.Code, rec.Body.String())
 	}
 
+	// Enabled provider with no cached files yet: not ready.
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing.m3u", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pluto.m3u", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("want 503, got %d", rec.Code)
+	}
+
+	// Unknown provider: 404 even with a .m3u suffix.
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing.m3u", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for unknown provider, got %d", rec.Code)
 	}
 
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nope.txt", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("want 404 for unknown suffix without fallback, got %d", rec.Code)
+	}
+}
+
+func TestPlaylistDisabledProviderIs404(t *testing.T) {
+	cc := cache.New(t.TempDir())
+	// Cached last-good files exist on disk...
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), provider.Meta{}); err != nil {
+		t.Fatal(err)
+	}
+	// ...but the provider was disabled live (feed removed from the registry).
+	reg := playlistTestRegistry()
+	disabled := false
+	reg.Remove(model.ProviderLG, model.ProviderSettings{ID: model.ProviderLG, Enabled: &disabled})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, nil))
+
+	for _, path := range []string{"/lg.m3u", "/lg.xml"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s: want 404 while disabled, got %d", path, rec.Code)
+		}
 	}
 }
 
@@ -77,9 +122,10 @@ func TestPlaylistFallsBackToSPA(t *testing.T) {
 	spa := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("INDEX"))
 	})
+	reg := playlistTestRegistry()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{file}", server.PlaylistFile(cc, spa))
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, spa))
 
 	// A single-segment SPA route (e.g. hard reload of /guide) must serve the app.
 	for _, path := range []string{"/guide", "/providers", "/config"} {
@@ -91,7 +137,7 @@ func TestPlaylistFallsBackToSPA(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing.m3u", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pluto.m3u", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("playlist should not fall through: got %d", rec.Code)
 	}
@@ -108,7 +154,7 @@ func TestPlaylistETag304(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{file}", server.PlaylistFile(cc, nil))
+	mux.HandleFunc("GET /{file}", server.PlaylistFile(playlistTestRegistry(), cc, nil))
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/lg.m3u", nil))

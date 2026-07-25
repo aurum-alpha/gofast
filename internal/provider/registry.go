@@ -2,14 +2,19 @@ package provider
 
 import (
 	"log/slog"
+	"maps"
 	"sort"
+	"sync"
 
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
 // Registry holds the runtime Feeds (one per enabled provider) plus the effective
 // settings for every known provider (so the API/logs can show disabled ones too).
+// It is mutable under a RWMutex so config hot reload can enable/disable
+// providers live (Upsert/Remove); callers re-read Feeds() per operation.
 type Registry struct {
+	mu       sync.RWMutex
 	feeds    map[model.ProviderID]*Feed
 	settings map[model.ProviderID]model.ProviderSettings
 	ids      []model.ProviderID // all known ids, sorted
@@ -27,7 +32,7 @@ func NewRegistry(readers map[model.ProviderID]Reader, settings map[model.Provide
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return &Registry{feeds: feeds, settings: settings, ids: ids}
+	return &Registry{feeds: feeds, settings: maps.Clone(settings), ids: ids}
 }
 
 // Channels returns every enabled feed's channels merged, sorted by export
@@ -49,12 +54,16 @@ func (r *Registry) Channels() []model.Channel {
 
 // Feed returns the runtime feed for id, if it is enabled.
 func (r *Registry) Feed(id model.ProviderID) (*Feed, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	f, ok := r.feeds[id]
 	return f, ok
 }
 
 // Feeds returns the enabled feeds sorted by provider id.
 func (r *Registry) Feeds() []*Feed {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]*Feed, 0, len(r.feeds))
 	for _, id := range r.ids {
 		if f, ok := r.feeds[id]; ok {
@@ -66,6 +75,8 @@ func (r *Registry) Feeds() []*Feed {
 
 // IDs returns the enabled provider ids in sorted order.
 func (r *Registry) IDs() []model.ProviderID {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]model.ProviderID, 0, len(r.feeds))
 	for _, id := range r.ids {
 		if _, ok := r.feeds[id]; ok {
@@ -95,6 +106,8 @@ func (r *Registry) LogLoaded() {
 
 // Provider returns the effective settings for a known provider.
 func (r *Registry) Provider(id model.ProviderID) (model.ProviderSettings, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	settings, ok := r.settings[id]
 	return settings, ok
 }
@@ -102,12 +115,57 @@ func (r *Registry) Provider(id model.ProviderID) (model.ProviderSettings, bool) 
 // Providers returns all known providers (enabled + disabled) sorted by id, with
 // their effective settings — the source for GET /api/providers and startup logs.
 func (r *Registry) Providers() model.ProviderList {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return model.ListProviders(r.settings)
+}
+
+// Remove drops the runtime feed for id (provider disabled live) and records
+// its new effective settings. The feed's cache and channel-attr state stay on
+// disk, so a later Upsert restores it losslessly.
+func (r *Registry) Remove(id model.ProviderID, settings model.ProviderSettings) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.feeds, id)
+	r.settings[id] = settings
 }
 
 // Settings returns the effective settings for id (zero value if unknown).
 func (r *Registry) Settings(id model.ProviderID) model.ProviderSettings {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.settings[id]
+}
+
+// UpdateSettings records new effective settings for id and pushes them onto the
+// live feed when one exists.
+func (r *Registry) UpdateSettings(id model.ProviderID, settings model.ProviderSettings) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.settings[id] = settings
+	if f, ok := r.feeds[id]; ok {
+		f.SetSettings(settings)
+	}
+}
+
+// Upsert creates (or updates) the runtime feed for id with reader + settings
+// and returns it. An existing feed keeps its lineup — only the reader and
+// settings are replaced (provider setting change without losing last-good).
+func (r *Registry) Upsert(id model.ProviderID, reader Reader, settings model.ProviderSettings) *Feed {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.settings[id] = settings
+	if f, ok := r.feeds[id]; ok {
+		f.SetReader(reader)
+		f.SetSettings(settings)
+		return f
+	}
+	f := newFeed(reader, settings)
+	r.feeds[id] = f
+	if i := sort.Search(len(r.ids), func(i int) bool { return r.ids[i] >= id }); i == len(r.ids) || r.ids[i] != id {
+		r.ids = append(r.ids[:i], append([]model.ProviderID{id}, r.ids[i:]...)...)
+	}
+	return f
 }
 
 // lineupLess orders lineup rows by export channel number (unnumbered last),

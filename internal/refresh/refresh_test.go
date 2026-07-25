@@ -162,7 +162,7 @@ func TestSyntheticNumberPersistsAcrossRefreshAndRestore(t *testing.T) {
 	}
 
 	restored := newRegistry()
-	Restore(restored, cc, EmissionPolicy{}, nil, nil)
+	New(nil, restored, nil, cc, nil, nil, nil, nil, nil).Restore()
 	restoredFeed, _ := restored.Feed(model.ProviderXumo)
 	if got := restoredFeed.Channels()[0].OffsetNumber; got != 5000 {
 		t.Fatalf("restored number = %d, want 5000", got)
@@ -264,7 +264,7 @@ func TestPublishedProviderRefreshAndRestore(t *testing.T) {
 		map[model.ProviderID]provider.Reader{model.ProviderDistroTV: restoredReader},
 		map[model.ProviderID]model.ProviderSettings{model.ProviderDistroTV: settings},
 	)
-	Restore(restoredRegistry, cc, EmissionPolicy{}, nil, nil)
+	New(nil, restoredRegistry, nil, cc, nil, nil, nil, nil, nil).Restore()
 	restoredFeed, _ := restoredRegistry.Feed(model.ProviderDistroTV)
 	if channels := restoredFeed.Channels(); len(channels) != 2 || channels[0].NormalizedID != "dtv_EPGACE_TV" {
 		t.Fatalf("restored channels: %+v", channels)
@@ -432,7 +432,7 @@ func TestRestoreRehydratesFromRaw(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = attrs.Close() })
 
-	Restore(reg, cc, EmissionPolicy{}, nil, attrs)
+	New(nil, reg, nil, cc, nil, attrs, nil, nil, nil).Restore()
 
 	f, _ := reg.Feed(model.ProviderLG)
 	if len(f.Channels()) == 0 {
@@ -492,7 +492,7 @@ func TestApplyURLDialectHintsOverridesStaleNative(t *testing.T) {
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
 	)
 	feed, _ := reg.Feed(model.ProviderLG)
-	pr := &providerRefresher{feed: feed, attrs: attrs, policy: EmissionPolicy{}}
+	pr := &providerRefresher{feed: feed, attrs: attrs}
 	lineup := provider.Lineup{
 		Channels: []model.Channel{{
 			Provider:     model.ProviderLG,
@@ -782,7 +782,7 @@ func TestNextRefreshHeartbeat(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		run(ctx, stub)
+		run(ctx, stub, nil)
 		close(done)
 	}()
 
@@ -860,7 +860,7 @@ func TestPrepareRewritesLogosWhenEnabled(t *testing.T) {
 	if hits != 0 {
 		t.Fatalf("refresh should not hit artwork yet, hits=%d", hits)
 	}
-	pr.logos = logos
+	pr.pipe = &pipeline{logos: logos}
 	if _, err := pr.rewriteLogosAndRepublish(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -924,16 +924,18 @@ func TestWarmLogosUpdatesStatus(t *testing.T) {
 	if err := pr.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	Restore(reg, cc, EmissionPolicy{}, nil, nil)
+	st := &Status{}
+	svc := New(nil, reg, nil, cc, nil, nil, nil, nil, st)
+	svc.Restore()
 	if hits.Load() != 0 {
 		t.Fatalf("restore must not download logos, hits=%d", hits.Load())
 	}
 
-	st := &Status{}
 	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
+	svc.pipe.set(EmissionPolicy{}, nil, logos)
 	done := make(chan struct{})
 	go func() {
-		WarmLogos(context.Background(), reg, cc, EmissionPolicy{}, logos, nil, st)
+		svc.WarmLogos(context.Background())
 		close(done)
 	}()
 	deadline := time.After(2 * time.Second)
@@ -966,13 +968,20 @@ func TestTriggerAsyncUnknownAndInFlight(t *testing.T) {
 		started: make(chan struct{}),
 		release: make(chan struct{}),
 	}
-	settings := model.ProviderSettings{ID: model.ProviderLG, Label: "LG", MinChannels: 1}
+	// A fresh FetchedAt + long interval keeps the scheduled loop idle so only
+	// TriggerAsync drives the reader.
+	settings := model.ProviderSettings{ID: model.ProviderLG, Label: "LG", MinChannels: 1, RefreshInterval: time.Hour}
 	reg := provider.NewRegistry(
 		map[model.ProviderID]provider.Reader{model.ProviderLG: reader},
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
 	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	feed.Set(provider.Lineup{FetchedAt: time.Now()})
 	cc := cache.New(t.TempDir())
-	svc := New(reg, nil, cc, EmissionPolicy{}, nil, nil, nil, nil, nil, nil)
+	svc := New(nil, reg, nil, cc, nil, nil, nil, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	svc.Run(ctx)
 
 	if err := svc.TriggerAsync(context.Background(), "nope"); !errors.Is(err, ErrUnknownProvider) {
 		t.Fatalf("unknown: %v", err)
@@ -989,11 +998,11 @@ func TestTriggerAsyncUnknownAndInFlight(t *testing.T) {
 	if err := svc.TriggerAsync(context.Background(), model.ProviderLG); !errors.Is(err, ErrRefreshInFlight) {
 		t.Fatalf("inflight: %v", err)
 	}
-	if err := svc.byID[model.ProviderLG].Refresh(context.Background()); !errors.Is(err, ErrRefreshInFlight) {
+	if err := svc.running[model.ProviderLG].pr.Refresh(context.Background()); !errors.Is(err, ErrRefreshInFlight) {
 		t.Fatalf("Refresh while async: %v", err)
 	}
 	close(reader.release)
-	p := svc.byID[model.ProviderLG]
+	p := svc.running[model.ProviderLG].pr
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if !p.inFlight.Load() {

@@ -4,19 +4,17 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/j27-aurum/gofast/internal/cache"
-	"github.com/j27-aurum/gofast/internal/logocache"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
 )
 
-// WarmLogos rewrites logos for every restored feed in the background. Safe to
-// call with a nil logos cache (no-op). Updates st for GET /api/status.
-func WarmLogos(ctx context.Context, reg *provider.Registry, cc *cache.Cache, policy EmissionPolicy, logos *logocache.Cache, notify func(), st *Status) {
-	if logos == nil {
+// WarmLogos rewrites logos for every feed in the background. A no-op when
+// cache_logos is off (nil pipeline logo cache). Updates GET /api/status.
+func (s *Service) WarmLogos(ctx context.Context) {
+	if _, _, logos := s.pipe.snapshot(); logos == nil {
 		return
 	}
-	feeds := reg.Feeds()
+	feeds := s.reg.Feeds()
 	total := 0
 	for _, f := range feeds {
 		total += countLogoTargets(f.Channels())
@@ -24,18 +22,22 @@ func WarmLogos(ctx context.Context, reg *provider.Registry, cc *cache.Cache, pol
 	if total == 0 {
 		return
 	}
-	st.SetLogos(true, 0, total, "")
-	defer st.SetLogos(false, total, total, "")
+	if s.status != nil {
+		s.status.SetLogos(true, 0, total, "")
+		defer s.status.SetLogos(false, total, total, "")
+	}
 
 	done := 0
 	for _, f := range feeds {
 		if ctx.Err() != nil {
 			return
 		}
-		pr := &providerRefresher{feed: f, cache: cc, policy: policy, logos: logos, notify: notify}
+		pr := s.newRefresher(f)
 		_, err := pr.rewriteLogosAndRepublish(ctx, func() {
 			done++
-			st.SetLogos(true, done, total, string(f.ID()))
+			if s.status != nil {
+				s.status.SetLogos(true, done, total, string(f.ID()))
+			}
 		})
 		if err != nil {
 			slog.Warn("background logo rewrite failed", "provider", f.ID(), "err", err)
@@ -83,9 +85,11 @@ func (p *providerRefresher) scheduleLogoRewrite(ctx context.Context) {
 
 // rewriteLogosAndRepublish downloads/revalidates logos then re-emits M3U/XML and
 // updates the live feed. onEach is called once per logo target after Ensure.
-// Returns the number of logo targets processed.
+// Returns the number of logo targets processed. A no-op when the pipeline's
+// logo cache is nil (cache_logos off).
 func (p *providerRefresher) rewriteLogosAndRepublish(ctx context.Context, onEach func()) (int, error) {
-	if p.logos == nil {
+	_, _, logos := p.pipe.snapshot()
+	if logos == nil {
 		return 0, nil
 	}
 	lineup := p.feed.Lineup()
@@ -102,7 +106,7 @@ func (p *providerRefresher) rewriteLogosAndRepublish(ctx context.Context, onEach
 	if targets == 0 {
 		return 0, nil
 	}
-	p.logos.RewriteProgress(ctx, chs, onEach)
+	logos.RewriteProgress(ctx, chs, onEach)
 
 	prepared, m3uData, xmlData, err := p.prepare(ctx, chs, lineup.Programmes, lineup.SyntheticChannelNumbers, lineup.FetchedAt)
 	if err != nil {

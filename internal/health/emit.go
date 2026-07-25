@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/channelattr"
@@ -11,10 +12,14 @@ import (
 )
 
 // Emitter applies a check to the prior ChannelHealth and Emits kind=health.
+// ConsecutiveFailures may be set in the literal before use; after probes start,
+// change it only via SetConsecutiveFailures (config hot reload).
 type Emitter struct {
 	Bus                 channelattr.Bus
 	Store               *channelattr.Store // for reading prior current; may be nil
 	ConsecutiveFailures int
+
+	mu sync.Mutex // guards ConsecutiveFailures after probes start
 }
 
 // EmitCheck folds check into current health and sends the result on the bus.
@@ -23,10 +28,7 @@ func (e *Emitter) EmitCheck(ctx context.Context, provider model.ProviderID, chan
 	if e == nil || e.Bus == nil {
 		return model.ChannelHealth{}, fmt.Errorf("health: nil emitter or bus")
 	}
-	n := e.ConsecutiveFailures
-	if n < 1 {
-		n = 3
-	}
+	n := e.failN()
 	prev := model.ChannelHealth{}
 	if e.Store != nil {
 		if raw, ok := e.Store.Current(provider, channelID, channelattr.KindHealth); ok {
@@ -56,4 +58,21 @@ func (e *Emitter) EmitCheck(ctx context.Context, provider model.ProviderID, chan
 		return model.ChannelHealth{}, err
 	}
 	return next, nil
+}
+
+// SetConsecutiveFailures updates N for DOWN at runtime (config hot reload).
+func (e *Emitter) SetConsecutiveFailures(n int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ConsecutiveFailures = n
+}
+
+// failN returns the effective N for DOWN (default 3).
+func (e *Emitter) failN() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ConsecutiveFailures < 1 {
+		return 3
+	}
+	return e.ConsecutiveFailures
 }

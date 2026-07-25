@@ -405,6 +405,45 @@ func envOverlay() (*Config, error) {
 	return o, nil
 }
 
+// EnvShadow maps dotted config paths to the environment variable currently
+// overriding them. It mirrors envOverlay (including the legacy L2/L3 aliases)
+// so the API can mark env-controlled fields read-only: env always wins, so a
+// file write for a shadowed field would silently do nothing.
+func EnvShadow() map[string]string {
+	out := map[string]string{}
+	shadow := func(path, env string) {
+		if os.Getenv(env) != "" {
+			out[path] = env
+		}
+	}
+	shadow("listen", "PORT")
+	shadow("base_url", "FASTGEN_BASE_URL")
+	shadow("data_dir", "FASTGEN_DATA_DIR")
+	shadow("proxy_base_url", "FASTGEN_PROXY_BASE_URL")
+	shadow("proxy_all", "FASTGEN_PROXY_ALL")
+	shadow("cache_logos", "FASTGEN_CACHE_LOGOS")
+	shadow("health.consecutive_failures", "FASTGEN_HEALTH_CONSECUTIVE_FAILURES")
+	shadow("health.exclude_unhealthy", "FASTGEN_HEALTH_EXCLUDE_UNHEALTHY")
+	shadow("health.l1_interval", "FASTGEN_HEALTH_L1_INTERVAL")
+	if _, set := out["health.l1_interval"]; !set {
+		shadow("health.l1_interval", "FASTGEN_HEALTH_L2_INTERVAL")
+	}
+	shadow("health.l2_enabled", "FASTGEN_HEALTH_L2_ENABLED")
+	if _, set := out["health.l2_enabled"]; !set {
+		shadow("health.l2_enabled", "FASTGEN_HEALTH_L3_ENABLED")
+	}
+	shadow("health.l2_interval", "FASTGEN_HEALTH_L3_INTERVAL")
+	shadow("health.ffprobe_path", "FASTGEN_HEALTH_FFPROBE_PATH")
+	shadow("health.soft_retries", "FASTGEN_HEALTH_SOFT_RETRIES")
+	shadow("health.l2_healthy_sample", "FASTGEN_HEALTH_L3_HEALTHY_SAMPLE")
+	shadow("health.max_per_host", "FASTGEN_HEALTH_MAX_PER_HOST")
+	shadow("health.l1_workers", "FASTGEN_HEALTH_L1_WORKERS")
+	if _, set := out["health.l1_workers"]; !set {
+		shadow("health.l1_workers", "FASTGEN_HEALTH_L2_WORKERS")
+	}
+	return out
+}
+
 // LogLoaded writes structured startup lines for the deploy/server config.
 // Per-provider effective settings are logged by provider.Registry.LogLoaded,
 // since defaults are owned by the provider packages (not this YAML overlay).

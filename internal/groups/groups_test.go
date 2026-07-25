@@ -111,20 +111,3 @@ func TestApplyPreservesPriorExclusion(t *testing.T) {
 		t.Fatal("already-excluded channel should not get EmittedGroup")
 	}
 }
-
-func TestHolderSwap(t *testing.T) {
-	h := NewHolder(Doc{Enabled: false})
-	if h.Policy().Enabled() {
-		t.Fatal("initial holder should be disabled")
-	}
-	h.Set(Doc{Enabled: true, Merges: []Merge{{Name: "News", Members: []string{"NEWS"}}}})
-	if !h.Policy().Enabled() {
-		t.Fatal("holder did not swap to enabled")
-	}
-	if name, ok := h.Policy().AssignedName("news"); !ok || name != "News" {
-		t.Fatalf("swapped policy assignment = (%q,%v)", name, ok)
-	}
-	if got := h.Doc(); len(got.Merges) != 1 || got.Merges[0].Name != "News" {
-		t.Fatalf("holder doc = %+v", got)
-	}
-}

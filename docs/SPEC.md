@@ -329,19 +329,39 @@ volume (`/data/config.yaml`) may hold structured, non-secret settings
 `FASTGEN_DATA_DIR`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`. Env always
 wins over the file. Precedence: code defaults →
 YAML (if present) → env. Include a documented example (`config.example.yaml`)
-in the repo — never a filled production config. Hot-reload on SIGHUP is
-nice-to-have.
+in the repo — never a filled production config.
 
 `config.yaml` is **operator-writable**: mount `/data` (or the config path) read-write.
 On first boot with no file present, fastgen generates `/data/config.yaml` from the
 baked-in code defaults (deploy-varying env values are not baked in). App-managed
 settings persist back through a shared, atomic, comment/unknown-key-preserving YAML
-writer that keeps a `.bak` of the prior bytes. The **`groups`** taxonomy (J27-47) is
-the first such writer: the Groups editor writes the `groups` block and applies live
-(re-emit, no restart). Env-sourced keys have no `groups` overlay, so there is no
-env-shadow concern for that slice; broader UI config editing (J27-27) extends the
-same writer. A read-only mount surfaces a clear "config is read-only" error instead
-of failing silently.
+writer that keeps a `.bak` of the prior bytes. A read-only mount surfaces a clear
+"config is read-only" error instead of failing silently.
+
+**Settings UI + live hot-reload (J27-27).** The UI Settings page edits config as
+typed controls (never a raw YAML editor). The rule is strict: **in the UI = live,
+in the file = restart.**
+
+- A UI save goes through one path (`config.Store.Save`): apply dotted-path ops to
+  a candidate copy of `config.yaml`, validate the candidate through the exact boot
+  load path (`config.New`, env overlay included), atomically replace the file
+  (keeping `.bak`), reload the in-memory snapshot, then kick every registered
+  subsystem `Reloader` (logging → health → refresh) to reconcile itself. Saves
+  carry a revision (SHA-256 of the file bytes) and stale saves are rejected.
+- Everything the UI exposes applies live: base/proxy URLs, `proxy_all`,
+  `cache_logos`, HTTP timeout, log level, all health knobs, the `groups`
+  taxonomy, and every per-provider setting including **enable/disable**.
+  Disabling a provider stops its refresh goroutine, hides its channels, and 404s
+  `/{id}.m3u` + `/{id}.xml`; its cache generations and channel attributes stay on
+  disk so re-enabling restores instantly (warm) or fetches (cold, first enable).
+- **Restart-only settings get no UI control**: `listen`/`PORT` and `data_dir`
+  are shown read-only in a Deployment panel ("edit config.yaml and restart").
+  Hand-edits to the file are never watched; they take effect on the next boot.
+- Env-shadowed fields render locked with a "set by `<VAR>`" badge — env always
+  wins, so writing them to the file would silently do nothing.
+- Secrets stay env-only (none exist in today's config surface); the API/UI design
+  supports masked/redacted fields so a future secret is never persisted to
+  `config.yaml`.
 
 ## Operational requirements
 

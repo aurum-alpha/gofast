@@ -13,19 +13,10 @@ import (
 	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/classifier"
 	"github.com/j27-aurum/gofast/internal/config"
-	"github.com/j27-aurum/gofast/internal/groups"
 	"github.com/j27-aurum/gofast/internal/health"
 	"github.com/j27-aurum/gofast/internal/httpx"
-	"github.com/j27-aurum/gofast/internal/logocache"
-	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
-	"github.com/j27-aurum/gofast/internal/provider/distrotv"
-	"github.com/j27-aurum/gofast/internal/provider/lg"
-	"github.com/j27-aurum/gofast/internal/provider/localnow"
-	"github.com/j27-aurum/gofast/internal/provider/pluto"
-	"github.com/j27-aurum/gofast/internal/provider/roku"
-	"github.com/j27-aurum/gofast/internal/provider/samsung"
-	"github.com/j27-aurum/gofast/internal/provider/xumo"
+	"github.com/j27-aurum/gofast/internal/providerset"
 	"github.com/j27-aurum/gofast/internal/refresh"
 	"github.com/j27-aurum/gofast/internal/run"
 	"github.com/j27-aurum/gofast/internal/server"
@@ -37,12 +28,14 @@ func main() {
 	ctx, stop := run.SignalContext(context.Background())
 	defer stop()
 
-	cfg, path, fromFile, err := loadConfig()
-	if err != nil {
+	store := config.NewStore(configPath())
+	if err := store.Load(); err != nil {
 		slog.Error("config", "err", err)
 		os.Exit(1)
 	}
-	cfg.LogLoaded(path, fromFile)
+	cfg := store.Current()
+	run.SetLogLevel(cfg.Logging.Level)
+	cfg.LogLoaded(store.Path(), store.FromFile())
 
 	client := httpx.NewClient(cfg.Timeouts.HTTPClient, 0)
 	cc := cache.New(filepath.Join(cfg.DataDir, "cache"))
@@ -58,49 +51,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	var logos *logocache.Cache
-	if cfg.CacheLogosEnabled() {
-		artworkHosts := make(map[string]logocache.HostPolicy, len(cfg.ArtworkTLS))
-		for host, policy := range cfg.ArtworkTLS {
-			artworkHosts[host] = logocache.HostPolicy{
-				CAPem:              policy.CAPem,
-				InsecureSkipVerify: policy.InsecureSkipVerify,
-			}
-		}
-		artworkClient, err := logocache.NewArtworkClient(cfg.Timeouts.HTTPClient, artworkHosts)
-		if err != nil {
-			slog.Error("artwork http client", "err", err)
-			os.Exit(1)
-		}
-		logos = logocache.New(cc, artworkClient, cfg.BaseURL, 0)
-	}
-
 	// Providers are code: each known provider's package defaults are overlaid by
 	// its YAML settings. No provider runs without its own YAML block — the
 	// generated default config enables nothing. Unknown YAML ids have no
-	// implementation (warned).
-	settings := knownProviderSettings(cfg.Providers)
-	for id := range cfg.Providers {
-		if _, known := settings[id]; !known {
-			slog.Warn("provider in config has no implementation; ignoring", "id", id)
-		}
-	}
-	readers := knownProviderReaders(settings, client)
+	// implementation (warned inside providerset.Settings).
+	settings := providerset.Settings(cfg.Providers)
+	readers := providerset.Readers(settings, client)
 	reg := provider.NewRegistry(readers, settings)
 	reg.LogLoaded()
 
+	bootStatus := &refresh.Status{}
+	agg := aggregate.New(reg, cc)
+	attrBus := channelattr.NewBus(256)
+	clf := classifier.New(client, 0)
+	svc := refresh.New(store, reg, clf, cc, client, attrs, attrBus, agg.Notify, bootStatus)
+
 	// Warm feeds from disk (may seed legacy meta classifications into attrs),
 	// regenerate the aggregate, then start AttrReceiver + refresh.
-	emissionPolicy := refresh.EmissionPolicy{
-		ProxyBaseURL:     cfg.ProxyBaseURL,
-		ProxyAll:         cfg.ProxyAllEnabled(),
-		ExcludeUnhealthy: cfg.HealthExcludeUnhealthy(),
-	}
-	groupsHolder := groups.NewHolder(cfg.Groups)
-	bootStatus := &refresh.Status{}
-	refresh.Restore(reg, cc, emissionPolicy, groupsHolder, attrs)
+	svc.Restore()
 
-	attrBus := channelattr.NewBus(256)
 	go channelattr.Receive(ctx, attrBus, attrs)
 
 	healthEmitter := &health.Emitter{
@@ -131,20 +100,22 @@ func main() {
 		}
 	}
 
-	agg := aggregate.New(reg, cc)
 	if err := agg.Rebuild(); err != nil && !errors.Is(err, aggregate.ErrEmptyAggregate) {
 		slog.Warn("initial aggregate rebuild failed", "err", err)
 	}
 	go agg.Run(ctx)
-
-	clf := classifier.New(client, 0)
-	svc := refresh.New(reg, clf, cc, emissionPolicy, groupsHolder, logos, attrs, attrBus, agg.Notify, bootStatus)
 	go svc.Run(ctx)
-	applyGroups := func() {
-		svc.ReapplyAll()
-		agg.Notify()
-	}
-	go refresh.WarmLogos(ctx, reg, cc, emissionPolicy, logos, agg.Notify, bootStatus)
+	go svc.WarmLogos(ctx)
+
+	// Post-save reload registry: every UI config save kicks these in order.
+	// Restart-only settings (listen/PORT, data_dir) intentionally have no
+	// reloader — they are file-only edits that take effect on the next boot.
+	store.Register("logging", config.ReloaderFunc(func(_ context.Context, cfg *config.Config) error {
+		run.SetLogLevel(cfg.Logging.Level)
+		return nil
+	}))
+	store.Register("health", sched)
+	store.Register("refresh", svc)
 
 	uiHandler := ui.Handler()
 	srv := &server.Server{
@@ -152,9 +123,10 @@ func main() {
 		Healthz: server.HealthzHandler(reg),
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/status", server.StatusHandler(bootStatus))
-			mux.HandleFunc("GET /api/config", server.ConfigHandler(cfg, path, fromFile, reg, sched))
-			mux.HandleFunc("GET /api/groups", server.GroupsHandler(groupsHolder, reg, path))
-			mux.HandleFunc("PUT /api/groups", server.GroupsSaveHandler(groupsHolder, reg, path, applyGroups))
+			mux.HandleFunc("GET /api/config", server.ConfigHandler(store, reg, sched))
+			mux.HandleFunc("PUT /api/config", server.ConfigSaveHandler(store, reg, sched))
+			mux.HandleFunc("GET /api/groups", server.GroupsHandler(store, svc.GroupsPolicy, reg))
+			mux.HandleFunc("PUT /api/groups", server.GroupsSaveHandler(store, svc.GroupsPolicy, reg))
 			mux.HandleFunc("GET /api/health/schedule", server.HealthScheduleHandler(sched))
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
 			mux.HandleFunc("GET /api/providers/{id}", server.ProviderDetailHandler(reg))
@@ -172,7 +144,7 @@ func main() {
 			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(cc))
 			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc))
 			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc))
-			mux.HandleFunc("GET /{file}", server.PlaylistFile(cc, uiHandler))
+			mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, uiHandler))
 			mux.Handle("/", uiHandler)
 		},
 	}
@@ -183,88 +155,10 @@ func main() {
 	slog.Info("shutting down")
 }
 
-func knownProviderReaders(settings map[model.ProviderID]model.ProviderSettings, client *httpx.Client) map[model.ProviderID]provider.Reader {
-	readers := map[model.ProviderID]provider.Reader{}
-	if s := settings[model.ProviderDistroTV]; s.IsEnabled() {
-		readers[model.ProviderDistroTV] = distrotv.New(s, client)
-	} else {
-		slog.Info("provider disabled", "id", model.ProviderDistroTV)
+// configPath resolves the config.yaml location (FASTGEN_CONFIG or the default).
+func configPath() string {
+	if p := os.Getenv("FASTGEN_CONFIG"); p != "" {
+		return p
 	}
-	if s := settings[model.ProviderLG]; s.IsEnabled() {
-		readers[model.ProviderLG] = lg.New(s, client)
-	} else {
-		slog.Info("provider disabled", "id", model.ProviderLG)
-	}
-	if s := settings[model.ProviderLocalNow]; s.IsEnabled() {
-		readers[model.ProviderLocalNow] = localnow.New(s, client)
-	} else {
-		slog.Info("provider disabled", "id", model.ProviderLocalNow)
-	}
-	if s := settings[model.ProviderPluto]; s.IsEnabled() {
-		readers[model.ProviderPluto] = pluto.New(s, client)
-	} else {
-		slog.Info("provider disabled", "id", model.ProviderPluto)
-	}
-	if s := settings[model.ProviderRoku]; s.IsEnabled() {
-		readers[model.ProviderRoku] = roku.New(s, client)
-	} else {
-		slog.Info("provider disabled", "id", model.ProviderRoku)
-	}
-	if s := settings[model.ProviderSamsung]; s.IsEnabled() {
-		readers[model.ProviderSamsung] = samsung.New(s, client)
-	} else {
-		slog.Info("provider disabled", "id", model.ProviderSamsung)
-	}
-	if s := settings[model.ProviderXumo]; s.IsEnabled() {
-		readers[model.ProviderXumo] = xumo.New(s, client)
-	} else {
-		slog.Info("provider disabled", "id", model.ProviderXumo)
-	}
-	return readers
-}
-
-func knownProviderSettings(overlays map[model.ProviderID]model.ProviderSettings) map[model.ProviderID]model.ProviderSettings {
-	distroTVOverlay, distroTVConfigured := overlays[model.ProviderDistroTV]
-	lgOverlay, lgConfigured := overlays[model.ProviderLG]
-	localNowOverlay, localNowConfigured := overlays[model.ProviderLocalNow]
-	plutoOverlay, plutoConfigured := overlays[model.ProviderPluto]
-	rokuOverlay, rokuConfigured := overlays[model.ProviderRoku]
-	samsungOverlay, samsungConfigured := overlays[model.ProviderSamsung]
-	xumoOverlay, xumoConfigured := overlays[model.ProviderXumo]
-	return map[model.ProviderID]model.ProviderSettings{
-		model.ProviderDistroTV: distrotv.DefaultSettings().MergeConfigured(distroTVOverlay, distroTVConfigured),
-		model.ProviderLG:       lg.DefaultSettings().MergeConfigured(lgOverlay, lgConfigured),
-		model.ProviderLocalNow: localnow.DefaultSettings().MergeConfigured(localNowOverlay, localNowConfigured),
-		model.ProviderPluto:    pluto.DefaultSettings().MergeConfigured(plutoOverlay, plutoConfigured),
-		model.ProviderRoku:     roku.DefaultSettings().MergeConfigured(rokuOverlay, rokuConfigured),
-		model.ProviderSamsung:  samsung.DefaultSettings().MergeConfigured(samsungOverlay, samsungConfigured),
-		model.ProviderXumo:     xumo.DefaultSettings().MergeConfigured(xumoOverlay, xumoConfigured),
-	}
-}
-
-func loadConfig() (cfg *config.Config, path string, fromFile bool, err error) {
-	path = os.Getenv("FASTGEN_CONFIG")
-	if path == "" {
-		path = config.DefaultPath
-	}
-	cfg, err = config.New(path)
-	if err == nil {
-		return cfg, path, true, nil
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		slog.Warn("config file missing; using defaults and environment", "path", path)
-		cfg, err = config.New("")
-		if err == nil {
-			switch werr := config.WriteDefault(path); {
-			case werr == nil:
-				slog.Info("wrote default config", "path", path)
-			case errors.Is(werr, config.ErrReadOnly):
-				slog.Warn("config path is read-only; not generating default config", "path", path)
-			default:
-				slog.Warn("could not generate default config", "path", path, "err", werr)
-			}
-		}
-		return cfg, path, false, err
-	}
-	return nil, path, false, err
+	return config.DefaultPath
 }

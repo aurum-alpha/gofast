@@ -10,6 +10,13 @@
 # accepted for one release.
 # Env always wins over this file for overlapping keys.
 #
+# Editing: the web UI's Config page edits most of this file as typed controls
+# and applies changes LIVE (comment-preserving; a .bak of the prior file is
+# kept). Hand-editing this file directly requires a container restart — the
+# file is never watched. Env-set keys are locked in the UI (env wins).
+# Restart-only settings (listen / data_dir) intentionally have no UI control.
+# Secrets never live in this file — env only.
+#
 # base_url: public origin Jellyfin/browsers use for logos and absolute links.
 # Include the port unless clients hit 80/443. No trailing slash.
 # Prefer setting FASTGEN_BASE_URL in Portainer/stack.env for the deploy.

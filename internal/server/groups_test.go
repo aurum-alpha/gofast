@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/groups"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
@@ -38,10 +40,29 @@ func groupsTestRegistry(t *testing.T) *provider.Registry {
 	return reg
 }
 
+// groupsTestStore loads a Store over a real temp config.yaml.
+func groupsTestStore(t *testing.T, body string) *config.Store {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := config.NewStore(path)
+	if err := store.Load(); err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+// livePolicy mirrors refresh.Service.GroupsPolicy: compile from the snapshot.
+func livePolicy(store *config.Store) func() *groups.Policy {
+	return func() *groups.Policy { return groups.Compile(store.Current().Groups) }
+}
+
 func TestGroupsHandlerGET(t *testing.T) {
 	reg := groupsTestRegistry(t)
-	holder := groups.NewHolder(groups.Doc{Enabled: true})
-	h := server.GroupsHandler(holder, reg, filepath.Join(t.TempDir(), "config.yaml"))
+	store := groupsTestStore(t, "groups:\n  enabled: true\n")
+	h := server.GroupsHandler(store, livePolicy(store), reg)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/groups", nil))
 	if rec.Code != http.StatusOK {
@@ -83,13 +104,13 @@ func TestGroupsHandlerGET(t *testing.T) {
 
 func TestGroupsHandlerPUTPersistsAndApplies(t *testing.T) {
 	reg := groupsTestRegistry(t)
-	holder := groups.NewHolder(groups.Doc{})
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("listen: \":8180\"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	applied := 0
-	h := server.GroupsSaveHandler(holder, reg, path, func() { applied++ })
+	store := groupsTestStore(t, "listen: \":8180\"\n")
+	kicked := 0
+	store.Register("refresh", config.ReloaderFunc(func(ctx context.Context, cfg *config.Config) error {
+		kicked++
+		return nil
+	}))
+	h := server.GroupsSaveHandler(store, livePolicy(store), reg)
 
 	payload := `{"enabled":true,"merges":[{"name":"News","members":["News"],"enabled":true}],"disabled":["Movies"]}`
 	rec := httptest.NewRecorder()
@@ -98,13 +119,13 @@ func TestGroupsHandlerPUTPersistsAndApplies(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
 	}
-	if applied != 1 {
-		t.Fatalf("apply called %d times, want 1", applied)
+	if kicked != 1 {
+		t.Fatalf("reloaders kicked %d times, want 1", kicked)
 	}
-	if doc := holder.Doc(); !doc.Enabled || len(doc.Merges) != 1 || len(doc.Disabled) != 1 {
-		t.Fatalf("holder not updated: %+v", doc)
+	if doc := store.Current().Groups; !doc.Enabled || len(doc.Merges) != 1 || len(doc.Disabled) != 1 {
+		t.Fatalf("snapshot not updated: %+v", doc)
 	}
-	out, _ := os.ReadFile(path)
+	out, _ := os.ReadFile(store.Path())
 	if !strings.Contains(string(out), "groups:") || !strings.Contains(string(out), "News") {
 		t.Fatalf("config not written with groups: %s", out)
 	}
@@ -115,9 +136,8 @@ func TestGroupsHandlerPUTPersistsAndApplies(t *testing.T) {
 
 func TestGroupsHandlerPUTRejectsDuplicateNames(t *testing.T) {
 	reg := groupsTestRegistry(t)
-	holder := groups.NewHolder(groups.Doc{})
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	h := server.GroupsSaveHandler(holder, reg, path, func() {})
+	store := groupsTestStore(t, "listen: \":8180\"\n")
+	h := server.GroupsSaveHandler(store, livePolicy(store), reg)
 
 	payload := `{"enabled":true,"merges":[{"name":"News","members":["A"]},{"name":"news","members":["B"]}]}`
 	rec := httptest.NewRecorder()

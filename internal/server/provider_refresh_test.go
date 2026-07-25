@@ -46,17 +46,22 @@ func TestProviderRefreshAPI(t *testing.T) {
 		started: make(chan struct{}),
 		release: make(chan struct{}),
 	}
+	// A fresh FetchedAt + long interval keeps the schedule loop idle so only the
+	// API endpoint drives the reader.
 	settings := map[model.ProviderID]model.ProviderSettings{
-		"lg": {ID: "lg", Label: "LG", MinChannels: 1},
+		"lg": {ID: "lg", Label: "LG", MinChannels: 1, RefreshInterval: time.Hour},
 	}
 	reg := provider.NewRegistry(
 		map[model.ProviderID]provider.Reader{"lg": reader},
 		settings,
 	)
+	lgFeed, _ := reg.Feed("lg")
+	lgFeed.Set(provider.Lineup{FetchedAt: time.Now()})
 	cc := cache.New(t.TempDir())
-	svc := refresh.New(reg, nil, cc, refresh.EmissionPolicy{}, nil, nil, nil, nil, nil, nil)
+	svc := refresh.New(nil, reg, nil, cc, nil, nil, nil, nil, nil)
 	runCtx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+	svc.Run(runCtx)
 
 	h := server.ProviderRefreshHandler(svc, runCtx)
 	request := func(method, id string) *httptest.ResponseRecorder {
@@ -88,6 +93,7 @@ func TestProviderRefreshAPI(t *testing.T) {
 		t.Fatalf("concurrent POST want 409, got %d", rec.Code)
 	}
 
+	before := lgFeed.FetchedAt()
 	close(reader.release)
 	feed, ok := reg.Feed("lg")
 	if !ok {
@@ -95,7 +101,7 @@ func TestProviderRefreshAPI(t *testing.T) {
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if !feed.FetchedAt().IsZero() {
+		if feed.FetchedAt().After(before) {
 			// Let CommitProvider / status writes finish before TempDir cleanup.
 			time.Sleep(50 * time.Millisecond)
 			return

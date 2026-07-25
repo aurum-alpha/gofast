@@ -67,12 +67,12 @@ type refreshSchedule struct {
 }
 
 // Feed is the runtime state for one provider: its Reader + settings + last-good
-// Lineup, guarded by its own RWMutex (written by its refresh goroutine, read by
-// HTTP handlers and the aggregator).
+// Lineup, guarded by its own RWMutex (written by its refresh goroutine and
+// config reload, read by HTTP handlers and the aggregator).
 type Feed struct {
+	mu       sync.RWMutex
 	reader   Reader
 	settings model.ProviderSettings
-	mu       sync.RWMutex
 	lineup   Lineup
 	status   Status
 	refresh  RefreshMetrics
@@ -105,6 +105,8 @@ func (f *Feed) EmpiricalGuideHorizon() time.Duration {
 
 // ExpectedGuideHorizon returns the code-default upstream EPG depth.
 func (f *Feed) ExpectedGuideHorizon() time.Duration {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 	return f.settings.ExpectedGuideHorizon
 }
 
@@ -115,17 +117,33 @@ func (f *Feed) FetchedAt() time.Time {
 	return f.lineup.FetchedAt
 }
 
-// ID returns the provider id.
-func (f *Feed) ID() model.ProviderID { return f.settings.ID }
+// ID returns the provider id (immutable after construction).
+func (f *Feed) ID() model.ProviderID {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.settings.ID
+}
 
 // Interval returns the configured refresh interval.
-func (f *Feed) Interval() time.Duration { return f.settings.RefreshInterval }
+func (f *Feed) Interval() time.Duration {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.settings.RefreshInterval
+}
 
 // IsEnabled reports whether the provider is enabled.
-func (f *Feed) IsEnabled() bool { return f.settings.IsEnabled() }
+func (f *Feed) IsEnabled() bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.settings.IsEnabled()
+}
 
 // Label returns the display label.
-func (f *Feed) Label() string { return f.settings.Label }
+func (f *Feed) Label() string {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.settings.Label
+}
 
 // Lineup returns a copy of the current lineup (channels + programmes + meta).
 func (f *Feed) Lineup() Lineup {
@@ -146,7 +164,11 @@ func (f *Feed) Programmes() []model.Programme {
 }
 
 // Reader returns the provider's fetch adapter.
-func (f *Feed) Reader() Reader { return f.reader }
+func (f *Feed) Reader() Reader {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.reader
+}
 
 // RefreshMetrics returns process-lifetime refresh counters for /metrics.
 func (f *Feed) RefreshMetrics() RefreshMetrics {
@@ -156,7 +178,11 @@ func (f *Feed) RefreshMetrics() RefreshMetrics {
 }
 
 // Settings returns the effective provider settings.
-func (f *Feed) Settings() model.ProviderSettings { return f.settings }
+func (f *Feed) Settings() model.ProviderSettings {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.settings
+}
 
 // Stats computes provider metrics from the current lineup and status.
 func (f *Feed) Stats() Stats {
@@ -279,6 +305,21 @@ func (f *Feed) RefreshSchedule() (configured, effective time.Duration, clamped b
 		return f.schedule.configured, f.schedule.effective, f.schedule.clamped
 	}
 	return f.settings.RefreshInterval, f.settings.RefreshInterval, false
+}
+
+// SetReader replaces the fetch adapter (provider setting change on reload).
+func (f *Feed) SetReader(r Reader) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reader = r
+}
+
+// SetSettings replaces the effective settings (config hot reload). The ID must
+// not change.
+func (f *Feed) SetSettings(s model.ProviderSettings) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.settings = s
 }
 
 // SetStatus replaces refresh-attempt state.
