@@ -22,6 +22,8 @@ const (
 	ProviderRoku ProviderID = "roku"
 	// ProviderSamsung is the Samsung TV Plus US provider.
 	ProviderSamsung ProviderID = "samsung"
+	// ProviderTubi is the Tubi published-pair provider.
+	ProviderTubi ProviderID = "tubi"
 	// ProviderXumo is the Xumo Play published-pair provider.
 	ProviderXumo ProviderID = "xumo"
 )

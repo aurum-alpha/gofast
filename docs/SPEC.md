@@ -173,6 +173,12 @@ labeling, numbering, and validation layered on top:
   CAUTION: playlist and EPG are maintained by different people; validate id
   match rate at refresh and surface it in health. apsattv may 403 datacenter
   IPs and non-browser UAs.
+- **Tubi** (~170+ ch US): M3U + EPG from BuddyChewChew
+  [app-m3u-generator](https://github.com/BuddyChewChew/app-m3u-generator)
+  `playlists/tubi_all.m3u` and `playlists/tubi_epg.xml` (plain XML, daily
+  Actions). Community scrape upstream — same published-pair risk class as Xumo.
+  No tvg-chno (synthesize). Stream URLs may carry short-lived JWTs refreshed by
+  the upstream generator.
 
 Published-pair requirements: parse EXTINF attributes + display name + stream
 URL; dedupe by normalized tvg-id; sanitize the upstream EPG for bare
@@ -181,10 +187,11 @@ rebuild the EPG through the XML marshaler so output validity is guaranteed
 regardless of input.
 
 **Direct-API candidates for later** (endpoints verified, adapters not yet
-prioritized): Tubi (`https://tubitv.com/oz/epg/programming`; Fox library
-channels), TCL (`gateway-prod.ideonow.com` / `tcl-channel-cdn.ideonow.com`).
+prioritized): TCL (`gateway-prod.ideonow.com` / `tcl-channel-cdn.ideonow.com`).
 Plex ships via mjh (`i.mjh.nz/Plex/`); a direct anon-token API
 (`clients.plex.tv` → `epg.provider.plex.tv`) is not needed unless mjh regresses.
+An in-tree Tubi HTML/`/oz/epg/programming` client is deliberately not pursued —
+use the published-pair above.
 
 **Deprioritized with reasons:** Amazon Fire TV Channels (Freevee successor;
 auth/DRM-heavy, no stable community source -- if attempted, build the adapter
@@ -209,7 +216,7 @@ streams).
   than part of the XMLTV DTD; Jellyfin gets tuner numbering from M3U
   `tvg-chno`. Sort each playlist globally by positive final number, then put
   unnumbered channels last with provider/id tie-breakers. For providers with no
-  upstream numbering (Xumo, DistroTV, LocalNow):
+  upstream numbering (Xumo, Tubi, DistroTV, LocalNow):
   `synthesize_channel_numbers: <base>` assigns sequential numbers through a
   persisted per-provider id->number map. First-seen assignments are reused
   forever (including after removal/reappearance), stored atomically with the
@@ -339,7 +346,7 @@ When caching is enabled:
   |----------|------------------------|-----------------|
   | LG | ~12–14h (upstream limit) | 3h |
   | DistroTV | ~72h | 6h |
-  | Pluto / Samsung / Roku / Xumo / LocalNow | ~48h placeholder until measured | 6h |
+  | Pluto / Samsung / Roku / Xumo / Tubi / LocalNow | ~48h (Tubi measured ~46h) | 6h |
 
   When clamping changes the schedule, slog warns and Provider Detail /
   `/healthz` / `/metrics` expose configured vs effective intervals and

@@ -348,8 +348,8 @@ categories:
 # customizes the settings of a known provider — offsets, exclusions, enabled,
 # URL overrides, etc. It cannot add a provider without shipping Go: ids with no
 # implementation are ignored at startup (a warning is logged). Pluto, Samsung,
-# and Roku use i.mjh.nz; Xumo, DistroTV, and LocalNow consume published
-# M3U/XMLTV pairs; LG reads api.lgchannels.com.
+# Roku, and Plex use i.mjh.nz; Xumo, Tubi, DistroTV, and LocalNow consume
+# published M3U/XMLTV pairs; LG reads api.lgchannels.com.
 #
 # Every provider (LG included) runs ONLY when its block is present here — a
 # fresh /data with no config.yaml generates a defaults-only file with no
@@ -427,6 +427,18 @@ providers:
     # URLs default in the adapter; override only if upstream moves:
     # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_playlist.m3u
     # epg_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_epg.xml.gz
+
+  tubi:
+    enabled: true
+    label: Tubi
+    # Community published-pair (BuddyChewChew app-m3u-generator; daily Actions).
+    # No upstream tvg-chno — synthesize from this base.
+    synthesize_channel_numbers: 9000
+    min_channels: 100
+    refresh_interval: 6h
+    # URLs default in the adapter; override only if upstream moves:
+    # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u
+    # epg_url: https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_epg.xml
 
   distrotv:
     # Google DAI masters classify as SESSION. Enable with gen + compose profile

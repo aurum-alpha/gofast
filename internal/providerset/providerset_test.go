@@ -16,6 +16,7 @@ var allIDs = []model.ProviderID{
 	model.ProviderPluto,
 	model.ProviderRoku,
 	model.ProviderSamsung,
+	model.ProviderTubi,
 	model.ProviderXumo,
 }
 

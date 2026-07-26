@@ -93,7 +93,7 @@ Production files (pull-only, no secrets):
 
 | Path | Purpose |
 |------|---------|
-| `/{id}.m3u` | Per-provider M3U playlist (`lg`, `pluto`, `samsung`, `roku`, `xumo`, `distrotv`, `localnow`) |
+| `/{id}.m3u` | Per-provider M3U playlist (`lg`, `pluto`, `samsung`, `roku`, `plex`, `xumo`, `tubi`, `distrotv`, `localnow`) |
 | `/{id}.xml` | Per-provider XMLTV guide |
 | `/playlist.m3u` | Aggregate playlist across enabled providers |
 | `/epg.xml` | Aggregate XMLTV across enabled providers |
@@ -193,7 +193,7 @@ docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 
 ### Config (`/data/config.yaml`)
 
-Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, `roku`, `xumo`, `distrotv`, and `localnow`. Pluto/Samsung/Roku use Matt Huisman's `i.mjh.nz` feeds; Xumo/DistroTV/LocalNow consume maintained M3U/XMLTV pairs. Every provider (LG included) runs only when its YAML block is present; `enabled: false` disables an existing block. A fresh `/data` with no `config.yaml` generates a defaults-only file with no providers enabled.
+Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, `roku`, `plex`, `xumo`, `tubi`, `distrotv`, and `localnow`. Pluto/Samsung/Roku/Plex use Matt Huisman's `i.mjh.nz` feeds; Xumo/Tubi/DistroTV/LocalNow consume maintained M3U/XMLTV pairs. Every provider (LG included) runs only when its YAML block is present; `enabled: false` disables an existing block. A fresh `/data` with no `config.yaml` generates a defaults-only file with no providers enabled.
 
 `config.yaml` is **operator-writable** — mount `/data` read-write. If the file is missing on first boot, fastgen generates it from the baked-in code defaults (deploy-varying values stay in the environment). App-managed settings are persisted back atomically, preserving your comments and any keys fastgen does not manage (a `.bak` of the prior file is kept). A read-only mount surfaces a clear "config is read-only" message instead of failing.
 
