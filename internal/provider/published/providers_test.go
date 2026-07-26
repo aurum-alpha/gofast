@@ -7,6 +7,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/provider/distrotv"
 	"github.com/j27-aurum/gofast/internal/provider/localnow"
+	"github.com/j27-aurum/gofast/internal/provider/tcl"
 	"github.com/j27-aurum/gofast/internal/provider/tubi"
 	"github.com/j27-aurum/gofast/internal/provider/xumo"
 )
@@ -24,6 +25,9 @@ func TestProviderDefaultsAndConstructors(t *testing.T) {
 		}},
 		{localnow.DefaultSettings(), model.ProviderLocalNow, 7000, 10, func(settings model.ProviderSettings) provider.Reader {
 			return localnow.New(settings, nil)
+		}},
+		{tcl.DefaultSettings(), model.ProviderTCL, 10000, 200, func(settings model.ProviderSettings) provider.Reader {
+			return tcl.New(settings, nil)
 		}},
 		{tubi.DefaultSettings(), model.ProviderTubi, 9000, 100, func(settings model.ProviderSettings) provider.Reader {
 			return tubi.New(settings, nil)

@@ -12,7 +12,7 @@ branches on dialect, see `internal/proxy` package docs (`go doc ./internal/proxy
 | “SSAI channel” / “beacon channel” | **Not** one playback path. SSAI is a business concept; GoFAST dialects (`AMAGI_SSAI`, `SESSION`, `XUMO_SSAI`) need different handling. |
 | “Needs the proxy” | Only **`AMAGI_SSAI`** (rewrite) and **`SESSION`** (mint) require FASTProxy under selective mode. **`XUMO_SSAI` usually does not.** |
 | “SESSION = Amagi” | **No.** SESSION is Google DAI mint-on-tune-in. Amagi is extensionless beacon segment URIs. Feeding DistroTV into Amagi rewrite does nothing useful. |
-| “Tubi/Plex adapter” | **FASTGen** provider fetchers (lineup + EPG). Not FASTProxy dialect work. Plex ships via mjh ([J27-32](https://linear.app/aurum-alpha/issue/J27-32)); Tubi ships as published-pair ([J27-69](https://linear.app/aurum-alpha/issue/J27-69)); TCL remains a follow-up. |
+| “Tubi/Plex adapter” | **FASTGen** provider fetchers (lineup + EPG). Not FASTProxy dialect work. Plex ships via mjh ([J27-32](https://linear.app/aurum-alpha/issue/J27-32)); Tubi ([J27-69](https://linear.app/aurum-alpha/issue/J27-69)) and TCL ([J27-70](https://linear.app/aurum-alpha/issue/J27-70)) ship as published-pair. |
 
 ---
 
@@ -172,7 +172,10 @@ rewrite run at tune-in, not at gen refresh.
 ### ffmpeg `allowed_segment_extensions`
 
 ffmpeg security check that rejects segment URIs without a media-like extension.
-Why Amagi beacons break Jellyfin without rewrite.
+Why Amagi beacons break Jellyfin without rewrite. Jellyfin 10.11.x / jellyfin-ffmpeg
+7.1+ hit this as playback failure (ffmpeg exit 234) and will not pass
+`-allowed_segment_extensions ALL` for operators —
+[jellyfin#17400](https://github.com/jellyfin/jellyfin/issues/17400).
 
 ### HEAD vs GET
 

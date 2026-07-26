@@ -35,7 +35,10 @@ HEAD with 404/405 while GET works).
 - `NATIVE`: plain media segments — plays anywhere (also fail-open on fetch error)
 - `AMAGI_SSAI` (legacy wire `BEACON`): Amagi SSAI — segment lines are
   extensionless tracking URLs (`/beacon/`, query-laden, no `.ts`) that ffmpeg's
-  `allowed_segment_extensions` security check rejects; **FASTProxy** rewrites
+  `allowed_segment_extensions` security check rejects (ffmpeg 7.1+; Jellyfin
+  10.11.x surfaces this as ffmpeg exit 234 and does not expose override flags —
+  see [jellyfin#17400](https://github.com/jellyfin/jellyfin/issues/17400));
+  **FASTProxy** rewrites those URIs to `/seg/{token}.ts` so Jellyfin/ffmpeg can play
 - `SESSION`: mint-on-tune-in dialects (Google DAI today: `dai.google.com` +
   `/linear/hls/…`). Static published masters often 404 without a fresh session;
   **FASTProxy** POSTs DAI stream-create then HTTP 302s to `stream_manifest`
@@ -179,6 +182,13 @@ labeling, numbering, and validation layered on top:
   Actions). Community scrape upstream — same published-pair risk class as Xumo.
   No tvg-chno (synthesize). Stream URLs may carry short-lived JWTs refreshed by
   the upstream generator.
+- **TCL** (~400+ ch): M3U + EPG from BuddyChewChew
+  [tcl-playlist-generator](https://github.com/BuddyChewChew/tcl-playlist-generator)
+  `tcl.m3u8` + `tcl_epg.xml` (plain XML; file extension is `.m3u8` but content is
+  EXTINF M3U). Same published-pair risk class as Xumo/Tubi. IdeoNow gateway
+  (`gateway-prod.ideonow.com`) requires auth — do not put an authenticated API
+  client in-tree. Sample streams include Amagi playouts (`AMAGI_SSAI` → proxy)
+  and Wurl masters with `ads.*` (`XUMO_SSAI` / `NATIVE`). No tvg-chno (synthesize).
 
 Published-pair requirements: parse EXTINF attributes + display name + stream
 URL; dedupe by normalized tvg-id; sanitize the upstream EPG for bare
@@ -186,12 +196,10 @@ ampersands BEFORE parsing (upstream generators have shipped invalid XML);
 rebuild the EPG through the XML marshaler so output validity is guaranteed
 regardless of input.
 
-**Direct-API candidates for later** (endpoints verified, adapters not yet
-prioritized): TCL (`gateway-prod.ideonow.com` / `tcl-channel-cdn.ideonow.com`).
-Plex ships via mjh (`i.mjh.nz/Plex/`); a direct anon-token API
-(`clients.plex.tv` → `epg.provider.plex.tv`) is not needed unless mjh regresses.
-An in-tree Tubi HTML/`/oz/epg/programming` client is deliberately not pursued —
-use the published-pair above.
+**Direct-API notes:** Plex ships via mjh (`i.mjh.nz/Plex/`); a direct anon-token
+API (`clients.plex.tv` → `epg.provider.plex.tv`) is not needed unless mjh
+regresses. In-tree Tubi HTML/`/oz/epg/programming` and IdeoNow TCL gateway
+clients are deliberately not pursued — use the published-pairs above.
 
 **Deprioritized with reasons:** Amazon Fire TV Channels (Freevee successor;
 auth/DRM-heavy, no stable community source -- if attempted, build the adapter

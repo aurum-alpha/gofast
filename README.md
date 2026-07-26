@@ -93,7 +93,7 @@ Production files (pull-only, no secrets):
 
 | Path | Purpose |
 |------|---------|
-| `/{id}.m3u` | Per-provider M3U playlist (`lg`, `pluto`, `samsung`, `roku`, `plex`, `xumo`, `tubi`, `distrotv`, `localnow`) |
+| `/{id}.m3u` | Per-provider M3U playlist (`lg`, `pluto`, `samsung`, `roku`, `plex`, `xumo`, `tubi`, `tcl`, `distrotv`, `localnow`) |
 | `/{id}.xml` | Per-provider XMLTV guide |
 | `/playlist.m3u` | Aggregate playlist across enabled providers |
 | `/epg.xml` | Aggregate XMLTV across enabled providers |
@@ -193,7 +193,7 @@ docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 
 ### Config (`/data/config.yaml`)
 
-Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, `roku`, `plex`, `xumo`, `tubi`, `distrotv`, and `localnow`. Pluto/Samsung/Roku/Plex use Matt Huisman's `i.mjh.nz` feeds; Xumo/Tubi/DistroTV/LocalNow consume maintained M3U/XMLTV pairs. Every provider (LG included) runs only when its YAML block is present; `enabled: false` disables an existing block. A fresh `/data` with no `config.yaml` generates a defaults-only file with no providers enabled.
+Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, `roku`, `plex`, `xumo`, `tubi`, `tcl`, `distrotv`, and `localnow`. Pluto/Samsung/Roku/Plex use Matt Huisman's `i.mjh.nz` feeds; Xumo/Tubi/TCL/DistroTV/LocalNow consume maintained M3U/XMLTV pairs. Every provider (LG included) runs only when its YAML block is present; `enabled: false` disables an existing block. A fresh `/data` with no `config.yaml` generates a defaults-only file with no providers enabled.
 
 `config.yaml` is **operator-writable** — mount `/data` read-write. If the file is missing on first boot, fastgen generates it from the baked-in code defaults (deploy-varying values stay in the environment). App-managed settings are persisted back atomically, preserving your comments and any keys fastgen does not manage (a `.bak` of the prior file is kept). A read-only mount surfaces a clear "config is read-only" message instead of failing.
 
@@ -201,7 +201,7 @@ Runtime YAML on the gen data volume (not baked into the image). **Provider imple
 
 - [`config.example.yaml`](config.example.yaml) — starter template with the well-known provider overlays. Local compose auto-seeds it into `./.data/config.yaml` on first run (`seed-config` service); delete that file to re-seed. In prod, copy it to `/data/config.yaml` before first boot; otherwise a defaults-only file with no providers enabled is generated.
 
-The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`; MJH providers store `channels.json.gz` + `guide.xml.gz`; published-pair providers store `playlist.m3u` plus `guide.xml.gz` (Xumo/DistroTV) or `guide.xml` (LocalNow). Published-pair refreshes log normalized playlist/guide ID match rates. Numberless channels use stable, persisted first-seen assignments from each provider's `synthesize_channel_numbers` base; removed IDs stay reserved.
+The selected last-known-good generation keeps exact upstream files under `/data/cache/{id}/generations/{generation}/raw/`: LG stores `schedule.json`; MJH providers store `channels.json.gz` + `guide.xml.gz`; published-pair providers store `playlist.m3u` plus `guide.xml.gz` (Xumo/DistroTV) or `guide.xml` (LocalNow/Tubi/TCL). Published-pair refreshes log normalized playlist/guide ID match rates. Numberless channels use stable, persisted first-seen assignments from each provider's `synthesize_channel_numbers` base; removed IDs stay reserved.
 
 Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, `FASTGEN_CACHE_LOGOS`, …) stay in env — see `AGENTS.md`. `proxy_base_url` is the public FASTProxy origin; Amagi SSAI and SESSION channels are filtered with an explicit reason when it is absent. `proxy_all` defaults off.
 

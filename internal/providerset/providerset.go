@@ -19,6 +19,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/provider/pluto"
 	"github.com/j27-aurum/gofast/internal/provider/roku"
 	"github.com/j27-aurum/gofast/internal/provider/samsung"
+	"github.com/j27-aurum/gofast/internal/provider/tcl"
 	"github.com/j27-aurum/gofast/internal/provider/tubi"
 	"github.com/j27-aurum/gofast/internal/provider/xumo"
 )
@@ -69,6 +70,11 @@ var catalog = map[model.ProviderID]entry{
 		defaults: samsung.DefaultSettings,
 		reader:   func(s model.ProviderSettings, c *httpx.Client) provider.Reader { return samsung.New(s, c) },
 		fields:   []string{"region", "slug_template", "channels_url", "epg_url", "headers"},
+	},
+	model.ProviderTCL: {
+		defaults: tcl.DefaultSettings,
+		reader:   func(s model.ProviderSettings, c *httpx.Client) provider.Reader { return tcl.New(s, c) },
+		fields:   []string{"m3u_url", "epg_url", "user_agent", "headers"},
 	},
 	model.ProviderTubi: {
 		defaults: tubi.DefaultSettings,

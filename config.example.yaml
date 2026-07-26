@@ -440,6 +440,19 @@ providers:
     # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u
     # epg_url: https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_epg.xml
 
+  tcl:
+    enabled: true
+    label: TCL
+    # Community published-pair (BuddyChewChew tcl-playlist-generator).
+    # No upstream tvg-chno — synthesize from this base.
+    # Amagi playouts classify as AMAGI_SSAI (need proxy_base_url); Wurl ads.* as XUMO_SSAI/NATIVE.
+    synthesize_channel_numbers: 10000
+    min_channels: 200
+    refresh_interval: 6h
+    # URLs default in the adapter; override only if upstream moves:
+    # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/tcl-playlist-generator/refs/heads/main/tcl.m3u8
+    # epg_url: https://raw.githubusercontent.com/BuddyChewChew/tcl-playlist-generator/refs/heads/main/tcl_epg.xml
+
   distrotv:
     # Google DAI masters classify as SESSION. Enable with gen + compose profile
     # proxy and proxy_base_url so FASTProxy can mint at tune-in. Gen-only drops

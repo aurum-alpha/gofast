@@ -114,7 +114,7 @@ func TestConfigHandler(t *testing.T) {
 	if len(got.ArtworkTLS) != 1 || got.ArtworkTLS[0].Host != "cdn.example" || !got.ArtworkTLS[0].InsecureSkipVerify {
 		t.Fatalf("artwork_tls = %+v", got.ArtworkTLS)
 	}
-	if len(got.Providers) != 9 {
+	if len(got.Providers) != 10 {
 		t.Fatalf("providers = %d", len(got.Providers))
 	}
 	var lg *ConfigProvider
