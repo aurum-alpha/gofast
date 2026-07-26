@@ -49,7 +49,10 @@ data_dir: /data
 # Separate from both: the proxy process itself needs FASTPROXY_GEN_URL
 # (env on the fastproxy container, e.g. http://fastgen:8180) to pull channel
 # origins and push telemetry into gen. That hop is Docker-internal; Jellyfin
-# never uses it. Gen Status shows proxy activity from those pushes.
+# never uses it. Behind TLS, also set FASTPROXY_PUBLIC_BASE_URL on the proxy
+# container to the same public HTTPS origin as proxy_base_url so rewritten
+# variant/segment URIs stay on https (not the plain-HTTP hop from nginx).
+# Gen Status shows proxy activity from those pushes.
 proxy_all: false
 
 # Cache + rewrite logos through fastgen (one knob). When true, download logos

@@ -118,6 +118,46 @@ func TestHandlerNative302(t *testing.T) {
 	}
 }
 
+// J27-75: configured PublicBase wins over plain-HTTP inbound (TLS edge without
+// X-Forwarded-Proto) so rewritten segment URIs stay on the public HTTPS origin.
+func TestHandlerPublicBaseOverridesRequestScheme(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXTINF:6.0,
+/beacon/track?x=1
+`)
+	}))
+	t.Cleanup(upstream.Close)
+
+	origin := NewStaticOrigin()
+	origin.Set(model.ProviderLG, "news", ChannelOrigin{
+		StreamURL:      upstream.URL + "/master.m3u8",
+		Classification: model.ClassAmagiSSAI,
+	})
+	h := NewHandler(origin, NewStore(), nil)
+	h.PublicBase = "https://fast-proxy.example.com"
+
+	mux := http.NewServeMux()
+	h.Register(mux)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8181/stream/lg/news.m3u8", nil)
+	req.Host = "127.0.0.1:8181"
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	lines := nonCommentURILines(body)
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "https://fast-proxy.example.com/seg/") {
+		t.Fatalf("rewritten lines=%v body=%s", lines, body)
+	}
+	if strings.Contains(body, "http://127.0.0.1") || strings.Contains(body, "http://fast-proxy") {
+		t.Fatalf("must not emit request-derived http URIs: %s", body)
+	}
+}
+
 // J27-64: under proxy_all, XUMO_SSAI uses ProxyNone 302 with ads.* query intact
 // (not Amagi rewrite). Hell's Kitchen–shaped CloudFront URL.
 func TestHandlerXumoSSAI302PreservesAdsQuery(t *testing.T) {

@@ -41,7 +41,10 @@
 // liveness). Gen is the control plane. Proxy pulls channel origin from gen
 // (FASTPROXY_GEN_URL + GET /api/proxy/origin/...) and asynchronously pushes
 // structured events and snapshots to gen (POST /api/proxy/events) so Status can
-// show what the proxy is doing without SSH. Media paths never block on ingest.
+// show what the proxy is doing without SSH. Optional FASTPROXY_PUBLIC_BASE_URL
+// is the absolute client-facing origin for rewritten playlist URIs (required
+// behind TLS-terminating nginx so rewrites are not minted as http://). Media
+// paths never block on ingest.
 //
 // # Request flow
 //

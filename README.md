@@ -36,13 +36,14 @@ Default ports: **8180** (gen), **8181** (proxy). With the optional nginx edge: *
 | Mode | Compose | Playback |
 |------|---------|----------|
 | **Gen-only** (default) | `docker compose up` | NATIVE / Xumo SSAI direct; Amagi SSAI + SESSION filtered until proxy is configured |
-| **Gen + proxy** | `docker compose --profile proxy up` (or `COMPOSE_PROFILES=proxy`) | Set `FASTGEN_PROXY_BASE_URL` to the proxy origin **reachable by Jellyfin/ffmpeg** (embedded in M3U). Proxy uses internal `FASTPROXY_GEN_URL` (e.g. `http://fastgen:8180`) for origin pull + telemetry. Amagi → rewrite; SESSION → DAI mint then 302 |
+| **Gen + proxy** | `docker compose --profile proxy up` (or `COMPOSE_PROFILES=proxy`) | Set `FASTGEN_PROXY_BASE_URL` to the proxy origin **reachable by Jellyfin/ffmpeg** (embedded in M3U). Behind TLS, ensure playlist rewrite stays on https — see [TLS / reverse proxy](#tls--nginx-edge-optional). Proxy uses internal `FASTPROXY_GEN_URL` (e.g. `http://fastgen:8180`) for origin pull + telemetry. Amagi → rewrite; SESSION → DAI mint then 302 |
 
-**Three proxy-related URLs (do not conflate):**
+**Four proxy-related URLs (do not conflate):**
 
 | Knob | Who uses it | Typical local compose |
 |------|-------------|------------------------|
 | `FASTGEN_PROXY_BASE_URL` / `proxy_base_url` | Jellyfin/browser (M3U emit) | `http://localhost:8181` |
+| `FASTPROXY_PUBLIC_BASE_URL` | Proxy playlist rewrite (`/s`, `/seg`) when set | unset locally; optional `https://…` behind TLS |
 | `FASTGEN_PROXY_INTERNAL_URL` / `proxy_internal_url` | Gen health probes (Manual L2) rewrite | `http://fastproxy:8181` (compose default) |
 | `FASTPROXY_GEN_URL` | Proxy → gen (origins + event push) | `http://fastgen:8180` |
 
@@ -124,11 +125,40 @@ playback URL). Prefer Emitted when the channel is via FASTProxy — proxy
 
 ### TLS / nginx edge (optional)
 
-Terminate TLS and do host-based routing in Docker. Bring your own PEM certs (no ACME/certbot in this stack). Fastgen does not invent absolute URLs from `Host` / `X-Forwarded-*` — always set `FASTGEN_BASE_URL` (and `FASTGEN_PROXY_BASE_URL` when using the proxy vhost) to the public HTTPS origin.
+Terminate TLS and do host-based routing in Docker (or your own reverse proxy). Bring your own PEM certs (no ACME/certbot in this stack). Do **not** open plaintext `:80` on the proxy just so clients can fetch rewritten URIs — keep the public edge on HTTPS.
+
+**Gen** never invents absolute URLs from `Host` / `X-Forwarded-*`. Always set `FASTGEN_BASE_URL` (and `FASTGEN_PROXY_BASE_URL` when using the proxy vhost) to the public HTTPS origin Jellyfin reaches.
+
+**FASTProxy playlist rewrite** is different: Amagi rewrites mint absolute `/s/…` and `/seg/….ts` URIs. Behind TLS termination the container usually sees plain HTTP to nginx, so without help those URIs become `http://…` and Jellyfin/ffmpeg fail. Use **either** of the following (both is fine):
+
+| Option | What to set | When it wins |
+|--------|-------------|--------------|
+| **A — Forwarded headers** | On the proxy vhost, send `X-Forwarded-Proto` and preferably `X-Forwarded-Host` | Used when `FASTPROXY_PUBLIC_BASE_URL` is unset |
+| **B — Explicit public base** | `FASTPROXY_PUBLIC_BASE_URL=https://gofast-proxy.example.com` on the **proxy** container (same origin as `FASTGEN_PROXY_BASE_URL`) | Always preferred when set; ignores request scheme |
+
+Nginx example for option A (also in [`deploy/nginx/gofast.conf`](deploy/nginx/gofast.conf)):
+
+```nginx
+location / {
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;   # https when clients use TLS
+    proxy_set_header X-Forwarded-Host  $host;      # optional; Host alone is often enough
+    proxy_pass http://gofast_proxy;                # or your proxy upstream
+}
+```
+
+Quick check after deploy — every rewritten line must be `https://…`:
+
+```bash
+curl -sS 'https://gofast-proxy.example.com/stream/<provider>/<id>.m3u8' | head -20
+```
 
 #### In-stack edge profile
 
-Sample config: [`deploy/nginx/gofast.conf`](deploy/nginx/gofast.conf). Edit `server_name` values to your domains. Drop certs into the TLS dir (default [`deploy/nginx/certs/`](deploy/nginx/certs/)):
+Sample config: [`deploy/nginx/gofast.conf`](deploy/nginx/gofast.conf) (already sets `X-Forwarded-Proto`). Edit `server_name` values to your domains. Drop certs into the TLS dir (default [`deploy/nginx/certs/`](deploy/nginx/certs/)):
 
 | File | Role |
 |------|------|
@@ -141,6 +171,8 @@ COMPOSE_PROFILES=edge
 # or: COMPOSE_PROFILES=edge,proxy
 FASTGEN_BASE_URL=https://gofast.example.com
 # FASTGEN_PROXY_BASE_URL=https://gofast-proxy.example.com
+# Optional belt-and-suspenders if your edge might omit X-Forwarded-Proto:
+# FASTPROXY_PUBLIC_BASE_URL=https://gofast-proxy.example.com
 EDGE_HTTP_PORT=80
 EDGE_HTTPS_PORT=443
 # EDGE_TLS_DIR=/path/on/host/certs
@@ -156,7 +188,7 @@ docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 
 1. Keep the GoFAST stack on the compose network named `gofast` ([`docker-compose.prod.yml`](docker-compose.prod.yml)).
 2. Attach your existing nginx container: `docker network connect gofast <nginx_container>` (or declare that network as `external: true` in the other compose).
-3. Reuse the same upstream hostnames (`gen`, `proxy`) and `server_name` patterns as [`deploy/nginx/gofast.conf`](deploy/nginx/gofast.conf).
+3. Reuse the same upstream hostnames (`gen`, `proxy`) and `server_name` patterns as [`deploy/nginx/gofast.conf`](deploy/nginx/gofast.conf). Forward `X-Forwarded-Proto` (and optionally set `FASTPROXY_PUBLIC_BASE_URL`) as above.
 4. Publish **80/443** from only one stack — do not bind them twice on the host.
 
 ### Config (`/data/config.yaml`)

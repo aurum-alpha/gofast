@@ -14,12 +14,16 @@ import (
 
 // Handler serves /stream, /s/{sid}/{n}.m3u8, and /seg/{token}.
 type Handler struct {
-	Origin    Origin
-	Store     *Store
-	Reporter  *Reporter
-	playlists *playlistClient
-	segments  *segmentClient
-	mint      *mintClient
+	Origin   Origin
+	Store    *Store
+	Reporter *Reporter
+	// PublicBase is the absolute client-facing origin for rewritten playlist
+	// URIs (no trailing slash). When set (FASTPROXY_PUBLIC_BASE_URL), it wins
+	// over request-derived Host / X-Forwarded-*. Empty keeps local/dev behavior.
+	PublicBase string
+	playlists  *playlistClient
+	segments   *segmentClient
+	mint       *mintClient
 }
 
 // NewHandler wires origin lookup, session store, and optional reporter.
@@ -53,7 +57,7 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".m3u8")
 	clientIP := clientaccess.ClientIP(r)
 	ua := truncateUA(r.UserAgent())
-	publicBase := publicBaseFromRequest(r)
+	publicBase := h.resolvePublicBase(r)
 
 	origin, err := h.Origin.Lookup(r.Context(), provider, id)
 	if err != nil {
@@ -246,7 +250,7 @@ func (h *Handler) serveSessionMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	upstream := sess.VariantURLs[n]
-	publicBase := publicBaseFromRequest(r)
+	publicBase := h.resolvePublicBase(r)
 
 	body, finalURL, status, err := h.playlists.get(r.Context(), upstream, sess.RequestHeaders)
 	if err != nil {

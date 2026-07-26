@@ -148,15 +148,16 @@ still **rewrites** Amagi, **mints** SESSION, and **302s** NATIVE/XUMO to
 upstream. Same M3U URL shape; behavior is decided inside the proxy by
 classification.
 
-### `proxy_base_url` vs `proxy_internal_url` vs `FASTPROXY_GEN_URL`
+### `proxy_base_url` vs `proxy_internal_url` vs proxy envs
 
 | Knob | Who uses it |
 |------|-------------|
 | `proxy_base_url` / `FASTGEN_PROXY_BASE_URL` | Jellyfin/browser — embedded in M3U |
+| `FASTPROXY_PUBLIC_BASE_URL` | Proxy — absolute origin for rewritten `/s` and `/seg` URIs (set behind TLS) |
 | `proxy_internal_url` / `FASTGEN_PROXY_INTERNAL_URL` | Gen health probes rewriting public→Docker DNS |
 | `FASTPROXY_GEN_URL` | Proxy → gen (origin lookup + event push) |
 
-Do not conflate these three.
+Do not conflate these. Gen’s `proxy_base_url` and proxy’s `FASTPROXY_PUBLIC_BASE_URL` are usually the same public HTTPS origin.
 
 ### Origin lookup
 

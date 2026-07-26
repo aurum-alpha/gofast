@@ -69,6 +69,8 @@ services:
       PORT: "8181"
       # Internal compose DNS — origin pull + telemetry push (not Jellyfin-facing).
       FASTPROXY_GEN_URL: "${FASTPROXY_GEN_URL:-http://gen:8180}"
+      # Public HTTPS origin for playlist rewrite (same value as FASTGEN_PROXY_BASE_URL).
+      FASTPROXY_PUBLIC_BASE_URL: "${FASTPROXY_PUBLIC_BASE_URL:-}"
     restart: unless-stopped
     networks:
       - gofast

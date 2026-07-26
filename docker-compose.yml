@@ -75,3 +75,6 @@ services:
       PORT: "8181"
       # Internal Docker DNS to gen for origin lookup + telemetry push.
       FASTPROXY_GEN_URL: "${FASTPROXY_GEN_URL:-http://fastgen:8180}"
+      # Client-facing origin for rewritten /s and /seg URIs. Set behind TLS to
+      # the same HTTPS value as FASTGEN_PROXY_BASE_URL; leave empty for local http.
+      FASTPROXY_PUBLIC_BASE_URL: "${FASTPROXY_PUBLIC_BASE_URL:-http://localhost:8181}"

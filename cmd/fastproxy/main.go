@@ -25,6 +25,11 @@ func main() {
 		slog.Error("FASTPROXY_GEN_URL is required (internal FASTGen origin, e.g. http://fastgen:8180)")
 		os.Exit(1)
 	}
+	publicBase, err := config.NormalizeProxyBaseURL(os.Getenv("FASTPROXY_PUBLIC_BASE_URL"))
+	if err != nil {
+		slog.Error("invalid FASTPROXY_PUBLIC_BASE_URL", "err", err)
+		os.Exit(1)
+	}
 
 	store := proxy.NewStore()
 	origin := proxy.NewGenClient(genURL, &http.Client{Timeout: 15 * time.Second})
@@ -32,7 +37,8 @@ func main() {
 	go reporter.Run(ctx)
 
 	h := proxy.NewHandler(origin, store, reporter)
-	slog.Info("starting", "listen", addr, "gen_url", genURL)
+	h.PublicBase = publicBase
+	slog.Info("starting", "listen", addr, "gen_url", genURL, "public_base", publicBase)
 
 	srv := &server.Server{
 		Addr: addr,
