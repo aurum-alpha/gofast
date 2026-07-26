@@ -52,14 +52,30 @@ func (c *Client) Classify(ctx context.Context, streamURL string) model.Classific
 	return c.classify(ctx, streamURL, nil)
 }
 
+// classify resolves the dialect. SESSION URLs are never probed (fetching a
+// Google DAI mint URL creates a fake tune-in or 404s). An ads.* match is only
+// a hint: Amagi playout also carries ads.* params, and its beacon-shaped media
+// playlists break direct-play ffmpeg clients, so the playlist probe still runs
+// and beacon detection wins. Plain media segments or a probe failure fall back
+// to the XUMO_SSAI hint so transient fetch errors never flip the label.
 func (c *Client) classify(ctx context.Context, streamURL string, headers map[string]string) model.Classification {
-	if class, ok := classifyByURL(streamURL); ok {
-		return class
+	hint, hinted := classifyByURL(streamURL)
+	if hinted && hint == model.ClassSession {
+		return hint
 	}
 	if c == nil {
+		if hinted {
+			return hint
+		}
 		return model.ClassNative
 	}
 	class, err := c.probe(ctx, streamURL, headers)
+	if err == nil && class == model.ClassAmagiSSAI {
+		return class
+	}
+	if hinted {
+		return hint
+	}
 	if err != nil {
 		return model.ClassNative
 	}
@@ -115,7 +131,9 @@ func logClassified(ch *model.Channel, via string) {
 
 // classifyByURL applies host/query heuristics that do not need a playlist fetch.
 // SESSION: Google DAI mint-on-tune-in URLs (often 404 without a fresh session).
-// XUMO_SSAI: CloudFront/Xumo SSAI that needs ads.* query params.
+// XUMO_SSAI: CloudFront/Xumo SSAI that needs ads.* query params. The XUMO_SSAI
+// answer is a hint, not a verdict — Amagi playout URLs carry ads.* too, and only
+// the playlist probe can tell them apart (see classify).
 func classifyByURL(streamURL string) (model.Classification, bool) {
 	u, err := url.Parse(streamURL)
 	if err != nil || u.Host == "" {
