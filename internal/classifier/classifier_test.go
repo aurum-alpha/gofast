@@ -182,12 +182,74 @@ func TestClassifyByURLSession404StillSession(t *testing.T) {
 	_ = srv
 }
 
-func TestClassifyByURLXumoSSAI(t *testing.T) {
+func TestClassifyAdsHintPlainSegmentsStaysXumoSSAI(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hls/master.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		assertRangeGET(t, r)
+		_, _ = io.WriteString(w, `#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=800000
+media.m3u8
+`)
+	})
+	mux.HandleFunc("/hls/media.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		assertRangeGET(t, r)
+		_, _ = io.WriteString(w, `#EXTM3U
+#EXTINF:6.0,
+seg001.ts
+#EXTINF:6.0,
+seg002.ts
+`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
 	c := New(httpx.NewClient(0, 1), 1)
-	url := "https://d1bl6tskrpq9ze.cloudfront.net/hls/master.m3u8?ads.xumo_channelId=99992260&ads.channelId=ch1"
-	got := c.Classify(context.Background(), url)
+	got := c.Classify(context.Background(), srv.URL+"/hls/master.m3u8?ads.xumo_channelId=99992260&ads.channelId=ch1")
 	if got != model.ClassXumoSSAI {
 		t.Fatalf("got %q want XUMO_SSAI", got)
+	}
+}
+
+func TestClassifyAdsHintBeaconSegmentsBecomesAmagiSSAI(t *testing.T) {
+	// Amagi playout URLs carry ads.* params too (LG catalog); the beacon-shaped
+	// media playlist must win over the XUMO_SSAI URL hint.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/playlist/master.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		assertRangeGET(t, r)
+		_, _ = io.WriteString(w, `#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=511680
+426x240_511680/index.m3u8
+`)
+	})
+	mux.HandleFunc("/playlist/426x240_511680/index.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		assertRangeGET(t, r)
+		_, _ = io.WriteString(w, `#EXTM3U
+#EXTINF:6.006,
+https://cdn.example/beacon/ch/426x240_511680?bcn=1&redirect_url=https%3A%2F%2Fcdn.example%2Fseg_1.ts
+#EXTINF:6.006,
+https://cdn.example/beacon/ch/426x240_511680?bcn=1&redirect_url=https%3A%2F%2Fcdn.example%2Fseg_2.ts
+`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := New(httpx.NewClient(0, 1), 1)
+	got := c.Classify(context.Background(), srv.URL+"/playlist/master.m3u8?ads.deviceid=&ads.ifa=")
+	if got != model.ClassAmagiSSAI {
+		t.Fatalf("got %q want AMAGI_SSAI", got)
+	}
+}
+
+func TestClassifyAdsHintProbeFailureStaysXumoSSAI(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	c := New(httpx.NewClient(0, 1), 1)
+	got := c.Classify(context.Background(), srv.URL+"/master.m3u8?ads.channelId=1")
+	if got != model.ClassXumoSSAI {
+		t.Fatalf("got %q want XUMO_SSAI on probe failure", got)
 	}
 }
 

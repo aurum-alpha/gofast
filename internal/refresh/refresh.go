@@ -369,6 +369,9 @@ func (p *providerRefresher) setLineup(lineup provider.Lineup) {
 
 // applyURLDialectHints sets SESSION / XUMO_SSAI from StreamURL shape and persists
 // changes. Used on restore (Handle; Receive not yet running) and refresh (Emit).
+// A XUMO_SSAI hint never downgrades AMAGI_SSAI: that label only comes from a
+// playlist probe (beacon-shaped segments), which is strictly better-informed
+// than a URL glance — Amagi playout URLs carry ads.* params too.
 func (p *providerRefresher) applyURLDialectHints(chs []model.Channel) []model.Channel {
 	at := time.Now().UTC()
 	for i := range chs {
@@ -379,7 +382,11 @@ func (p *providerRefresher) applyURLDialectHints(chs []model.Channel) []model.Ch
 		if !ok {
 			continue
 		}
-		if chs[i].Classification.Canonical() == class {
+		current := chs[i].Classification.Canonical()
+		if current == class {
+			continue
+		}
+		if current == model.ClassAmagiSSAI && class == model.ClassXumoSSAI {
 			continue
 		}
 		chs[i].Classification = class

@@ -517,6 +517,58 @@ func TestApplyURLDialectHintsOverridesStaleNative(t *testing.T) {
 	}
 }
 
+func TestApplyURLDialectHintsKeepsProbedAmagiSSAI(t *testing.T) {
+	// Amagi playout URLs carry ads.* params too; the cheap URL hint must never
+	// downgrade a probed AMAGI_SSAI back to XUMO_SSAI on restore/refresh.
+	attrs, err := channelattr.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = attrs.Close() })
+
+	amagi, _ := json.Marshal(model.ClassAmagiSSAI)
+	if err := attrs.Handle(context.Background(), channelattr.Event{
+		Provider:  model.ProviderLG,
+		ChannelID: "worldpup",
+		Kind:      channelattr.KindClassification,
+		Value:     amagi,
+		At:        time.Now().UTC(),
+		Source:    "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	settings := lg.DefaultSettings().Merge(model.ProviderSettings{MinChannels: 1})
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: lg.New(settings, nil)},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	pr := &providerRefresher{feed: feed, attrs: attrs}
+	lineup := provider.Lineup{
+		Channels: []model.Channel{{
+			Provider:     model.ProviderLG,
+			NormalizedID: "worldpup",
+			StreamURL:    "https://amg.playout.example/playlist.m3u8?ads.deviceid=&ads.ifa=",
+		}},
+		FetchedAt: time.Now().UTC(),
+	}
+	pr.setLineup(lineup)
+
+	chs := feed.Channels()
+	if len(chs) != 1 || chs[0].Classification != model.ClassAmagiSSAI {
+		t.Fatalf("URL hint stomped probed AMAGI_SSAI: %+v", chs)
+	}
+	raw, ok := attrs.Current(model.ProviderLG, "worldpup", channelattr.KindClassification)
+	if !ok {
+		t.Fatal("expected persisted classification")
+	}
+	var got model.Classification
+	if err := json.Unmarshal(raw, &got); err != nil || got != model.ClassAmagiSSAI {
+		t.Fatalf("attr current: %s err=%v", raw, err)
+	}
+}
+
 type seqReader struct {
 	n     int
 	steps []struct {
