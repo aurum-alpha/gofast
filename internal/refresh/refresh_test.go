@@ -955,6 +955,66 @@ func TestPrepareKeepsUpstreamLogosWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestEmitCustomLogoRewrittenOnWarm(t *testing.T) {
+	// Per-channel emit logo_url is cached/rewritten like provider logos (J27-72).
+	var hits int
+	logoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("png"))
+	}))
+	t.Cleanup(logoSrv.Close)
+
+	custom := logoSrv.URL + "/custom.png"
+	settings := model.ProviderSettings{
+		ID: model.ProviderLG, Label: "LG", MinChannels: 1,
+		ChannelEmit: map[string]model.ChannelEmit{
+			"news": {LogoURL: custom},
+		},
+	}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: logoReader{logoURL: "https://cdn.example/provider.png"}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	cc := cache.New(t.TempDir())
+	pr := &providerRefresher{feed: feed, cache: cc}
+	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := feed.Channels()[0].LogoURL; got != custom {
+		t.Fatalf("emit logo before warm: %q", got)
+	}
+	if !strings.Contains(string(mustReadM3U(t, cc)), custom) {
+		t.Fatalf("m3u should carry emit CDN URL before warm")
+	}
+
+	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
+	pr.pipe = &pipeline{logos: logos}
+	if _, err := pr.rewriteLogosAndRepublish(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	want := "http://fastgen.lan:8180/logos/lg/news.png"
+	if !strings.Contains(string(mustReadM3U(t, cc)), want) {
+		t.Fatalf("m3u missing rewritten emit logo: %s", mustReadM3U(t, cc))
+	}
+	if got := feed.Channels()[0].LogoURL; got != want {
+		t.Fatalf("api logo_url=%q", got)
+	}
+	if hits != 1 {
+		t.Fatalf("logo hits=%d", hits)
+	}
+}
+
+func mustReadM3U(t *testing.T, cc *cache.Cache) []byte {
+	t.Helper()
+	data, err := cc.ReadM3U(model.ProviderLG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 func TestWarmLogosUpdatesStatus(t *testing.T) {
 	var hits atomic.Int32
 	logoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

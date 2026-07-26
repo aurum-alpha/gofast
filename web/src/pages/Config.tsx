@@ -41,7 +41,12 @@ const GENERAL_FIELDS: FieldSpec[] = [
     hint: 'Optional gen-side probe origin (Docker DNS); rewrites public base for Manual L2',
   },
   { path: 'proxy_all', label: 'Proxy all streams', kind: 'bool' },
-  { path: 'cache_logos', label: 'Cache logos', kind: 'bool' },
+  {
+    path: 'cache_logos',
+    label: 'Cache + rewrite logos',
+    kind: 'bool',
+    hint: 'Download logos and rewrite M3U/XMLTV/API to {base_url}/logos/… so clients never hit upstream CDNs',
+  },
   {
     path: 'timeouts.http_client',
     label: 'HTTP client timeout',

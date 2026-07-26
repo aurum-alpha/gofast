@@ -284,6 +284,8 @@ streams).
 ## Logo caching
 
 Controlled by `cache_logos` / `FASTGEN_CACHE_LOGOS` (default **false**).
+Config UI label: “Cache + rewrite logos” — one knob; there is no separate
+rewrite toggle.
 
 - **Off:** leave upstream CDN `tvg-logo` / XMLTV `<icon>` / API `logo_url`
   unchanged (browsers and Jellyfin fetch artwork themselves).
@@ -297,6 +299,9 @@ When caching is enabled:
 
 - Fetch logos with per-provider request headers (mjh metadata's `headers` field,
   e.g. Samsung wants `user-agent: okhttp/4.12.0`).
+- Per-channel emit `logo_url` overrides are cached and rewritten the same way
+  as provider logos (warm runs after emit save / `base_url` change, not only
+  on provider refresh).
 - **Per-host TLS policy:** `tvpnlogopus.samsungcloud.tv` serves a chain rooted
   in DigiCert Global Root CA (G1), which Mozilla/Chrome distrusted 2026-04-15
   and which is absent from current system stores. Support per-host extra root
@@ -304,11 +309,16 @@ When caching is enabled:
   for artwork-only hosts. Default everything else to system roots. Never apply
   relaxed TLS to stream or EPG endpoints.
 - On hard upstream failures (HTTP 403/404), clear `logo_url` and set
-  `logo_error` on the channel (soft failures keep the upstream URL).
+  `logo_error` on the channel. Soft failures (5xx/network) keep the upstream
+  CDN URL in the export — intentional so a transient artwork outage does not
+  blank logos.
 - Cache revalidation on each provider refresh: if the upstream logo URL changed,
   fetch unconditionally; if it is unchanged and the CDN sent ETag/Last-Modified,
   use a conditional GET; if there are no validators, skip re-download while the
   on-disk file is within max-age (default 7d).
+- First publish after refresh may briefly still show CDN URLs until the
+  background warm finishes — check `GET /api/status` (`logos.running`) before
+  verifying playlists.
 - Strip per-programme `<icon>` elements from mjh EPGs (thousands of them, they
   flood Jellyfin's pre-cache with fetch failures and barely render).
 

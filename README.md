@@ -173,7 +173,7 @@ The selected last-known-good generation keeps exact upstream files under `/data/
 
 Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, `FASTGEN_CACHE_LOGOS`, …) stay in env — see `AGENTS.md`. `proxy_base_url` is the public FASTProxy origin; Amagi SSAI and SESSION channels are filtered with an explicit reason when it is absent. `proxy_all` defaults off.
 
-**Logos:** `cache_logos` / `FASTGEN_CACHE_LOGOS` defaults **false** (upstream CDN URLs unchanged). When true, logos download under `{data_dir}/cache/{provider}/logos` and M3U/XMLTV/API rewrite to `{FASTGEN_BASE_URL}/logos/...` (requires `base_url`). Artwork-only TLS exceptions live under `artwork_tls` in YAML — they never apply to stream or EPG fetches.
+**Logos:** `cache_logos` / `FASTGEN_CACHE_LOGOS` defaults **false** (upstream CDN URLs unchanged). When true (Config: “Cache + rewrite logos”), logos download under `{data_dir}/cache/{provider}/logos` and M3U/XMLTV/API — including per-channel emit `logo_url` — rewrite to `{FASTGEN_BASE_URL}/logos/...` (requires `base_url`). Soft artwork failures may leave a CDN URL until the next successful warm. Artwork-only TLS exceptions live under `artwork_tls` in YAML — they never apply to stream or EPG fetches.
 
 ### Local build from source
 

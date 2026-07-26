@@ -227,8 +227,16 @@ func (s *Service) Reload(ctx context.Context, cfg *config.Config) error {
 			reapplyAll = true // re-parse raw so LogoURL reverts upstream
 		}
 	}
+	// base_url / artwork_tls change rebuilds the logo cache identity; reapply
+	// alone would republish CDN URLs under the old rewrite base — warm after.
 	if logosRebuilt && nowLogos {
 		reapplyAll = true
+		warm = true
+	}
+	// Provider settings reapply (incl. channel_emit logo_url) leaves LogoURL at
+	// the operator/CDN value until a warm pass caches + rewrites it.
+	if nowLogos && len(perProvider) > 0 {
+		warm = true
 	}
 	s.pipe.set(policy, groups.Compile(cfg.Groups), categories.Compile(cfg.Categories), s.gateLogos(cfg))
 	s.applied = cfg

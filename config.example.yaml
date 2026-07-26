@@ -52,10 +52,12 @@ data_dir: /data
 # never uses it. Gen Status shows proxy activity from those pushes.
 proxy_all: false
 
-# When true, download logos to {data_dir}/cache/{provider}/logos and rewrite
-# tvg-logo / XMLTV <icon> / API logo_url to {base_url}/logos/... . Requires
-# base_url / FASTGEN_BASE_URL. When false, leave upstream CDN URLs unchanged.
-# Prefer FASTGEN_CACHE_LOGOS in Portainer/stack.env for the deploy.
+# Cache + rewrite logos through fastgen (one knob). When true, download logos
+# to {data_dir}/cache/{provider}/logos and rewrite tvg-logo / XMLTV <icon> /
+# API logo_url (including per-channel emit logo_url) to {base_url}/logos/... .
+# Requires base_url / FASTGEN_BASE_URL. Soft artwork failures may leave a CDN
+# URL until the next successful warm. When false, leave upstream CDN URLs
+# unchanged. Prefer FASTGEN_CACHE_LOGOS in Portainer/stack.env for the deploy.
 cache_logos: false
 
 # Artwork-only TLS exceptions (never used by stream/EPG clients).
