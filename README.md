@@ -1,20 +1,94 @@
 # GoFAST
 
-Self-hosted FAST channel aggregator for Jellyfin.
+**Self-hosted FAST TV for Jellyfin** — one lineup, one guide, channels that actually play.
 
 License: [MIT](LICENSE)
 
-- **fastgen** — primary service: channel lineups, EPG (M3U + XMLTV), logos, health, embedded UI
-- **fastproxy** — optional add-on: dialect translation for Amagi SSAI beacon rewrite and Google DAI SESSION mint
+FAST (Free Ad-Supported Streaming TV) catalogs are everywhere — LG Channels, Pluto, Samsung TV Plus, Roku, Xumo, Tubi, and more — but wiring them into Jellyfin Live TV is painful. Each source has its own playlist shape, numbering quirks, and stream dialects. Some play fine as plain HLS. Others use Amagi “beacon” segment URLs that **ffmpeg/Jellyfin reject**. Still others need a Google DAI session mint on every tune-in. Stitching that together by hand means fragile M3U files, silent guide gaps, and channels that look fine in a browser but die in Live TV.
+
+**GoFAST fixes that.** It pulls lineups and EPG from multiple FAST providers, normalizes and filters them, classifies each stream by playback path, and serves Jellyfin-ready **M3U + XMLTV** over HTTP. An optional proxy sits only where media clients need help — so Amagi and SESSION channels play instead of 404 / exit 234 — while native and Xumo streams stay direct when they can.
+
+| Piece | Role |
+|-------|------|
+| **fastgen** | Primary product: providers → cache → M3U/XMLTV, health, logos, embedded operator UI |
+| **fastproxy** | Optional add-on: Amagi beacon rewrite + Google DAI SESSION mint for Jellyfin/ffmpeg |
+
+Gen works standalone. Add the proxy when you want Amagi / SESSION playback (or full `proxy_all` observability).
+
+---
+
+## Why it exists
+
+- **Jellyfin expects one tuner + one guide**, not ten vendor portals.
+- **Upstream formats disagree** — numbers, logos, groups, DRM, SSAI, mint-on-tune.
+- **ffmpeg is strict** — extensionless Amagi beacon URIs fail on modern Jellyfin ([jellyfin#17400](https://github.com/jellyfin/jellyfin/issues/17400)); GoFAST rewrites them so Live TV can play.
+- **Homelab operators need control** — enable/disable providers, exclude junk, prefer one copy of “CNN”, probe health, and keep last-known-good when an upstream blips.
+
+GoFAST is built for that operator: Docker Compose / Portainer, persistent cache, live settings UI, no cloud account required.
+
+---
+
+## Features
+
+### Lineups & guides for Jellyfin
+
+- Aggregate **`/playlist.m3u`** + **`/epg.xml`**, or per-provider `/{id}.m3u` + `/{id}.xml`
+- Built-in providers: **LG Channels**, **Pluto**, **Samsung TV Plus**, **Roku**, **Plex** (via mjh), **Xumo**, **Tubi**, **TCL**, **DistroTV**, **LocalNow**
+- Stable channel numbers (offsets / synthesize), namespaced aggregate IDs, XMLTV with Now/Next-friendly programmes
+- Last-known-good generations — failed refreshes keep serving so Jellyfin isn’t left empty
+
+### Stream dialects that match how playback actually works
+
+| Dialect | What happens |
+|---------|----------------|
+| **NATIVE** | Emit upstream URL — plays directly |
+| **XUMO_SSAI** | Emit upstream with `ads.*` kept — usually no proxy |
+| **AMAGI_SSAI** | Needs **fastproxy** rewrite (extensionless beacons → `/seg/….ts`) |
+| **SESSION** | Needs **fastproxy** DAI mint, then 302 to a fresh manifest |
+| **DRM** | Dropped — no proxy can help |
+
+Optional **`proxy_all`**: every tune starts at the proxy (better observability; proxy becomes critical for all channels). Default is selective: proxy only Amagi + SESSION.
+
+### Operator UI (embedded)
+
+- **Channels / Providers / Guide** — browse lineup, per-channel detail, HLS preview (raw vs emitted)
+- **Config** — live settings (no restart for app knobs): providers, health, groups, logos, proxy URLs
+- **Groups** — taxonomy so upstream group strings become consistent Jellyfin categories
+- **Dedupes** — same-title clusters across providers; prefer / drop so you don’t keep five “BET”s
+- **Health** — scheduled L1 segment probes + optional L2 ffprobe; history and on-demand tests
+- **Cache** — disk inventory (generations, logos, attr history); soft purge & logo clear without a serving gap
+- **Access / Proxy / Status** — who pulled your playlists, proxy events, build identity & logo warm progress
+
+### Reliability & ops
+
+- Atomic cache generations under `/data` — playlist and guide publish as a pair
+- Soft purge keeps the current generation until refresh commits
+- Optional logo cache + rewrite to your `FASTGEN_BASE_URL` (clients never hit upstream CDNs)
+- Client-access log for Jellyfin pulls of root M3U/XMLTV
+- Prometheus `/metrics`, rich `/healthz`, compose profiles: gen-only, `proxy`, optional TLS `edge`
+- Twelve-factor config: env for deploy knobs, optional YAML for structure; UI edits apply live
+
+### What you get in Jellyfin
+
+1. Point Live TV at GoFAST’s M3U + XMLTV  
+2. Browse a merged FAST guide  
+3. Tune channels — native/Xumo direct; Amagi/SESSION via proxy when configured  
+4. Operate everything from the UI on the same host  
+
+---
 
 ## Docs
 
-- [AGENTS.md](AGENTS.md) — how to work in this repo (branches, PRs, quality gates)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — dual-binary design, UI feathering, milestones
-- [docs/SPEC.md](docs/SPEC.md) — detailed product requirements and gotchas
-- [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md) — glossary (HLS, SSAI, dialects, mint, proxy URLs)
+| Doc | Contents |
+|-----|----------|
+| [docs/SPEC.md](docs/SPEC.md) | Requirements, dialects, gotchas |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Dual-binary design, persistence, milestones |
+| [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md) | Glossary (HLS, SSAI, dialects, mint, proxy URLs) |
+| [AGENTS.md](AGENTS.md) | How to work in this repo (branches, PRs, quality gates) |
 
-## Run with Docker
+---
+
+## Install & operate
 
 Images are published to GHCR on every merge to `main` (after UI build + compile + test pass):
 
@@ -224,4 +298,4 @@ go run ./cmd/fastgen
 
 ## Status
 
-LG, Pluto, Samsung TV Plus, Roku, Xumo, DistroTV, and LocalNow provider pipelines are implemented.
+Providers implemented: LG, Pluto, Samsung TV Plus, Roku, Plex, Xumo, Tubi, TCL, DistroTV, and LocalNow.
