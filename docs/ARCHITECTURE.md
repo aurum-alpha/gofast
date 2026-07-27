@@ -4,7 +4,7 @@ Self-hosted FAST channel aggregator for Jellyfin: **FASTGen** (primary) produces
 
 Module: [`github.com/j27-aurum/gofast`](https://github.com/j27-aurum/gofast)
 
-Agent workflow: [`AGENTS.md`](../AGENTS.md) 
+Agent workflow: [`AGENTS.md`](../AGENTS.md)  
 Product detail / gotchas: [`docs/SPEC.md`](SPEC.md)
 
 ## Dual binary, dual image
@@ -27,20 +27,20 @@ Shared logic lives under `internal/` (model, config, httpx, classifier, etc.). T
 
 ```mermaid
 flowchart LR
- subgraph gen [fastgen primary]
- Providers --> Normalize
- Normalize --> Classifier
- Classifier --> Emit
- Emit --> HTTP["M3U XMLTV UI API"]
- end
- subgraph proxy [fastproxy add-on]
- Stream["/stream"] --> Rewrite --> Seg["/seg"]
- end
- Jellyfin --> HTTP
- Jellyfin -->|"AMAGI_SSAI / SESSION when proxy_base_url set"| Stream
+  subgraph gen [fastgen primary]
+    Providers --> Normalize
+    Normalize --> Classifier
+    Classifier --> Emit
+    Emit --> HTTP["M3U XMLTV UI API"]
+  end
+  subgraph proxy [fastproxy add-on]
+    Stream["/stream"] --> Rewrite --> Seg["/seg"]
+  end
+  Jellyfin --> HTTP
+  Jellyfin -->|"AMAGI_SSAI / SESSION when proxy_base_url set"| Stream
 ```
 
-**Classifier dialects** (at refresh): `NATIVE` | `AMAGI_SSAI` | `SESSION` | `XUMO_SSAI` | `DRM` 
+**Classifier dialects** (at refresh): `NATIVE` | `AMAGI_SSAI` | `SESSION` | `XUMO_SSAI` | `DRM`  
 (Legacy wire `BEACON` canonicalizes to `AMAGI_SSAI`.) Glossary: [`docs/TERMINOLOGY.md`](TERMINOLOGY.md).
 
 **Emission (in gen):**
@@ -68,9 +68,9 @@ Tech: React (Vite) SPA under `web/`. Production build lands in `internal/ui/dist
 
 ```mermaid
 flowchart LR
- webSrc["web/ React source"] -->|npm run build| dist["internal/ui/dist"]
- dist -->|go:embed| fastgenBin["fastgen binary"]
- fastgenBin -->|serves| browser["Browser /"]
+  webSrc["web/ React source"] -->|npm run build| dist["internal/ui/dist"]
+  dist -->|go:embed| fastgenBin["fastgen binary"]
+  fastgenBin -->|serves| browser["Browser /"]
 ```
 
 ## Build and packaging
@@ -152,25 +152,25 @@ Honor milestone order. Critical path to a Jellyfin-usable feed ends at M2 gen HT
 cmd/fastgen/
 cmd/fastproxy/
 internal/
- config/ model/ httpx/
- provider/ # lg; shared mjh wrappers; shared published-pair wrappers
- m3u/ xmltv/ # external-format parsers and writers
- classifier/
- channelattr/ # current+history channel labels (health; classification next)
- health/ # EmitCheck, Health L1 segment / Health L2 ffprobe, scheduler
- logocache/ refresh/
- proxy/ # FASTProxy rewrite, sessions, seg shuttle, reporter
- proxyactivity/ # gen-side SQLite glass for proxy events/snapshots (Proxy UI tab)
- server/ ui/ # ui embeds Vite dist from web/
-web/ # React + Vite source (build → internal/ui/dist)
+  config/ model/ httpx/
+  provider/   # lg; shared mjh wrappers; shared published-pair wrappers
+  m3u/ xmltv/ # external-format parsers and writers
+  classifier/
+  channelattr/ # current+history channel labels (health; classification next)
+  health/     # EmitCheck, Health L1 segment / Health L2 ffprobe, scheduler
+  logocache/ refresh/
+  proxy/         # FASTProxy rewrite, sessions, seg shuttle, reporter
+  proxyactivity/ # gen-side SQLite glass for proxy events/snapshots (Proxy UI tab)
+  server/ ui/   # ui embeds Vite dist from web/
+web/            # React + Vite source (build → internal/ui/dist)
 testdata/
 config.example.yaml
-Dockerfile.prod # production: package CI-built binaries only (no Node/Go rebuild)
-Dockerfile # optional local multi-stage build from source
+Dockerfile.prod     # production: package CI-built binaries only (no Node/Go rebuild)
+Dockerfile          # optional local multi-stage build from source
 docker-compose.yml
 docker-compose.prod.yml
 stack.env
-.github/workflows/ # UI build → go build → test → Dockerfile.prod → GHCR
+.github/workflows/  # UI build → go build → test → Dockerfile.prod → GHCR
 ```
 
 Homelab pull requires `docker login ghcr.io` while the repo/packages are private.

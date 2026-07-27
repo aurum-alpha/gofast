@@ -2,10 +2,10 @@
 # Copy to the data volume as /data/config.yaml (never commit a filled production copy).
 #
 # Deploy-varying values prefer env (see AGENTS.md / 12factor):
-# PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG,
-# FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL, FASTGEN_CACHE_LOGOS,
-# FASTGEN_HEALTH_CONSECUTIVE_FAILURES, FASTGEN_HEALTH_EXCLUDE_UNHEALTHY,
-# FASTGEN_HEALTH_L1_INTERVAL, FASTGEN_HEALTH_L2_ENABLED, FASTGEN_HEALTH_FFPROBE_PATH
+#   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG,
+#   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL, FASTGEN_CACHE_LOGOS,
+#   FASTGEN_HEALTH_CONSECUTIVE_FAILURES, FASTGEN_HEALTH_EXCLUDE_UNHEALTHY,
+#   FASTGEN_HEALTH_L1_INTERVAL, FASTGEN_HEALTH_L2_ENABLED, FASTGEN_HEALTH_FFPROBE_PATH
 # Legacy FASTGEN_HEALTH_L2_INTERVAL and FASTGEN_HEALTH_L3_* aliases remain
 # accepted for one release.
 # Env always wins over this file for overlapping keys.
@@ -66,44 +66,44 @@ cache_logos: false
 # Artwork-only TLS exceptions (never used by stream/EPG clients).
 # Only relevant when cache_logos is true.
 artwork_tls:
- tvpnlogopus.samsungcloud.tv:
- # ca_pem: |
- # -----BEGIN CERTIFICATE-----
- # ...
- insecure_skip_verify: true # last resort
+   tvpnlogopus.samsungcloud.tv:
+     # ca_pem: |
+     #   -----BEGIN CERTIFICATE-----
+     #   ...
+     insecure_skip_verify: true   # last resort
 
 timeouts:
- http_client: 60s
+  http_client: 60s
 
 logging:
- level: info
+  level: info
 
 # Channel health FSM + probes (attr store is separate — see internal/channelattr).
 # Prefer FASTGEN_HEALTH_* env vars in Portainer/stack.env for the deploy.
 health:
- consecutive_failures: 3
- # When true, HealthDown channels are pruned from M3U/XMLTV (causes Jellyfin lineup churn).
- exclude_unhealthy: false
- # Health L1: daily baseline segment GET for NATIVE / XUMO_SSAI, and AMAGI_SSAI
- # when EmittedURL (proxy) is set. Not SESSION. Prefer Range; retry plain GET on 416.
- # Degraded/down channels also get a per-channel retry lane (15m→30m→1h→2h→6h,
- # then park until the next baseline sweep); healthy channels stay on baseline only.
- l1_interval: 24h
- l1_workers: 4
- # Soft-retry timeout/5xx once before counting a hard failure (0 disables).
- soft_retries: 1
- # Cap concurrent Health L1/L2 probes per CDN hostname.
- max_per_host: 2
- # Health L2: ffprobe — OFF by default (bot-fingerprint / ad-impression tradeoff).
- l2_enabled: false
- l2_interval: 60m
- l2_workers: 2
- l2_timeout: 30s
- # When Health L2 is on: always probe degraded/down/untested; sample this fraction of healthy (1.0 = all).
- l2_healthy_sample: 0.1
- # Migration: old l2_interval/l2_workers (Health L1) and l3_* (Health L2)
- # aliases are accepted for one release when the corresponding new keys are unset.
- ffprobe_path: /usr/bin/ffprobe
+  consecutive_failures: 3
+  # When true, HealthDown channels are pruned from M3U/XMLTV (causes Jellyfin lineup churn).
+  exclude_unhealthy: false
+  # Health L1: daily baseline segment GET for NATIVE / XUMO_SSAI, and AMAGI_SSAI
+  # when EmittedURL (proxy) is set. Not SESSION. Prefer Range; retry plain GET on 416.
+  # Degraded/down channels also get a per-channel retry lane (15m→30m→1h→2h→6h,
+  # then park until the next baseline sweep); healthy channels stay on baseline only.
+  l1_interval: 24h
+  l1_workers: 4
+  # Soft-retry timeout/5xx once before counting a hard failure (0 disables).
+  soft_retries: 1
+  # Cap concurrent Health L1/L2 probes per CDN hostname.
+  max_per_host: 2
+  # Health L2: ffprobe — OFF by default (bot-fingerprint / ad-impression tradeoff).
+  l2_enabled: false
+  l2_interval: 60m
+  l2_workers: 2
+  l2_timeout: 30s
+  # When Health L2 is on: always probe degraded/down/untested; sample this fraction of healthy (1.0 = all).
+  l2_healthy_sample: 0.1
+  # Migration: old l2_interval/l2_workers (Health L1) and l3_* (Health L2)
+  # aliases are accepted for one release when the corresponding new keys are unset.
+  ffprobe_path: /usr/bin/ffprobe
 
 # Cross-provider group taxonomy. Optional and app-managed: the Groups
 # editor in the UI writes this block back to config.yaml (comments preserved).
@@ -116,116 +116,116 @@ health:
 # Starter merges fold common upstream synonyms across providers into ~25 folders.
 # Edit in the UI Groups page or here; disable selectors still work via `disabled`.
 groups:
- enabled: true
- merges:
- - name: News
- members: [News, "News & Opinion", "News + Opinion", "News And Opinion", "Breaking News"]
- - name: Local News
- members: ["Local News"]
- - name: Sports
- members:
- - Sports
- - Sport
- - "Sports & Outdoors"
- - "Action Sports"
- - "Combat Sports"
- - "Motor Sports"
- - Baseball
- - Basketball
- - Boxing
- - Football
- - Golf
- - Soccer
- - Olympics
- - Fishing
- - Hunting
- - Billiards
- - Bullfighting
- - name: Movies
- members: [Movies, "Movies and TV"]
- - name: Kids
- members: [Kids, Animated, Children-Music]
- - name: Comedy
- members: [Comedy, Sitcom, "Dark Comedy", "Comedy Drama"]
- - name: Drama
- members: [Drama]
- - name: Crime
- members: [Crime, "Crime TV", "True Crime", "Crime & Drama", "Crime Drama", Law]
- - name: Reality
- members: [Reality, "Reality TV", "Reality Competition", "Competition Reality"]
- - name: Game Shows
- members: ["Game Shows", "Game Show", "Daytime + Game Shows", "Game Shows & Competition", "Daytime TV"]
- - name: Entertainment
- members: [Entertainment, "Talk show & Entertainment", "Pop Culture"]
- - name: Home & Food
- members:
- - "Home & Food"
- - "Home + Food"
- - "Home & Design"
- - "Home Improvement"
- - House/Garden
- - Cooking
- - Food
- - name: Travel
- members: [Travel, "Travel & Lifestyle"]
- - name: Shopping
- members: [Shopping, Auction]
- - name: Lifestyle
- members: [Lifestyle, "Lifestyle & Pop Culture", Hobby/Leisure, Health]
- - name: Music
- members:
- - Music
- - "Music Videos"
- - "Music & Radio"
- - "Music Talk"
- - "Music and Arts"
- - Ambiance
- - Relaxation
- - name: Sci-Fi & Horror
- members:
- - Sci-Fi
- - "Sci-Fi & Horror"
- - "Horror & Sci-Fi"
- - "Horror and SciFi"
- - Horror
- - "Science Fiction"
- - Paranormal
- - name: Western
- members: [Western, Westerns, "Western & Classic TV", "Westerns & Country"]
- - name: Classic TV
- members: ["Classic TV"]
- - name: Documentary
- members:
- - Documentary
- - Documentaries
- - Educational
- - Biography
- - History
- - "History & Learning"
- - "History + Science"
- - "Nature, History & Science"
- - name: Nature
- members:
- - Animals
- - "Animals & Nature"
- - "Animals + Nature"
- - Nature
- - "Nature and Outdoors"
- - Environment
- - name: Anime & Gaming
- members: [Anime, "Anime & Gaming", Gaming]
- - name: Latino
- members: [Latino, "En Español", "En Espanol"]
- - name: Faith & Family
- members: ["Faith & Family", "Family and Faith", Faith]
- - name: Action
- members: [Action, "Action & Drama", Adventure]
- - name: Romance
- members: [Romance]
- # disabled:
- # - "Weather"
- # - "Recommended"
- # - "New On Local Now"
+  enabled: true
+  merges:
+    - name: News
+      members: [News, "News & Opinion", "News + Opinion", "News And Opinion", "Breaking News"]
+    - name: Local News
+      members: ["Local News"]
+    - name: Sports
+      members:
+        - Sports
+        - Sport
+        - "Sports & Outdoors"
+        - "Action Sports"
+        - "Combat Sports"
+        - "Motor Sports"
+        - Baseball
+        - Basketball
+        - Boxing
+        - Football
+        - Golf
+        - Soccer
+        - Olympics
+        - Fishing
+        - Hunting
+        - Billiards
+        - Bullfighting
+    - name: Movies
+      members: [Movies, "Movies and TV"]
+    - name: Kids
+      members: [Kids, Animated, Children-Music]
+    - name: Comedy
+      members: [Comedy, Sitcom, "Dark Comedy", "Comedy Drama"]
+    - name: Drama
+      members: [Drama]
+    - name: Crime
+      members: [Crime, "Crime TV", "True Crime", "Crime & Drama", "Crime Drama", Law]
+    - name: Reality
+      members: [Reality, "Reality TV", "Reality Competition", "Competition Reality"]
+    - name: Game Shows
+      members: ["Game Shows", "Game Show", "Daytime + Game Shows", "Game Shows & Competition", "Daytime TV"]
+    - name: Entertainment
+      members: [Entertainment, "Talk show & Entertainment", "Pop Culture"]
+    - name: Home & Food
+      members:
+        - "Home & Food"
+        - "Home + Food"
+        - "Home & Design"
+        - "Home Improvement"
+        - House/Garden
+        - Cooking
+        - Food
+    - name: Travel
+      members: [Travel, "Travel & Lifestyle"]
+    - name: Shopping
+      members: [Shopping, Auction]
+    - name: Lifestyle
+      members: [Lifestyle, "Lifestyle & Pop Culture", Hobby/Leisure, Health]
+    - name: Music
+      members:
+        - Music
+        - "Music Videos"
+        - "Music & Radio"
+        - "Music Talk"
+        - "Music and Arts"
+        - Ambiance
+        - Relaxation
+    - name: Sci-Fi & Horror
+      members:
+        - Sci-Fi
+        - "Sci-Fi & Horror"
+        - "Horror & Sci-Fi"
+        - "Horror and SciFi"
+        - Horror
+        - "Science Fiction"
+        - Paranormal
+    - name: Western
+      members: [Western, Westerns, "Western & Classic TV", "Westerns & Country"]
+    - name: Classic TV
+      members: ["Classic TV"]
+    - name: Documentary
+      members:
+        - Documentary
+        - Documentaries
+        - Educational
+        - Biography
+        - History
+        - "History & Learning"
+        - "History + Science"
+        - "Nature, History & Science"
+    - name: Nature
+      members:
+        - Animals
+        - "Animals & Nature"
+        - "Animals + Nature"
+        - Nature
+        - "Nature and Outdoors"
+        - Environment
+    - name: Anime & Gaming
+      members: [Anime, "Anime & Gaming", Gaming]
+    - name: Latino
+      members: [Latino, "En Español", "En Espanol"]
+    - name: Faith & Family
+      members: ["Faith & Family", "Family and Faith", Faith]
+    - name: Action
+      members: [Action, "Action & Drama", Adventure]
+    - name: Romance
+      members: [Romance]
+  # disabled:
+  #   - "Weather"
+  #   - "Recommended"
+  #   - "New On Local Now"
 
 # Cross-provider title dedupe preferences. Managed by the Dedupes UI
 # (/dedupes). Matching is deterministic same-title only (BET ≠ BET Her). Keep /
@@ -233,125 +233,125 @@ groups:
 # here. preferred_providers orders Keep preferred; keep_all_keys hides clusters
 # the operator chose to keep fully from the default "Needs review" filter.
 dedupe:
- preferred_providers: [samsung, pluto, xumo, tcl, tubi, lg, roku, plex, localnow]
- # keep_all_keys: []
+  preferred_providers: [samsung, pluto, xumo, tcl, tubi, lg, roku, plex, localnow]
+  # keep_all_keys: []
 
 # Programme category taxonomy (XMLTV <category>). Merges only — normalize
 # provider labels into canonical names for emit + Guide colors. Pluto is the
 # main source today; other providers usually omit <category>.
 categories:
- enabled: true
- merges:
- - name: News
- members: [News, "News & Information"]
- - name: Sports
- members: [Sports]
- - name: Movie
- members: [Movie, Blockbusters, "Heist Films"]
- - name: Series
- members: [Series]
- - name: Reality
- members: [Reality, "Competition Reality", "Dating Show", "Medical Reality"]
- - name: Drama
- members:
- - Drama
- - "Independent Drama"
- - "Courtroom Drama"
- - "Historical Drama"
- - "Inspirational Drama"
- - "Biographical Drama"
- - "Foreign Drama"
- - "War Drama"
- - Dramedy
- - name: Comedy
- members:
- - Comedy
- - "Romantic comedy"
- - Screwball
- - "Late Night Comedies"
- - "Dark Humor & Black Comedies"
- - "Foreign Comedies"
- - "Political Comedies"
- - "Best of British Humor"
- - "Action Comedies"
- - Mockumentaries
- - name: Kids
- members: [Children, Animated, "Kids' Music", "Animal Tales"]
- - name: Documentary
- members: [Documentary, Educational, History, Science, Arts, "Human Interest"]
- - name: Crime
- members: [Crime, "True Crime"]
- - name: Sci-Fi
- members:
- - "Science fiction"
- - "Classic Sci-Fi & Fantasy"
- - "Family Sci-Fi & Fantasy"
- - Fantasy
- - "Comic Books and Superheroes"
- - name: Anime
- members:
- - Anime
- - "Anime Series"
- - "Anime Action & Adventure"
- - "Anime Drama"
- - "Anime Comedy"
- - "Anime Feature Films"
- - "Anime Horror"
- - name: Horror
- members:
- - Horror
- - "Supernatural Horror"
- - Zombies
- - "Slashers and Serial Killers"
- - "Foreign Horror"
- - "Horror Classics"
- - Monsters
- - Paranormal
- - name: Action
- members:
- - Action
- - Adventure
- - "Espionage Action"
- - "Military & War Action"
- - "Foreign Action & Adventure"
- - War
- - Thriller
- - name: Music
- members:
- - Music
- - Pop
- - Country
- - Hip-Hop/Rap
- - Rock
- - "R&B/Soul"
- - Blues
- - Jazz
- - Classical
- - "Easy Listening"
- - World
- - "Christian & Gospel"
- - Singer/Songwriter
- - Musical
- - name: Lifestyle
- members:
- - "Home & Lifestyle"
- - "Food & Cooking"
- - "Home Improvement"
- - Entertainment
- - "Fails & Pranks"
- - Variety
- - "Variety Show"
- - Talk
- - name: Romance
- members: [Romance, "Foreign Romance", "African-American Romance", "Indie Romance"]
- - name: Western
- members: [Western]
- - name: Game Show
- members: ["Game show"]
- - name: Faith
- members: ["Faith & Spirituality"]
- - name: Latino
- members: [Latino]
+  enabled: true
+  merges:
+    - name: News
+      members: [News, "News & Information"]
+    - name: Sports
+      members: [Sports]
+    - name: Movie
+      members: [Movie, Blockbusters, "Heist Films"]
+    - name: Series
+      members: [Series]
+    - name: Reality
+      members: [Reality, "Competition Reality", "Dating Show", "Medical Reality"]
+    - name: Drama
+      members:
+        - Drama
+        - "Independent Drama"
+        - "Courtroom Drama"
+        - "Historical Drama"
+        - "Inspirational Drama"
+        - "Biographical Drama"
+        - "Foreign Drama"
+        - "War Drama"
+        - Dramedy
+    - name: Comedy
+      members:
+        - Comedy
+        - "Romantic comedy"
+        - Screwball
+        - "Late Night Comedies"
+        - "Dark Humor & Black Comedies"
+        - "Foreign Comedies"
+        - "Political Comedies"
+        - "Best of British Humor"
+        - "Action Comedies"
+        - Mockumentaries
+    - name: Kids
+      members: [Children, Animated, "Kids' Music", "Animal Tales"]
+    - name: Documentary
+      members: [Documentary, Educational, History, Science, Arts, "Human Interest"]
+    - name: Crime
+      members: [Crime, "True Crime"]
+    - name: Sci-Fi
+      members:
+        - "Science fiction"
+        - "Classic Sci-Fi & Fantasy"
+        - "Family Sci-Fi & Fantasy"
+        - Fantasy
+        - "Comic Books and Superheroes"
+    - name: Anime
+      members:
+        - Anime
+        - "Anime Series"
+        - "Anime Action & Adventure"
+        - "Anime Drama"
+        - "Anime Comedy"
+        - "Anime Feature Films"
+        - "Anime Horror"
+    - name: Horror
+      members:
+        - Horror
+        - "Supernatural Horror"
+        - Zombies
+        - "Slashers and Serial Killers"
+        - "Foreign Horror"
+        - "Horror Classics"
+        - Monsters
+        - Paranormal
+    - name: Action
+      members:
+        - Action
+        - Adventure
+        - "Espionage Action"
+        - "Military & War Action"
+        - "Foreign Action & Adventure"
+        - War
+        - Thriller
+    - name: Music
+      members:
+        - Music
+        - Pop
+        - Country
+        - Hip-Hop/Rap
+        - Rock
+        - "R&B/Soul"
+        - Blues
+        - Jazz
+        - Classical
+        - "Easy Listening"
+        - World
+        - "Christian & Gospel"
+        - Singer/Songwriter
+        - Musical
+    - name: Lifestyle
+      members:
+        - "Home & Lifestyle"
+        - "Food & Cooking"
+        - "Home Improvement"
+        - Entertainment
+        - "Fails & Pranks"
+        - Variety
+        - "Variety Show"
+        - Talk
+    - name: Romance
+      members: [Romance, "Foreign Romance", "African-American Romance", "Indie Romance"]
+    - name: Western
+      members: [Western]
+    - name: Game Show
+      members: ["Game show"]
+    - name: Faith
+      members: ["Faith & Spirituality"]
+    - name: Latino
+      members: [Latino]
 
 # Provider implementations are code (compiled into the binary). This block only
 # customizes the settings of a known provider — offsets, exclusions, enabled,
@@ -368,120 +368,120 @@ categories:
 # the provider package's own default (e.g. lg's offset/exclusions).
 # Channel-number ranges are spaced so lineups do not collide when merged.
 providers:
- lg:
- label: LG
- channel_number_offset: 1000
- min_channels: 50
- # Capped to ≤ half of expected/empirical EPG horizon (LG ~12h → default 3h).
- refresh_interval: 3h
- exclusions:
- # Upstream junk that appears on LG feeds (must never reach Jellyfin).
- - dinospluto-lgus
- # Per-channel emit customization (what fastgen writes to M3U/XMLTV).
- # Keyed by normalized channel id. Edit in the channel detail UI instead.
- # channel_emit:
- # some_channel_id:
- # export: disabled # auto | enabled | disabled
- # name: "My Display Name"
- # group: News
- # number: 1005
- # logo_url: "https://example/logo.png"
+  lg:
+    label: LG
+    channel_number_offset: 1000
+    min_channels: 50
+    # Capped to ≤ half of expected/empirical EPG horizon (LG ~12h → default 3h).
+    refresh_interval: 3h
+    exclusions:
+      # Upstream junk that appears on LG feeds (must never reach Jellyfin).
+      - dinospluto-lgus
+    # Per-channel emit customization (what fastgen writes to M3U/XMLTV).
+    # Keyed by normalized channel id. Edit in the channel detail UI instead.
+    # channel_emit:
+    #   some_channel_id:
+    #     export: disabled          # auto | enabled | disabled
+    #     name: "My Display Name"
+    #     group: News
+    #     number: 1005
+    #     logo_url: "https://example/logo.png"
 
- pluto:
- enabled: true
- label: Pluto
- region: us
- channel_number_offset: 2000
- min_channels: 50
- refresh_interval: 6h
- # Pluto mjh metadata has no slug field — required override.
- slug_template: "plu-{id}.m3u8"
+  pluto:
+    enabled: true
+    label: Pluto
+    region: us
+    channel_number_offset: 2000
+    min_channels: 50
+    refresh_interval: 6h
+    # Pluto mjh metadata has no slug field — required override.
+    slug_template: "plu-{id}.m3u8"
 
- samsung:
- enabled: true
- label: Samsung
- region: us
- channel_number_offset: 3000
- min_channels: 50
- refresh_interval: 6h
- # DRM channels (license_url) are dropped by the adapter/classifier.
+  samsung:
+    enabled: true
+    label: Samsung
+    region: us
+    channel_number_offset: 3000
+    min_channels: 50
+    refresh_interval: 6h
+    # DRM channels (license_url) are dropped by the adapter/classifier.
 
- roku:
- enabled: true
- label: Roku
- # Regionless mjh shape; slug has no metadata field.
- slug_template: "rok-{id}.m3u8"
- channel_number_offset: 4000
- min_channels: 50
- refresh_interval: 6h
+  roku:
+    enabled: true
+    label: Roku
+    # Regionless mjh shape; slug has no metadata field.
+    slug_template: "rok-{id}.m3u8"
+    channel_number_offset: 4000
+    min_channels: 50
+    refresh_interval: 6h
 
- plex:
- enabled: true
- label: Plex
- region: us
- channel_number_offset: 8000
- min_channels: 50
- refresh_interval: 6h
- # Plex mjh metadata has no slug field — required override.
- slug_template: "plex-{id}.m3u8"
+  plex:
+    enabled: true
+    label: Plex
+    region: us
+    channel_number_offset: 8000
+    min_channels: 50
+    refresh_interval: 6h
+    # Plex mjh metadata has no slug field — required override.
+    slug_template: "plex-{id}.m3u8"
 
- xumo:
- enabled: true
- label: Xumo
- # No upstream tvg-chno. First-seen id→number assignments from this base are
- # persisted in atomic provider metadata and never recycled.
- synthesize_channel_numbers: 5000
- min_channels: 100
- refresh_interval: 6h
- # URLs default in the adapter; override only if upstream moves:
- # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_playlist.m3u
- # epg_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_epg.xml.gz
+  xumo:
+    enabled: true
+    label: Xumo
+    # No upstream tvg-chno. First-seen id→number assignments from this base are
+    # persisted in atomic provider metadata and never recycled.
+    synthesize_channel_numbers: 5000
+    min_channels: 100
+    refresh_interval: 6h
+    # URLs default in the adapter; override only if upstream moves:
+    # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_playlist.m3u
+    # epg_url: https://raw.githubusercontent.com/BuddyChewChew/xumo-playlist-generator/main/playlists/xumo_epg.xml.gz
 
- tubi:
- enabled: true
- label: Tubi
- # Community published-pair (BuddyChewChew app-m3u-generator; daily Actions).
- # No upstream tvg-chno — synthesize from this base.
- synthesize_channel_numbers: 9000
- min_channels: 100
- refresh_interval: 6h
- # URLs default in the adapter; override only if upstream moves:
- # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u
- # epg_url: https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_epg.xml
+  tubi:
+    enabled: true
+    label: Tubi
+    # Community published-pair (BuddyChewChew app-m3u-generator; daily Actions).
+    # No upstream tvg-chno — synthesize from this base.
+    synthesize_channel_numbers: 9000
+    min_channels: 100
+    refresh_interval: 6h
+    # URLs default in the adapter; override only if upstream moves:
+    # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u
+    # epg_url: https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_epg.xml
 
- tcl:
- enabled: true
- label: TCL
- # Community published-pair (BuddyChewChew tcl-playlist-generator).
- # No upstream tvg-chno — synthesize from this base.
- # Amagi playouts classify as AMAGI_SSAI (need proxy_base_url); Wurl ads.* as XUMO_SSAI/NATIVE.
- synthesize_channel_numbers: 10000
- min_channels: 200
- refresh_interval: 6h
- # URLs default in the adapter; override only if upstream moves:
- # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/tcl-playlist-generator/refs/heads/main/tcl.m3u8
- # epg_url: https://raw.githubusercontent.com/BuddyChewChew/tcl-playlist-generator/refs/heads/main/tcl_epg.xml
+  tcl:
+    enabled: true
+    label: TCL
+    # Community published-pair (BuddyChewChew tcl-playlist-generator).
+    # No upstream tvg-chno — synthesize from this base.
+    # Amagi playouts classify as AMAGI_SSAI (need proxy_base_url); Wurl ads.* as XUMO_SSAI/NATIVE.
+    synthesize_channel_numbers: 10000
+    min_channels: 200
+    refresh_interval: 6h
+    # URLs default in the adapter; override only if upstream moves:
+    # m3u_url: https://raw.githubusercontent.com/BuddyChewChew/tcl-playlist-generator/refs/heads/main/tcl.m3u8
+    # epg_url: https://raw.githubusercontent.com/BuddyChewChew/tcl-playlist-generator/refs/heads/main/tcl_epg.xml
 
- distrotv:
- # Google DAI masters classify as SESSION. Enable with gen + compose profile
- # proxy and proxy_base_url so FASTProxy can mint at tune-in. Gen-only drops
- # SESSION as “needs FASTProxy”.
- enabled: true
- label: DistroTV
- synthesize_channel_numbers: 6000
- min_channels: 50
- refresh_interval: 6h
- # URLs default in the adapter; override only if upstream moves:
- # m3u_url: https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.m3u
- # epg_url: https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.xml.gz
+  distrotv:
+    # Google DAI masters classify as SESSION. Enable with gen + compose profile
+    # proxy and proxy_base_url so FASTProxy can mint at tune-in. Gen-only drops
+    # SESSION as “needs FASTProxy”.
+    enabled: true
+    label: DistroTV
+    synthesize_channel_numbers: 6000
+    min_channels: 50
+    refresh_interval: 6h
+    # URLs default in the adapter; override only if upstream moves:
+    # m3u_url: https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.m3u
+    # epg_url: https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.xml.gz
 
- localnow:
- enabled: true
- label: LocalNow
- synthesize_channel_numbers: 7000
- min_channels: 10
- refresh_interval: 6h
- # apsattv may 403 datacenter IPs / non-browser UAs.
- user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
- # m3u_url: https://www.apsattv.com/localnow.m3u
- # epg_url: https://raw.githubusercontent.com/BuddyChewChew/localnow-playlist-generator/refs/heads/main/epg.xml
+  localnow:
+    enabled: true
+    label: LocalNow
+    synthesize_channel_numbers: 7000
+    min_channels: 10
+    refresh_interval: 6h
+    # apsattv may 403 datacenter IPs / non-browser UAs.
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    # m3u_url: https://www.apsattv.com/localnow.m3u
+    # epg_url: https://raw.githubusercontent.com/BuddyChewChew/localnow-playlist-generator/refs/heads/main/epg.xml
