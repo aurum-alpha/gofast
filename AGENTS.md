@@ -6,7 +6,7 @@ Instructions for humans and coding agents working in this repository.
 
 - Product requirements: `docs/SPEC.md`
 - Architecture / build approach: `docs/ARCHITECTURE.md`
-- Work queue: Linear team **J27**, project **GoFAST**  
+- Work queue: Linear team **J27**, project **GoFAST** (maintainer-private workspace)  
   https://linear.app/aurum-alpha/project/gofast-7332d71ee889/overview
 
 Implement **one Linear issue at a time**. Do not invent parallel workstreams from the plan file.

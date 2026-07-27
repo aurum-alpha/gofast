@@ -4,7 +4,7 @@ Self-hosted FAST channel aggregator for Jellyfin: **FASTGen** (primary) produces
 
 Module: [`github.com/j27-aurum/gofast`](https://github.com/j27-aurum/gofast)
 
-Work queue and milestones: [Linear — GoFAST](https://linear.app/aurum-alpha/project/gofast-7332d71ee889/overview)  
+Work queue and milestones: [Linear — GoFAST](https://linear.app/aurum-alpha/project/gofast-7332d71ee889/overview) (maintainer-private)  
 Agent workflow: [`AGENTS.md`](../AGENTS.md)  
 Product detail / gotchas: [`docs/SPEC.md`](SPEC.md)
 

@@ -2,6 +2,8 @@
 
 Self-hosted FAST channel aggregator for Jellyfin.
 
+License: [MIT](LICENSE)
+
 - **fastgen** — primary service: channel lineups, EPG (M3U + XMLTV), logos, health, embedded UI
 - **fastproxy** — optional add-on: dialect translation for Amagi SSAI beacon rewrite and Google DAI SESSION mint
 
@@ -14,7 +16,7 @@ Self-hosted FAST channel aggregator for Jellyfin.
 
 ## Linear
 
-Project: [GoFAST](https://linear.app/aurum-alpha/project/gofast-7332d71ee889/overview) (team **J27**)
+Maintainer work queue (private Linear workspace): [GoFAST](https://linear.app/aurum-alpha/project/gofast-7332d71ee889/overview) (team **J27**). Not required for running or forking the software.
 
 Implementation proceeds **one Linear issue at a time**.
 
@@ -57,9 +59,10 @@ There is no single-process gen+proxy mode. Gen is light (periodic pulls + emit);
 
 ### Homelab (pull published images)
 
-Use [`docker-compose.prod.yml`](docker-compose.prod.yml) (pull-only; no build). The GitHub repo is private, so log in to GHCR once with a PAT that has `read:packages`:
+Use [`docker-compose.prod.yml`](docker-compose.prod.yml) (pull-only; no build). Source is public. If anonymous `docker pull` from GHCR fails (package visibility), log in once with a PAT that has `read:packages`:
 
 ```bash
+# Only needed when GHCR packages are not public:
 echo YOUR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 
 docker compose -f docker-compose.prod.yml --env-file stack.env pull
@@ -80,7 +83,7 @@ Production files (pull-only, no secrets):
 | [`Dockerfile.prod`](Dockerfile.prod) | CI ship path only — not used on the homelab host |
 | [`deploy/nginx/`](deploy/nginx/) | Optional edge nginx config + BYO TLS certs |
 
-1. In Portainer → **Registries**, add `ghcr.io` with a GitHub PAT (`read:packages`).
+1. If GHCR packages are private, add `ghcr.io` in Portainer → **Registries** with a GitHub PAT (`read:packages`). Skip if packages are public.
 2. Create a stack from `docker-compose.prod.yml` (services: `gen`, optional `proxy` / `edge`).
 3. Paste or load `stack.env` as the stack environment variables.
 4. Gen-only by default. Profiles via `COMPOSE_PROFILES`: `proxy`, `edge`, or `edge,proxy`.

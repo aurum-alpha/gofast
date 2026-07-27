@@ -1,8 +1,13 @@
 /bin/
 web/node_modules/
+.DS_Store
+
 # Local runtime data volume (docker-compose bind mount for /data:
 # config.yaml, cache/ generations, channelattr/). Never commit.
 /.data/
 # Legacy local bind mounts (pre single-/data volume).
 /.cache/
 /.channelattr/
+
+# Accidental Finder/editor duplicates ("foo 2.go").
+**/*[[:space:]]2.*
