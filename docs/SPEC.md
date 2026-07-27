@@ -265,6 +265,16 @@ streams).
   needs-FASTProxy. Rows for temporarily absent channels are retained until
   reset. Edited on the channel detail “Provider vs Fastgen” table (per-field
   Customize checkbox); persisted via `config.Store` and applied live on re-emit.
+- **Dedupes (cross-provider same-title clusters, J27-76):** many FAST providers
+  package the same brand/channel under different stream URLs (not URL-identical).
+  FASTGen clusters channels whose display titles match after stripping
+  ` · {provider label}` and folding case/`&`/`+`/punctuation — **without**
+  stripping brand tokens, so `BET`, `BET Pluto TV`, and `BET Her` stay distinct.
+  Clusters require ≥2 providers. The Dedupes UI (`/dedupes`, `GET /api/dedupes`,
+  `PUT /api/dedupes/apply`) lets operators Keep selected / Keep preferred /
+  Keep all / Drop all; apply writes `channel_emit.export` (and optional
+  `dedupe.preferred_providers` / `dedupe.keep_all_keys`). No silent auto-purge;
+  LLM / health auto-pick are follow-ons.
 - **Exclusion filters:** per-provider list of case-insensitive regexes matched
   against stream URL + provider id + channel name (fast first pass; the
   classifier probe is the authoritative gate). Filtered channels are removed

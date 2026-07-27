@@ -7,6 +7,7 @@ import { ConfigProviderPage } from './pages/ConfigProvider'
 import { AccessPage } from './pages/Access'
 import { ProxyPage } from './pages/Proxy'
 import { CategoriesPage } from './pages/Categories'
+import { DedupesPage } from './pages/Dedupes'
 import { GroupsPage } from './pages/Groups'
 import { GuidePage } from './pages/Guide'
 import { HostsPage } from './pages/Hosts'
@@ -90,6 +91,7 @@ export default function App() {
           <NavLink to="/guide">Guide</NavLink>
           <NavLink to="/groups">Groups</NavLink>
           <NavLink to="/categories">Categories</NavLink>
+          <NavLink to="/dedupes">Dedupes</NavLink>
           <NavLink to="/config">Config</NavLink>
         </nav>
       </header>
@@ -111,6 +113,7 @@ export default function App() {
           <Route path="/providers/:id" element={<ProviderDetailPage />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
+          <Route path="/dedupes" element={<DedupesPage />} />
           <Route path="/config" element={<ConfigPage />} />
           <Route path="/config/providers/:id" element={<ConfigProviderPage />} />
         </Routes>

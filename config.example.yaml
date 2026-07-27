@@ -227,6 +227,15 @@ groups:
   #   - "Recommended"
   #   - "New On Local Now"
 
+# Cross-provider title dedupe preferences (J27-76). Managed by the Dedupes UI
+# (/dedupes). Matching is deterministic same-title only (BET ≠ BET Her). Keep /
+# drop decisions are stored as providers.<id>.channel_emit.<nid>.export — not
+# here. preferred_providers orders Keep preferred; keep_all_keys hides clusters
+# the operator chose to keep fully from the default "Needs review" filter.
+dedupe:
+  preferred_providers: [samsung, pluto, xumo, tcl, tubi, lg, roku, plex, localnow]
+  # keep_all_keys: []
+
 # Programme category taxonomy (XMLTV <category>). Merges only — normalize
 # provider labels into canonical names for emit + Guide colors. Pluto is the
 # main source today; other providers usually omit <category>.
