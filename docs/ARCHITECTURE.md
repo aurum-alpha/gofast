@@ -4,7 +4,6 @@ Self-hosted FAST channel aggregator for Jellyfin: **FASTGen** (primary) produces
 
 Module: [`github.com/j27-aurum/gofast`](https://github.com/j27-aurum/gofast)
 
-Work queue and milestones: [Linear — GoFAST](https://linear.app/aurum-alpha/project/gofast-7332d71ee889/overview) (maintainer-private)  
 Agent workflow: [`AGENTS.md`](../AGENTS.md)  
 Product detail / gotchas: [`docs/SPEC.md`](SPEC.md)
 
@@ -132,7 +131,7 @@ Follow [12factor.net/config](https://12factor.net/config) (see `AGENTS.md`):
 
 Deps target: **stdlib + `gopkg.in/yaml.v3` + `modernc.org/sqlite`** (channel-attr store; pure Go, distroless-friendly) unless an issue justifies more.
 
-## Milestones (Linear)
+## Milestones
 
 | Milestone | Focus |
 |-----------|--------|
@@ -143,7 +142,7 @@ Deps target: **stdlib + `gopkg.in/yaml.v3` + `modernc.org/sqlite`** (channel-att
 | **M4** | Config editor polish + &lt;10s acceptance |
 | **M5** | fastproxy binary/image, compose profile, passive telemetry |
 
-Honor milestone order and Linear **blocked-by** links. Critical path to a Jellyfin-usable feed ends at M2 gen HTTP + production compose/README.
+Honor milestone order. Critical path to a Jellyfin-usable feed ends at M2 gen HTTP + production compose/README.
 
 **Vertical slice first:** prove one provider end-to-end (LG: registry → fetch → emit → `GET /{id}.m3u|.xml`) before adding more adapters (mjh / published-pair). Do not stack all adapters ahead of a callable playlist.
 

@@ -6,61 +6,43 @@ Instructions for humans and coding agents working in this repository.
 
 - Product requirements: `docs/SPEC.md`
 - Architecture / build approach: `docs/ARCHITECTURE.md`
-- Work queue: Linear team **J27**, project **GoFAST** (maintainer-private workspace)  
-  https://linear.app/aurum-alpha/project/gofast-7332d71ee889/overview
 
-Implement **one Linear issue at a time**. Do not invent parallel workstreams from the plan file.
+Implement **one task at a time**. Do not invent parallel workstreams from a plan file.
 
 ## Branch and pull request rules
 
-1. **One Linear task per pull request.** Do not combine multiple issues in one PR.
-2. **Branch name** must include the Linear issue id, e.g.:
-   - `j27-1-persist-spec`
-   - `J27-1-persist-spec`
-3. Open the PR against `main` (unless the issue says otherwise). Link the Linear issue in the PR description.
+1. **One task per pull request.** Do not combine unrelated work in one PR.
+2. **Branch names** should be descriptive, e.g. `cache-management` or `add-tcl-provider`.
+3. Open the PR against `main` (unless the task says otherwise).
 
 ## Quality gates (before commit and before push)
 
 1. **Automated tests must pass** before commit:
  - `test -z "$(gofmt -l .)"` (or the CI gofmt step)
  - `go test ./...`
- - Any issue-specific checks called out in the Linear acceptance criteria
+ - Any task-specific checks called out in the acceptance criteria
 2. **Agent smoke checks** (optional, on the branch): run quick local verification to catch obvious breakage before handing off.
 3. Do not commit or push with failing tests.
 4. Do not use `--no-verify` to skip hooks.
 
 ## Human approval gate (required)
 
-**Do not commit, push, merge, or mark a Linear issue Done until the human has manually tested and given feedback.**
+**Do not commit, push, or merge until the human has manually tested and given feedback.**
 
 Workflow for agents:
 
 1. Implement on a branch; leave changes **uncommitted** or **committed locally only** until the human confirms — ask if unclear.
 2. Post a short handoff: what changed, **exact commands to run**, and **what to look for** (expected logs, files, API fields, UI). Always include this verification block at the end of an implementation turn — do not wait to be asked.
 3. Wait for explicit human sign-off (e.g. “looks good”, “merge it”, “commit and push”).
-4. Only after sign-off: commit (if needed), push, open/update PR, merge if requested, set Linear to **Done**.
+4. Only after sign-off: commit (if needed), push, open/update PR, merge if requested.
 
-Agents may set Linear to **In Progress** while coding and **In Review** when a PR is ready for human testing. Never skip straight to **Done** on agent-only verification.
-
-## Linear status workflow
-
-Keep the issue status honest as you work:
-
-| When | Status |
-|------|--------|
-| Not started | Backlog |
-| Next up / ready to pull | Todo |
-| Actively coding on the branch | In Progress |
-| Ready for human manual test / PR open | In Review |
-| Human verified; merged or accepted | Done |
-
-Update the Linear issue as you go (short comments on blockers, verification notes, PR link).
+Never treat agent-only verification as done.
 
 ## Milestone order
 
-Honor Linear **project milestones** M0 → M5. Do not start issues in milestone N+1 until milestone N exit criteria are met (tests green, milestone issues Done), unless the issue is explicitly unblocked and parallel-safe per its blocker list.
+Honor project milestones M0 → M5 (see `docs/ARCHITECTURE.md`). Do not start work in milestone N+1 until milestone N exit criteria are met (tests green, milestone work accepted), unless the task is explicitly unblocked and parallel-safe.
 
-**Vertical slice over adapter breadth:** ship one provider end-to-end (fetch → emit → HTTP playlist) before starting the next adapter epic. Current critical path after LG adapter: **J27-36** (LG vertical slice), then mjh / published-pair.
+**Vertical slice over adapter breadth:** ship one provider end-to-end (fetch → emit → HTTP playlist) before starting the next adapter epic.
 
 ## Product boundaries
 
@@ -72,7 +54,7 @@ Honor Linear **project milestones** M0 → M5. Do not start issues in milestone 
 
 - Prefer **one persistence pattern per data shape**. Channel labels that change over time (classification, health, …) use a shared **current + history** store keyed by provider and channel — not a new ad-hoc file or generation field per feature.
 - Cache **generations** are for atomic **emit** of playlist/guide/raw, not the system of record for those labels.
-- When a new feature shows an older store was the wrong pattern, **refactor into the shared pattern** rather than bolting on a parallel layer to keep a Linear ticket artificially small.
+- When a new feature shows an older store was the wrong pattern, **refactor into the shared pattern** rather than bolting on a parallel layer to keep a ticket artificially small.
 
 ## Idiomatic Go
 
@@ -126,6 +108,6 @@ Follow [12factor.net/config](https://12factor.net/config) for deploy-varying con
 6. **Litmus test:** the repo could be made public without leaking credentials or private hostnames.
 7. **No named environment bundles** in code (`development` / `staging` / `production` switches). Each deploy gets an independent set of env vars.
 8. **Optional YAML on the data volume** (`/data/config.yaml`) holds structured, non-secret app settings. **Provider implementations are code** — each provider is a Go package (e.g. `internal/provider/lg`) exposing `New` + `DefaultSettings`, wired into a `map[id]provider.Reader` in the bootstrap. YAML `providers.<id>` only *overlays settings* for a known provider (enabled, label, offset, exclusions, URL overrides); an id with no implementation is ignored (warned) at startup. Adding a provider means shipping Go, not editing YAML. Copy `config.example.yaml` to `/data/config.yaml` to customize. That file is **runtime data**, not source: never commit a filled production `config.yaml`.
-9. **Config grows with features — do not pre-land knobs.** Only add YAML/env keys in the same Linear issue/PR that implements the feature that reads them (e.g. `proxy_base_url` with emission, logo TLS with logo cache, health schedules with probes). Extend `config.example.yaml` in that same PR. Do not open standalone “config layer” issues ahead of the feature.
+9. **Config grows with features — do not pre-land knobs.** Only add YAML/env keys in the same PR that implements the feature that reads them (e.g. `proxy_base_url` with emission, logo TLS with logo cache, health schedules with probes). Extend `config.example.yaml` in that same PR. Do not open standalone “config layer” work ahead of the feature.
 10. **Precedence:** defaults → YAML file (if present) → **environment** (env always wins for overlapping keys).
 11. **Secrets** only via env (or a secret store injected as env)—never in git, never in example files as real values.

@@ -9,16 +9,10 @@ License: [MIT](LICENSE)
 
 ## Docs
 
-- [AGENTS.md](AGENTS.md) — how to work in this repo (Linear, branches, PRs, quality gates)
+- [AGENTS.md](AGENTS.md) — how to work in this repo (branches, PRs, quality gates)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — dual-binary design, UI feathering, milestones
 - [docs/SPEC.md](docs/SPEC.md) — detailed product requirements and gotchas
 - [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md) — glossary (HLS, SSAI, dialects, mint, proxy URLs)
-
-## Linear
-
-Maintainer work queue (private Linear workspace): [GoFAST](https://linear.app/aurum-alpha/project/gofast-7332d71ee889/overview) (team **J27**). Not required for running or forking the software.
-
-Implementation proceeds **one Linear issue at a time**.
 
 ## Run with Docker
 
@@ -230,4 +224,4 @@ go run ./cmd/fastgen
 
 ## Status
 
-LG, Pluto, Samsung TV Plus, Roku, Xumo, DistroTV, and LocalNow provider pipelines are implemented. Additional product features continue through Linear issues.
+LG, Pluto, Samsung TV Plus, Roku, Xumo, DistroTV, and LocalNow provider pipelines are implemented.

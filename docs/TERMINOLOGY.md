@@ -12,7 +12,7 @@ branches on dialect, see `internal/proxy` package docs (`go doc ./internal/proxy
 | “SSAI channel” / “beacon channel” | **Not** one playback path. SSAI is a business concept; GoFAST dialects (`AMAGI_SSAI`, `SESSION`, `XUMO_SSAI`) need different handling. |
 | “Needs the proxy” | Only **`AMAGI_SSAI`** (rewrite) and **`SESSION`** (mint) require FASTProxy under selective mode. **`XUMO_SSAI` usually does not.** |
 | “SESSION = Amagi” | **No.** SESSION is Google DAI mint-on-tune-in. Amagi is extensionless beacon segment URIs. Feeding DistroTV into Amagi rewrite does nothing useful. |
-| “Tubi/Plex adapter” | **FASTGen** provider fetchers (lineup + EPG). Not FASTProxy dialect work. Plex ships via mjh ([J27-32](https://linear.app/aurum-alpha/issue/J27-32)); Tubi ([J27-69](https://linear.app/aurum-alpha/issue/J27-69)) and TCL ([J27-70](https://linear.app/aurum-alpha/issue/J27-70)) ship as published-pair. |
+| “Tubi/Plex adapter” | **FASTGen** provider fetchers (lineup + EPG). Not FASTProxy dialect work. Plex ships via mjh; Tubi and TCL ship as published-pair. |
 
 ---
 
@@ -182,13 +182,3 @@ Why Amagi beacons break Jellyfin without rewrite. Jellyfin 10.11.x / jellyfin-ff
 SSAI endpoints often reject **HEAD** while **GET** works. GoFAST health probes
 and FASTProxy never use HEAD against stream endpoints. SESSION mint uses
 **POST** (stream create), not HEAD.
-
----
-
-## Related Linear
-
-- Amagi rewrite: J27-28
-- Classifier dialects: J27-49
-- Xumo `ads.*` keep: J27-55
-- SESSION mint: J27-65
-- Xumo validate (no passthrough): J27-64
