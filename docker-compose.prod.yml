@@ -1,9 +1,10 @@
 # Portainer / homelab production stack.
 # Pull-only from GHCR (no build:). Images are produced by CI via Dockerfile.prod.
-# Auth to GHCR in Portainer → Registries (not here).
+# If packages are public, no registry auth is needed. If private, add ghcr.io
+# credentials in Portainer → Registries (PAT with read:packages).
 #
 # Deploy:
-#   1. Add ghcr.io registry credentials in Portainer (PAT with read:packages)
+#   1. If GHCR packages are private, add registry credentials in Portainer
 #   2. Create stack from this repo file, or paste compose + load stack.env
 #   3. Override IMAGE_TAG / ports in stack.env as needed
 #      IMAGE_TAG=latest | build-<CI_run_number> | sha-<short>
