@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { ChannelDetailPage } from './pages/ChannelDetail'
 import { ChannelsPage } from './pages/Channels'
+import { CachePage } from './pages/Cache'
 import { ConfigPage } from './pages/Config'
 import { ConfigProviderPage } from './pages/ConfigProvider'
 import { AccessPage } from './pages/Access'
@@ -81,6 +82,7 @@ export default function App() {
         </NavLink>
         <nav className="nav" aria-label="Primary">
           <NavLink to="/status">Status</NavLink>
+          <NavLink to="/cache">Cache</NavLink>
           <NavLink to="/access">Access</NavLink>
           <NavLink to="/proxy">Proxy</NavLink>
           <NavLink to="/providers">Providers</NavLink>
@@ -107,6 +109,7 @@ export default function App() {
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/hosts" element={<HostsPage />} />
           <Route path="/status" element={<StatusPage />} />
+          <Route path="/cache" element={<CachePage />} />
           <Route path="/access" element={<AccessPage />} />
           <Route path="/proxy" element={<ProxyPage />} />
           <Route path="/providers" element={<ProvidersPage />} />

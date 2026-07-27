@@ -379,7 +379,13 @@ When caching is enabled:
   additionally persist last-good output to `/data/cache/` so a container
   restart serves immediately even if upstreams are down at boot. Per-provider
   and aggregate artifacts use immutable generations selected by an atomic
-  `current` pointer so M3U+EPG publish as a pair.
+  `current` pointer so M3U+EPG publish as a pair. Operators can inventory and
+  soft-purge via `GET /api/cache`, `POST /api/providers/{id}/cache/purge`,
+  `POST /api/cache/purge`, and `DELETE /api/logos…` (UI: **Cache** page). Soft
+  purge deletes non-current generations (and staging leftovers) while keeping
+  the serving `current` until refresh commits; optional `?logos=1` clears logos.
+  Orphan sweep removes unconfigured provider dirs, out-of-lineup logos, and
+  generations beyond current+1. Channelattr is inventory-only (never purged).
 - Structured refresh success/failure logs include counts and `duration`, plus
   `guide_horizon` / `refresh_interval` / `effective_interval` on publish.
 - Cache-backed playlist/guide responses carry a strong body `ETag` (SHA-256);

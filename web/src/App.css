@@ -1565,6 +1565,13 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+.cache-gens {
+  margin-top: 0.75rem;
+}
+.cache-gens ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+}
 @media (max-width: 900px) {
   .dedupe-board {
     grid-template-columns: 1fr;

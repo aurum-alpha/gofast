@@ -98,6 +98,7 @@ Production files (pull-only, no secrets):
 | `/playlist.m3u` | Aggregate playlist across enabled providers |
 | `/epg.xml` | Aggregate XMLTV across enabled providers |
 | `/logos/{provider}/{file}` | Cached logos when `cache_logos` is on |
+| `/api/cache` | Cache inventory (sizes, generations, channelattr stats) |
 | `/` | Embedded operator UI |
 | `/healthz` | Liveness + per-provider stale/export status |
 | `/metrics` | Prometheus text exposition |
@@ -197,7 +198,7 @@ Runtime YAML on the gen data volume (not baked into the image). **Provider imple
 
 `config.yaml` is **operator-writable** — mount `/data` read-write. If the file is missing on first boot, fastgen generates it from the baked-in code defaults (deploy-varying values stay in the environment). App-managed settings are persisted back atomically, preserving your comments and any keys fastgen does not manage (a `.bak` of the prior file is kept). A read-only mount surfaces a clear "config is read-only" message instead of failing.
 
-**Settings UI (live, no restart):** the web UI's **Config** page edits settings as typed controls and applies them live — base/proxy URLs, logo caching, log level, all health knobs, the **Groups** taxonomy, **Dedupes** (same-title cross-provider prefer/drop via `channel_emit`), and every per-provider setting including enable/disable (disable stops fetches, hides the channels, and 404s `/{id}.m3u`; the cache is kept so re-enabling is instant). The rule is: **edit in the UI = applies live; hand-edit the file = restart the container.** `listen`/`PORT` and `data_dir` are restart-only by design and have no UI control. Values set via environment variables show as locked in the UI (env always wins).
+**Settings UI (live, no restart):** the web UI's **Config** page edits settings as typed controls and applies them live — base/proxy URLs, logo caching, log level, all health knobs, the **Groups** taxonomy, **Dedupes** (same-title cross-provider prefer/drop via `channel_emit`), and every per-provider setting including enable/disable (disable stops fetches, hides the channels, and 404s `/{id}.m3u`; the cache is kept so re-enabling is instant). The **Cache** page inventories on-disk generations/logos and channelattr history depth, and offers soft purge / logo clear (also on Config, Provider detail, and Channel detail). Soft purge keeps the serving generation until refresh commits. The rule is: **edit in the UI = applies live; hand-edit the file = restart the container.** `listen`/`PORT` and `data_dir` are restart-only by design and have no UI control. Values set via environment variables show as locked in the UI (env always wins).
 
 - [`config.example.yaml`](config.example.yaml) — starter template with the well-known provider overlays. Local compose auto-seeds it into `./.data/config.yaml` on first run (`seed-config` service); delete that file to re-seed. In prod, copy it to `/data/config.yaml` before first boot; otherwise a defaults-only file with no providers enabled is generated.
 

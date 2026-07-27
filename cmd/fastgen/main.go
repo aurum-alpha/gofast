@@ -142,6 +142,8 @@ func main() {
 		Healthz: server.HealthzHandler(reg),
 		Routes: func(mux *http.ServeMux) {
 			mux.HandleFunc("GET /api/status", server.StatusHandler(bootStatus))
+			mux.HandleFunc("GET /api/cache", server.CacheInventoryHandler(cc, attrs))
+			mux.HandleFunc("POST /api/cache/purge", server.CachePurgeAllHandler(svc, ctx))
 			mux.HandleFunc("GET /api/config", server.ConfigHandler(store, reg, sched))
 			mux.HandleFunc("PUT /api/config", server.ConfigSaveHandler(store, reg, sched))
 			mux.HandleFunc("GET /api/groups", server.GroupsHandler(store, svc.GroupsPolicy, reg))
@@ -154,6 +156,7 @@ func main() {
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
 			mux.HandleFunc("GET /api/providers/{id}", server.ProviderDetailHandler(reg))
 			mux.HandleFunc("POST /api/providers/{id}/refresh", server.ProviderRefreshHandler(svc, ctx))
+			mux.HandleFunc("POST /api/providers/{id}/cache/purge", server.ProviderCachePurgeHandler(svc, ctx))
 			mux.HandleFunc("GET /api/channels", server.ChannelsHandler(reg))
 			mux.HandleFunc("GET /api/channels/hosts", server.ChannelHostsHandler(reg))
 			mux.HandleFunc("GET /api/channels/{provider}/{normalizedId}", server.ChannelHandler(reg))
@@ -172,6 +175,9 @@ func main() {
 			mux.HandleFunc("POST /api/proxy/events", server.ProxyEventsHandler(proxyAct, healthEmitter, reg))
 			mux.HandleFunc("GET /api/proxy/status", server.ProxyStatusHandler(proxyAct))
 			mux.HandleFunc("GET /api/proxy/events", server.ProxyEventsQueryHandler(proxyAct))
+			mux.HandleFunc("DELETE /api/logos", server.LogosClearHandler(svc, ctx))
+			mux.HandleFunc("DELETE /api/logos/{provider}", server.LogosClearHandler(svc, ctx))
+			mux.HandleFunc("DELETE /api/logos/{provider}/{channelId}", server.LogosClearHandler(svc, ctx))
 			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(cc))
 			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc, access))
 			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc, access))

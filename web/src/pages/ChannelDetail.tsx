@@ -232,6 +232,9 @@ export function ChannelDetailPage() {
   const [history, setHistory] = useState<HistoryResponse | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [probeBusy, setProbeBusy] = useState<'l1' | 'l2' | null>(null)
+  const [logoBusy, setLogoBusy] = useState(false)
+  const [logoNote, setLogoNote] = useState<string | null>(null)
+  const [logoError, setLogoError] = useState<string | null>(null)
   const [probeError, setProbeError] = useState<string | null>(null)
   const [probeNote, setProbeNote] = useState<string | null>(null)
   const [schedule, setSchedule] = useState<ProbeSchedule | null>(null)
@@ -401,6 +404,37 @@ export function ChannelDetailPage() {
       setProbeError(err instanceof Error ? err.message : String(err))
     } finally {
       setProbeBusy(null)
+    }
+  }
+
+  async function refreshLogo() {
+    setLogoBusy(true)
+    setLogoError(null)
+    setLogoNote(null)
+    try {
+      const res = await fetch(
+        `/api/logos/${encodeURIComponent(provider)}/${encodeURIComponent(normalizedId)}`,
+        { method: 'DELETE' },
+      )
+      if (res.status === 404) {
+        setLogoError('Provider or channel not found')
+        return
+      }
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `${res.status} ${res.statusText}`)
+      }
+      const body = (await res.json()) as { deleted_files?: number }
+      setLogoNote(
+        `Cleared ${body.deleted_files ?? 0} logo file(s); re-fetch runs when logo caching is on`,
+      )
+      window.setTimeout(() => {
+        void loadChannel().catch(() => {})
+      }, 2000)
+    } catch (err: unknown) {
+      setLogoError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLogoBusy(false)
     }
   }
 
@@ -913,26 +947,43 @@ export function ChannelDetailPage() {
             <button
               type="button"
               onClick={() => runProbe('l1')}
-              disabled={probeBusy !== null}
+              disabled={probeBusy !== null || logoBusy}
             >
               {probeBusy === 'l1' ? 'Probing L1…' : 'Probe L1'}
             </button>
             <button
               type="button"
               onClick={() => runProbe('l2')}
-              disabled={probeBusy !== null}
+              disabled={probeBusy !== null || logoBusy}
             >
               {probeBusy === 'l2' ? 'Probing L2…' : 'Test now (L2)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void refreshLogo()
+              }}
+              disabled={probeBusy !== null || logoBusy}
+            >
+              {logoBusy ? 'Refreshing logo…' : 'Refresh logo'}
             </button>
             <span className="meta">
               {' '}
               Health L1 = first media segment; Health L2 = ffprobe decode.
+              Refresh logo clears the cached file and re-fetches when logo
+              caching is on.
             </span>
           </p>
           {probeNote ? <p className="meta" role="status">{probeNote}</p> : null}
+          {logoNote ? <p className="meta" role="status">{logoNote}</p> : null}
           {probeError ? (
             <p className="compare-error" role="alert">
               {probeError}
+            </p>
+          ) : null}
+          {logoError ? (
+            <p className="compare-error" role="alert">
+              {logoError}
             </p>
           ) : null}
         </div>

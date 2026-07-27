@@ -374,12 +374,17 @@ func (c *Cache) cleanupGenerations(dir, current string) {
 	}
 	var generations []generation
 	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".staging-") {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, ".staging-") {
+			_ = os.RemoveAll(filepath.Join(dir, name))
 			continue
 		}
 		info, err := entry.Info()
 		if err == nil {
-			generations = append(generations, generation{entry.Name(), info.ModTime().UnixNano()})
+			generations = append(generations, generation{name, info.ModTime().UnixNano()})
 		}
 	}
 	sort.Slice(generations, func(i, j int) bool { return generations[i].mod > generations[j].mod })
@@ -493,6 +498,551 @@ func (c *Cache) ReadLogoMeta(id model.ProviderID, file string) ([]byte, error) {
 		return nil, err
 	}
 	return os.ReadFile(path + ".meta")
+}
+
+// ClearStats counts files and bytes removed by a destructive cache operation.
+type ClearStats struct {
+	DeletedFiles int   `json:"deleted_files"`
+	DeletedBytes int64 `json:"deleted_bytes"`
+}
+
+// Add merges other into s.
+func (s *ClearStats) Add(other ClearStats) {
+	s.DeletedFiles += other.DeletedFiles
+	s.DeletedBytes += other.DeletedBytes
+}
+
+// DirStats is a file count and total byte size.
+type DirStats struct {
+	Files int   `json:"files"`
+	Bytes int64 `json:"bytes"`
+}
+
+// GenerationInfo describes one generation or leftover staging directory.
+type GenerationInfo struct {
+	Name      string `json:"name"`
+	Bytes     int64  `json:"bytes"`
+	Files     int    `json:"files"`
+	IsCurrent bool   `json:"is_current"`
+	IsStaging bool   `json:"is_staging"`
+}
+
+// ProviderInventory is on-disk usage for one provider (or aggregate).
+type ProviderInventory struct {
+	ID            string           `json:"id"`
+	Current       string           `json:"current,omitempty"`
+	Generations   []GenerationInfo `json:"generations"`
+	Logos         DirStats         `json:"logos"`
+	BytesTotal    int64            `json:"bytes_total"`
+	OrphanStaging int              `json:"orphan_staging"`
+	Known         bool             `json:"known"`
+}
+
+// Inventory is a full walk of the cache root.
+type Inventory struct {
+	Providers       []ProviderInventory `json:"providers"`
+	Aggregate       *ProviderInventory  `json:"aggregate,omitempty"`
+	BytesTotal      int64               `json:"bytes_total"`
+	LogoBytes       int64               `json:"logo_bytes"`
+	GenerationCount int                 `json:"generation_count"`
+	UnknownDirs     []string            `json:"unknown_dirs,omitempty"`
+}
+
+// Inventory walks {root} and reports sizes for known providers plus any
+// unexpected top-level dirs (except aggregate and reserved DB files).
+func (c *Cache) Inventory(known []model.ProviderID) (Inventory, error) {
+	knownSet := make(map[string]struct{}, len(known))
+	for _, id := range known {
+		knownSet[string(id)] = struct{}{}
+	}
+	var out Inventory
+	entries, err := os.ReadDir(c.root)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return out, nil
+		}
+		return out, err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() {
+			continue
+		}
+		switch name {
+		case dirAggregate:
+			inv, err := c.inventoryProviderDir(name, filepath.Join(c.root, name), true)
+			if err != nil {
+				return out, err
+			}
+			inv.Known = true
+			out.Aggregate = &inv
+			out.BytesTotal += inv.BytesTotal
+			out.LogoBytes += inv.Logos.Bytes
+			for _, g := range inv.Generations {
+				if !g.IsStaging {
+					out.GenerationCount++
+				}
+			}
+		default:
+			if name != filepath.Base(name) || strings.ContainsAny(name, `/\`) {
+				continue
+			}
+			_, isKnown := knownSet[name]
+			inv, err := c.inventoryProviderDir(name, filepath.Join(c.root, name), isKnown)
+			if err != nil {
+				return out, err
+			}
+			inv.Known = isKnown
+			out.Providers = append(out.Providers, inv)
+			out.BytesTotal += inv.BytesTotal
+			out.LogoBytes += inv.Logos.Bytes
+			for _, g := range inv.Generations {
+				if !g.IsStaging {
+					out.GenerationCount++
+				}
+			}
+			if !isKnown {
+				out.UnknownDirs = append(out.UnknownDirs, name)
+			}
+		}
+	}
+	sort.Slice(out.Providers, func(i, j int) bool { return out.Providers[i].ID < out.Providers[j].ID })
+	sort.Strings(out.UnknownDirs)
+	return out, nil
+}
+
+func (c *Cache) inventoryProviderDir(id, providerDir string, includeLogos bool) (ProviderInventory, error) {
+	inv := ProviderInventory{ID: id, Generations: []GenerationInfo{}}
+	current := readCurrentName(filepath.Join(providerDir, fileCurrent))
+	inv.Current = current
+	gensDir := filepath.Join(providerDir, dirGenerations)
+	entries, err := os.ReadDir(gensDir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return inv, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		staging := strings.HasPrefix(name, ".staging-")
+		bytes, files, err := dirUsage(filepath.Join(gensDir, name))
+		if err != nil {
+			return inv, err
+		}
+		inv.Generations = append(inv.Generations, GenerationInfo{
+			Name:      name,
+			Bytes:     bytes,
+			Files:     files,
+			IsCurrent: name == current && !staging,
+			IsStaging: staging,
+		})
+		inv.BytesTotal += bytes
+		if staging {
+			inv.OrphanStaging++
+		}
+	}
+	sort.Slice(inv.Generations, func(i, j int) bool {
+		a, b := inv.Generations[i], inv.Generations[j]
+		if a.IsCurrent != b.IsCurrent {
+			return a.IsCurrent
+		}
+		if a.IsStaging != b.IsStaging {
+			return !a.IsStaging
+		}
+		return a.Name < b.Name
+	})
+	if includeLogos {
+		logosDir := filepath.Join(providerDir, dirLogos)
+		bytes, files, err := dirUsage(logosDir)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return inv, err
+		}
+		inv.Logos = DirStats{Files: files, Bytes: bytes}
+		inv.BytesTotal += bytes
+	}
+	return inv, nil
+}
+
+// PurgeNonCurrent deletes leftover staging dirs and every generation except
+// the one named by current. Serving current is preserved (soft purge).
+func (c *Cache) PurgeNonCurrent(id model.ProviderID) (ClearStats, error) {
+	providerDir, err := c.providerDir(id)
+	if err != nil {
+		return ClearStats{}, err
+	}
+	return c.purgeNonCurrentDir(providerDir)
+}
+
+// PurgeNonCurrentAggregate soft-purges aggregate generations the same way.
+func (c *Cache) PurgeNonCurrentAggregate() (ClearStats, error) {
+	return c.purgeNonCurrentDir(filepath.Join(c.root, dirAggregate))
+}
+
+func (c *Cache) purgeNonCurrentDir(providerDir string) (ClearStats, error) {
+	var stats ClearStats
+	gensDir := filepath.Join(providerDir, dirGenerations)
+	entries, err := os.ReadDir(gensDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return stats, nil
+		}
+		return stats, err
+	}
+	current := readCurrentName(filepath.Join(providerDir, fileCurrent))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == current && !strings.HasPrefix(name, ".staging-") {
+			continue
+		}
+		path := filepath.Join(gensDir, name)
+		s, err := removeAllCounting(path)
+		if err != nil {
+			return stats, err
+		}
+		stats.Add(s)
+	}
+	return stats, nil
+}
+
+// DeleteLogo removes one logo file and its .meta sidecar.
+func (c *Cache) DeleteLogo(id model.ProviderID, file string) (ClearStats, error) {
+	path, err := c.LogoPath(id, file)
+	if err != nil {
+		return ClearStats{}, err
+	}
+	var stats ClearStats
+	for _, p := range []string{path, path + ".meta"} {
+		s, err := removeFileCounting(p)
+		if err != nil {
+			return stats, err
+		}
+		stats.Add(s)
+	}
+	return stats, nil
+}
+
+// DeleteProviderLogos removes every file under {id}/logos/.
+func (c *Cache) DeleteProviderLogos(id model.ProviderID) (ClearStats, error) {
+	providerDir, err := c.providerDir(id)
+	if err != nil {
+		return ClearStats{}, err
+	}
+	return removeAllCounting(filepath.Join(providerDir, dirLogos))
+}
+
+// DeleteAllLogos removes logos/ under every provider directory.
+func (c *Cache) DeleteAllLogos() (ClearStats, error) {
+	var stats ClearStats
+	entries, err := os.ReadDir(c.root)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return stats, nil
+		}
+		return stats, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == dirAggregate {
+			continue
+		}
+		s, err := removeAllCounting(filepath.Join(c.root, entry.Name(), dirLogos))
+		if err != nil {
+			return stats, err
+		}
+		stats.Add(s)
+	}
+	return stats, nil
+}
+
+// DeleteChannelLogos removes logo files for one channel id (any extension + .meta).
+func (c *Cache) DeleteChannelLogos(id model.ProviderID, channelID string) (ClearStats, error) {
+	if channelID == "" || channelID != filepath.Base(channelID) || strings.ContainsAny(channelID, `/\`) {
+		return ClearStats{}, fs.ErrNotExist
+	}
+	providerDir, err := c.providerDir(id)
+	if err != nil {
+		return ClearStats{}, err
+	}
+	logosDir := filepath.Join(providerDir, dirLogos)
+	entries, err := os.ReadDir(logosDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return ClearStats{}, nil
+		}
+		return ClearStats{}, err
+	}
+	prefix := channelID + "."
+	var stats ClearStats
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		base := strings.TrimSuffix(name, ".meta")
+		if !strings.HasPrefix(base, prefix) {
+			continue
+		}
+		if idFromFile, ok := logoChannelID(base); !ok || idFromFile != channelID {
+			continue
+		}
+		s, err := removeFileCounting(filepath.Join(logosDir, name))
+		if err != nil {
+			return stats, err
+		}
+		stats.Add(s)
+	}
+	return stats, nil
+}
+
+// SweepOrphans removes leftover staging dirs, generations beyond current+1,
+// logo files whose channel id is not in lineup (and stale extensions when
+// keepFiles is set), and whole provider dirs not in known.
+//
+// lineup maps provider → set of channel NormalizedIDs still in the feed.
+// keepFiles maps provider → channelID → expected logo filename (optional);
+// when set, other logo files for that channel id are removed.
+func (c *Cache) SweepOrphans(known []model.ProviderID, lineup map[model.ProviderID]map[string]struct{}, keepFiles map[model.ProviderID]map[string]string) (ClearStats, error) {
+	knownSet := make(map[string]struct{}, len(known)+1)
+	for _, id := range known {
+		knownSet[string(id)] = struct{}{}
+	}
+	knownSet[dirAggregate] = struct{}{}
+
+	var stats ClearStats
+	entries, err := os.ReadDir(c.root)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return stats, nil
+		}
+		return stats, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if _, ok := knownSet[name]; !ok {
+			s, err := removeAllCounting(filepath.Join(c.root, name))
+			if err != nil {
+				return stats, err
+			}
+			stats.Add(s)
+			continue
+		}
+		providerDir := filepath.Join(c.root, name)
+		s, err := c.sweepProviderOrphans(providerDir, name == dirAggregate)
+		if err != nil {
+			return stats, err
+		}
+		stats.Add(s)
+		if name == dirAggregate {
+			continue
+		}
+		id := model.ProviderID(name)
+		s, err = c.sweepProviderLogos(providerDir, lineup[id], keepFiles[id])
+		if err != nil {
+			return stats, err
+		}
+		stats.Add(s)
+	}
+	return stats, nil
+}
+
+func (c *Cache) sweepProviderOrphans(providerDir string, isAggregate bool) (ClearStats, error) {
+	_ = isAggregate
+	var stats ClearStats
+	gensDir := filepath.Join(providerDir, dirGenerations)
+	entries, err := os.ReadDir(gensDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return stats, nil
+		}
+		return stats, err
+	}
+	current := readCurrentName(filepath.Join(providerDir, fileCurrent))
+	type generation struct {
+		name string
+		mod  int64
+	}
+	var generations []generation
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, ".staging-") {
+			s, err := removeAllCounting(filepath.Join(gensDir, name))
+			if err != nil {
+				return stats, err
+			}
+			stats.Add(s)
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		generations = append(generations, generation{name, info.ModTime().UnixNano()})
+	}
+	sort.Slice(generations, func(i, j int) bool { return generations[i].mod > generations[j].mod })
+	keptPrevious := false
+	for _, g := range generations {
+		if g.name == current {
+			continue
+		}
+		if !keptPrevious {
+			keptPrevious = true
+			continue
+		}
+		s, err := removeAllCounting(filepath.Join(gensDir, g.name))
+		if err != nil {
+			return stats, err
+		}
+		stats.Add(s)
+	}
+	return stats, nil
+}
+
+func (c *Cache) sweepProviderLogos(providerDir string, keepIDs map[string]struct{}, keepFiles map[string]string) (ClearStats, error) {
+	var stats ClearStats
+	logosDir := filepath.Join(providerDir, dirLogos)
+	entries, err := os.ReadDir(logosDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return stats, nil
+		}
+		return stats, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		isMeta := strings.HasSuffix(name, ".meta")
+		base := strings.TrimSuffix(name, ".meta")
+		channelID, ok := logoChannelID(base)
+		if !ok {
+			continue
+		}
+		if keepIDs != nil {
+			if _, ok := keepIDs[channelID]; !ok {
+				s, err := removeFileCounting(filepath.Join(logosDir, name))
+				if err != nil {
+					return stats, err
+				}
+				stats.Add(s)
+				continue
+			}
+		}
+		if keepFiles != nil {
+			if want, ok := keepFiles[channelID]; ok && want != "" && base != want {
+				s, err := removeFileCounting(filepath.Join(logosDir, name))
+				if err != nil {
+					return stats, err
+				}
+				stats.Add(s)
+				_ = isMeta
+				continue
+			}
+		}
+	}
+	return stats, nil
+}
+
+func logoChannelID(filename string) (string, bool) {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg":
+		return strings.TrimSuffix(filename, filepath.Ext(filename)), true
+	default:
+		return "", false
+	}
+}
+
+func readCurrentName(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(string(b))
+	if name == "" || name != filepath.Base(name) || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
+		return ""
+	}
+	return name
+}
+
+func dirUsage(root string) (bytes int64, files int, err error) {
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, fs.ErrNotExist) {
+				return nil
+			}
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		files++
+		bytes += info.Size()
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, 0, nil
+	}
+	return bytes, files, err
+}
+
+func removeAllCounting(path string) (ClearStats, error) {
+	var stats ClearStats
+	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, fs.ErrNotExist) {
+				return nil
+			}
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		stats.DeletedFiles++
+		stats.DeletedBytes += info.Size()
+		return nil
+	})
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return ClearStats{}, err
+	}
+	if err := os.RemoveAll(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return stats, err
+	}
+	return stats, nil
+}
+
+func removeFileCounting(path string) (ClearStats, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return ClearStats{}, nil
+		}
+		return ClearStats{}, err
+	}
+	if info.IsDir() {
+		return removeAllCounting(path)
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return ClearStats{}, err
+	}
+	return ClearStats{DeletedFiles: 1, DeletedBytes: info.Size()}, nil
 }
 
 func validRawName(name string) bool {

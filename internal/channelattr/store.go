@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -26,6 +27,8 @@ const (
 // Store is SQLite-backed current + history for channel attributes.
 type Store struct {
 	db    *sql.DB
+	path  string // absolute path to attr.db
+	dir   string // channelattr directory
 	mu    sync.RWMutex
 	byKey map[string]entry // provider\x00channel\x00kind
 }
@@ -55,7 +58,7 @@ func Open(dataDir string) (*Store, error) {
 		return nil, fmt.Errorf("channelattr: open: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db, byKey: make(map[string]entry)}
+	s := &Store{db: db, path: path, dir: dir, byKey: make(map[string]entry)}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -151,6 +154,102 @@ func (s *Store) EventCount(ctx context.Context) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channel_attr_events`).Scan(&n)
 	return n, err
+}
+
+// Stats summarizes on-disk size and row counts for the channelattr store.
+type Stats struct {
+	DBPath        string         `json:"db_path"`
+	DBBytes       int64          `json:"db_bytes"`
+	CurrentRows   int            `json:"current_rows"`
+	EventRows     int            `json:"event_rows"`
+	Kinds         map[string]int `json:"kinds,omitempty"`
+	OldestEventAt *time.Time     `json:"oldest_event_at,omitempty"`
+	NewestEventAt *time.Time     `json:"newest_event_at,omitempty"`
+	SiblingFiles  []SiblingFile  `json:"sibling_files,omitempty"`
+}
+
+// SiblingFile is a non-db file under channelattr/ (e.g. health_schedule.json).
+type SiblingFile struct {
+	Name  string `json:"name"`
+	Bytes int64  `json:"bytes"`
+}
+
+// Stats returns inventory fields for GET /api/cache.
+func (s *Store) Stats(ctx context.Context) (Stats, error) {
+	out := Stats{Kinds: map[string]int{}}
+	if s == nil || s.db == nil {
+		return out, fmt.Errorf("channelattr: nil store")
+	}
+	out.DBPath = filepath.ToSlash(filepath.Join(dirName, fileName))
+	if info, err := os.Stat(s.path); err == nil {
+		out.DBBytes = info.Size()
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channel_attr_current`).Scan(&out.CurrentRows); err != nil {
+		return out, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channel_attr_events`).Scan(&out.EventRows); err != nil {
+		return out, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT kind, COUNT(*) FROM channel_attr_current GROUP BY kind`)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var kind string
+		var n int
+		if err := rows.Scan(&kind, &n); err != nil {
+			return out, err
+		}
+		out.Kinds[kind] = n
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	var oldest, newest sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT MIN(at), MAX(at) FROM channel_attr_events`).Scan(&oldest, &newest); err != nil {
+		return out, err
+	}
+	if oldest.Valid {
+		if t, ok := parseAttrTime(oldest.String); ok {
+			out.OldestEventAt = &t
+		}
+	}
+	if newest.Valid {
+		if t, ok := parseAttrTime(newest.String); ok {
+			out.NewestEventAt = &t
+		}
+	}
+	if s.dir != "" {
+		entries, err := os.ReadDir(s.dir)
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() || entry.Name() == fileName {
+					continue
+				}
+				info, err := entry.Info()
+				if err != nil {
+					continue
+				}
+				out.SiblingFiles = append(out.SiblingFiles, SiblingFile{Name: entry.Name(), Bytes: info.Size()})
+			}
+			sort.Slice(out.SiblingFiles, func(i, j int) bool {
+				return out.SiblingFiles[i].Name < out.SiblingFiles[j].Name
+			})
+		}
+	}
+	return out, nil
+}
+
+func parseAttrTime(atStr string) (time.Time, bool) {
+	at, err := time.Parse(time.RFC3339Nano, atStr)
+	if err != nil {
+		at, err = time.Parse(time.RFC3339, atStr)
+		if err != nil {
+			return time.Time{}, false
+		}
+	}
+	return at.UTC(), true
 }
 
 // Handle appends history and upserts current for one event.

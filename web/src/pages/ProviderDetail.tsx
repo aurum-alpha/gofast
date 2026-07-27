@@ -128,6 +128,7 @@ export function ProviderDetailPage() {
   const [refreshBusy, setRefreshBusy] = useState(false)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
   const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [cacheBusy, setCacheBusy] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -187,6 +188,68 @@ export function ProviderDetailPage() {
     }
   }
 
+  async function purgeAndRefresh() {
+    setCacheBusy('purge')
+    setRefreshNote(null)
+    setRefreshError(null)
+    try {
+      const res = await fetch(
+        `/api/providers/${encodeURIComponent(id)}/cache/purge`,
+        { method: 'POST' },
+      )
+      if (res.status === 409) {
+        setRefreshError('Refresh already in progress')
+        return
+      }
+      if (res.status === 404) {
+        setRefreshError('Provider not found or disabled')
+        return
+      }
+      if (res.status === 403) {
+        setRefreshError('Request blocked (same-origin check)')
+        return
+      }
+      if (!res.ok) {
+        throw new Error(`${res.status} ${res.statusText}`)
+      }
+      const body = (await res.json()) as {
+        deleted_files?: number
+        refresh?: string
+      }
+      setRefreshNote(
+        `Purged ${body.deleted_files ?? 0} files — refresh ${body.refresh ?? 'accepted'}`,
+      )
+    } catch (err: unknown) {
+      setRefreshError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCacheBusy(null)
+    }
+  }
+
+  async function clearLogos() {
+    setCacheBusy('logos')
+    setRefreshNote(null)
+    setRefreshError(null)
+    try {
+      const res = await fetch(`/api/logos/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      if (res.status === 404) {
+        setRefreshError('Provider not found')
+        return
+      }
+      if (!res.ok) {
+        throw new Error(`${res.status} ${res.statusText}`)
+      }
+      const body = (await res.json()) as { deleted_files?: number }
+      setRefreshNote(`Cleared ${body.deleted_files ?? 0} logo files`)
+    } catch (err: unknown) {
+      setRefreshError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCacheBusy(null)
+    }
+  }
+
   if (error) {
     return (
       <>
@@ -214,16 +277,45 @@ export function ProviderDetailPage() {
       <p className="probe-actions">
         <button
           type="button"
-          disabled={!settings.enabled || refreshBusy}
+          disabled={!settings.enabled || refreshBusy || cacheBusy !== null}
           onClick={() => {
             void refreshNow()
           }}
         >
           {refreshBusy ? 'Starting…' : 'Refresh now'}
         </button>
+        <button
+          type="button"
+          disabled={!settings.enabled || refreshBusy || cacheBusy !== null}
+          onClick={() => {
+            if (
+              !window.confirm(
+                `Soft-purge non-current generations for ${settings.id} and refresh?`,
+              )
+            ) {
+              return
+            }
+            void purgeAndRefresh()
+          }}
+        >
+          {cacheBusy === 'purge' ? 'Purging…' : 'Purge & refresh'}
+        </button>
+        <button
+          type="button"
+          disabled={refreshBusy || cacheBusy !== null}
+          onClick={() => {
+            if (!window.confirm(`Clear logos for ${settings.id}?`)) {
+              return
+            }
+            void clearLogos()
+          }}
+        >
+          {cacheBusy === 'logos' ? 'Clearing…' : 'Clear logos'}
+        </button>
         <Link to={`/config/providers/${encodeURIComponent(settings.id)}`}>
           Edit settings
         </Link>
+        <Link to="/cache">Cache</Link>
       </p>
       {refreshNote ? <p className="meta" role="status">{refreshNote}</p> : null}
       {refreshError ? (

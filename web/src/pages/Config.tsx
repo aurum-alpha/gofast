@@ -213,6 +213,9 @@ export function ConfigPage() {
   const [draft, setDraft] = useState<Record<string, DraftValue>>({})
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ ok: boolean; message: string } | null>(null)
+  const [cacheBusy, setCacheBusy] = useState<string | null>(null)
+  const [cacheNote, setCacheNote] = useState<string | null>(null)
+  const [cacheError, setCacheError] = useState<string | null>(null)
 
   const editableSpecs = useMemo(() => [...GENERAL_FIELDS, ...HEALTH_FIELDS], [])
 
@@ -383,6 +386,105 @@ export function ConfigPage() {
               </>
             ) : null}
           </p>
+        ) : null}
+      </section>
+
+      <section className="detail-section">
+        <h2>Cache</h2>
+        <p className="meta">
+          Inventory and purge controls live on the{' '}
+          <Link to="/cache">Cache</Link> page. Soft purge keeps the serving
+          generation until refresh commits.
+        </p>
+        <p className="probe-actions">
+          <button
+            type="button"
+            disabled={cacheBusy !== null}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  'Purge all non-current cache generations, sweep orphans, and refresh enabled providers?',
+                )
+              ) {
+                return
+              }
+              void (async () => {
+                setCacheBusy('purge')
+                setCacheNote(null)
+                setCacheError(null)
+                try {
+                  const res = await fetch('/api/cache/purge', { method: 'POST' })
+                  if (res.status === 403) {
+                    setCacheError('Request blocked (same-origin check)')
+                    return
+                  }
+                  if (!res.ok) {
+                    throw new Error(`${res.status} ${res.statusText}`)
+                  }
+                  const body = (await res.json()) as {
+                    deleted_files?: number
+                    deleted_bytes?: number
+                    refresh?: string
+                  }
+                  setCacheNote(
+                    `Removed ${body.deleted_files ?? 0} files · refresh ${body.refresh ?? '—'}`,
+                  )
+                } catch (err: unknown) {
+                  setCacheError(err instanceof Error ? err.message : String(err))
+                } finally {
+                  setCacheBusy(null)
+                }
+              })()
+            }}
+          >
+            {cacheBusy === 'purge' ? 'Purging…' : 'Purge all cache & refresh'}
+          </button>
+          <button
+            type="button"
+            disabled={cacheBusy !== null}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  'Clear all cached logos? They will re-warm if logo caching is enabled.',
+                )
+              ) {
+                return
+              }
+              void (async () => {
+                setCacheBusy('logos')
+                setCacheNote(null)
+                setCacheError(null)
+                try {
+                  const res = await fetch('/api/logos', { method: 'DELETE' })
+                  if (!res.ok) {
+                    throw new Error(`${res.status} ${res.statusText}`)
+                  }
+                  const body = (await res.json()) as {
+                    deleted_files?: number
+                    deleted_bytes?: number
+                  }
+                  setCacheNote(`Cleared ${body.deleted_files ?? 0} logo files`)
+                } catch (err: unknown) {
+                  setCacheError(err instanceof Error ? err.message : String(err))
+                } finally {
+                  setCacheBusy(null)
+                }
+              })()
+            }}
+          >
+            {cacheBusy === 'logos' ? 'Clearing…' : 'Clear logo cache'}
+          </button>
+          <Link to="/cache">Open Cache page</Link>
+        </p>
+        {cacheNote ? (
+          <p className="meta" role="status">
+            {cacheNote}
+          </p>
+        ) : null}
+        {cacheError ? (
+          <div className="empty-panel" role="alert">
+            <p>{cacheError}</p>
+          </div>
         ) : null}
       </section>
 
