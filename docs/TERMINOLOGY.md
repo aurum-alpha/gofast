@@ -109,7 +109,7 @@ mint. (Fallback field name: `hls_master_playlist`.)
 
 CloudFront / Xumo SSAI that needs **`ads.*` query params** for origin
 interpolation. Gen/LG adapter keeps those keys and neutralizes client macros.
-**Does not require FASTProxy** — emit upstream and play direct (validated
+**Does not require FASTProxy** — emit upstream and play direct (validated;
 no selective passthrough dialect). Under `proxy_all`, FASTProxy
 `ProxyNone` 302s to the full upstream URL so `ads.*` stay on `Location`.
 
