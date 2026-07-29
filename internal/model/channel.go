@@ -7,25 +7,6 @@ import (
 	"unicode"
 )
 
-const (
-	FilterReasonDRM            = "DRM"
-	FilterReasonNeedsFASTProxy = "needs FASTProxy (proxy_base_url not configured)"
-	FilterReasonUnhealthy      = "unhealthy (exclude_unhealthy)"
-	// FilterReasonDisabledGroupPrefix begins the reason for channels dropped
-	// because their group was disabled in the taxonomy. The UI matches this
-	// prefix to render a distinct "disabled group" badge.
-	FilterReasonDisabledGroupPrefix = "disabled group"
-)
-
-// DisabledGroupReason is the FilterReason for a channel dropped by a disabled group.
-func DisabledGroupReason(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return FilterReasonDisabledGroupPrefix
-	}
-	return fmt.Sprintf("%s %q", FilterReasonDisabledGroupPrefix, name)
-}
-
 // Channel is a lineup entry after provider fetch (+ optional classify).
 type Channel struct {
 	Provider    ProviderID `json:"provider"`
@@ -65,9 +46,11 @@ type Channel struct {
 	// Health is the current playability stamp (from channel-attr store Annotate).
 	// Zero / empty status means untested.
 	Health ChannelHealth `json:"health"`
-	// FilterReason is set when the channel is dropped from export (exclusion, DRM, etc.).
-	FilterReason string `json:"filter_reason,omitempty"`
-	Excluded     bool   `json:"excluded"`
+	// FilterReason is the primary (badge-driving) exclusion reason.
+	FilterReason FilterReason `json:"filter_reason,omitempty"`
+	// FilterReasons lists every applicable exclusion reason (may be multiple).
+	FilterReasons []FilterReason `json:"filter_reasons,omitempty"`
+	Excluded      bool           `json:"excluded"`
 
 	// Emit is the configured channel_emit row for this channel (API paint only).
 	Emit *ChannelEmit `json:"emit,omitempty"`
@@ -84,7 +67,8 @@ type Channel struct {
 
 // MatchesExclusion reports whether any compiled regex matches stream URL, provider id, or name.
 // Patterns are expected already compiled with (?i) as config does at load.
-func (c Channel) MatchesExclusion(regexes []*regexp.Regexp) (matched bool, reason string) {
+// When multiple regexes match, reasons lists each distinct ExclusionMatched value.
+func (c Channel) MatchesExclusion(regexes []*regexp.Regexp) (matched bool, reasons []FilterReason) {
 	haystacks := []string{c.StreamURL, string(c.Provider), c.ID, c.Name, c.NormalizedID}
 	for _, re := range regexes {
 		if re == nil {
@@ -92,11 +76,16 @@ func (c Channel) MatchesExclusion(regexes []*regexp.Regexp) (matched bool, reaso
 		}
 		for _, h := range haystacks {
 			if h != "" && re.MatchString(h) {
-				return true, fmt.Sprintf("exclusion %q matched", re.String())
+				r := ExclusionMatched(re)
+				if !HasFilterReason(reasons, r) {
+					reasons = append(reasons, r)
+				}
+				matched = true
+				break
 			}
 		}
 	}
-	return false, ""
+	return matched, reasons
 }
 
 // OutputURL returns the URL written to playlists while StreamURL remains the
@@ -136,7 +125,7 @@ func (c *Channel) Normalize() {
 }
 
 // ForExport returns channels that belong in M3U/XMLTV playlists.
-// Excluded channels and rows missing a normalized id or stream URL are omitted.
+// Excluded channels are omitted (identity/stream gaps should already be reasons).
 func ForExport(channels []Channel) []Channel {
 	out := make([]Channel, 0, len(channels))
 	for _, ch := range channels {
@@ -149,7 +138,7 @@ func ForExport(channels []Channel) []Channel {
 }
 
 // MarkExclusions marks channels that match any provider exclusion regex.
-// Excluded channels stay in the slice with Excluded/FilterReason set so the UI can explain drops.
+// Excluded channels stay in the slice with FilterReasons set so the UI can explain drops.
 func MarkExclusions(channels []Channel, regexes []*regexp.Regexp) []Channel {
 	if len(regexes) == 0 {
 		return channels
@@ -157,9 +146,10 @@ func MarkExclusions(channels []Channel, regexes []*regexp.Regexp) []Channel {
 	out := make([]Channel, len(channels))
 	copy(out, channels)
 	for i := range out {
-		if ok, reason := out[i].MatchesExclusion(regexes); ok {
-			out[i].Excluded = true
-			out[i].FilterReason = reason
+		if ok, reasons := out[i].MatchesExclusion(regexes); ok {
+			for _, r := range reasons {
+				out[i].AddFilterReason(r)
+			}
 		}
 	}
 	return out

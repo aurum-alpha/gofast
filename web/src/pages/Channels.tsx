@@ -10,8 +10,8 @@ import {
   healthBadge,
   HEALTH_FILTERS,
   healthStatus,
-  lineupBadge,
-  lineupStatus,
+  lineupBadges,
+  lineupStatusKinds,
   STATUS_FILTERS,
 } from '../lib/channel'
 import type { Channel, HealthFilterValue, LineupStatusKind } from '../lib/channel'
@@ -188,7 +188,10 @@ export function ChannelsPage() {
         if (classFilter !== 'all') {
           if (canonicalClassification(ch.classification) !== classFilter) return false
         }
-        if (statusFilter !== 'all' && lineupStatus(ch) !== statusFilter) {
+        if (
+          statusFilter !== 'all' &&
+          !lineupStatusKinds(ch).includes(statusFilter as LineupStatusKind)
+        ) {
           return false
         }
         if (healthFilter !== 'all' && healthStatus(ch) !== healthFilter) {
@@ -381,7 +384,7 @@ export function ChannelsPage() {
                   rows.map((ch) => {
                     const cls = classBadge(ch.classification)
                     const hb = healthBadge(ch.health?.status)
-                    const status = lineupBadge(ch)
+                    const statuses = lineupBadges(ch)
                     const healthTitle = [
                       ch.health?.last_check_at
                         ? `Last check ${formatHealthWhen(ch.health.last_check_at)}`
@@ -447,11 +450,16 @@ export function ChannelsPage() {
                           ) : null}
                         </td>
                         <td>
-                          <span
-                            className={`badge ${status.className}`}
-                            title={status.title}
-                          >
-                            {status.label}
+                          <span className="badge-row">
+                            {statuses.map((status) => (
+                              <span
+                                key={status.kind}
+                                className={`badge ${status.className}`}
+                                title={status.title}
+                              >
+                                {status.label}
+                              </span>
+                            ))}
                           </span>
                         </td>
                       </tr>

@@ -86,7 +86,16 @@ func ChannelEmitSaveHandler(store *config.Store, reg *provider.Registry) http.Ha
 		if req.Emit == nil || req.Emit.Normalized().IsZero() {
 			delete(emitMap, normalizedID)
 		} else {
+			prev := emitMap[normalizedID]
 			row := req.Emit.Normalized()
+			// Channel Detail never invents the Dedupes marker; preserve it when
+			// export stays disabled so name/logo edits do not flip "duplicate"
+			// to "emit disabled".
+			if row.ExportMode() == model.ExportDisabled {
+				row.Dedupe = prev.Dedupe
+			} else {
+				row.Dedupe = false
+			}
 			if err := row.Validate(); err != nil {
 				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 				return

@@ -102,12 +102,32 @@ func TestDisableWinsOverMerge(t *testing.T) {
 
 func TestApplyPreservesPriorExclusion(t *testing.T) {
 	p := Compile(Doc{Enabled: true, Merges: []Merge{{Name: "News", Members: []string{"NEWS"}}}})
-	in := []model.Channel{{Group: "NEWS", Excluded: true, FilterReason: model.FilterReasonDRM}}
+	in := []model.Channel{{Group: "NEWS", Excluded: true, FilterReason: model.FilterReasonDRM, FilterReasons: []model.FilterReason{model.FilterReasonDRM}}}
 	out := Apply(in, model.ProviderLG, p)
 	if out[0].FilterReason != model.FilterReasonDRM {
 		t.Fatalf("prior exclusion reason overwritten: %q", out[0].FilterReason)
 	}
 	if out[0].EmittedGroup != "" {
 		t.Fatal("already-excluded channel should not get EmittedGroup")
+	}
+}
+
+func TestApplyAccumulatesDisabledGroupWithPriorDRM(t *testing.T) {
+	p := Compile(Doc{Enabled: true, Disabled: []string{"Shopping"}})
+	in := []model.Channel{{
+		Group:         "Shopping",
+		Excluded:      true,
+		FilterReason:  model.FilterReasonDRM,
+		FilterReasons: []model.FilterReason{model.FilterReasonDRM},
+	}}
+	out := Apply(in, model.ProviderLG, p)
+	if !model.HasFilterReason(out[0].FilterReasons, model.FilterReasonDRM) {
+		t.Fatalf("DRM missing: %+v", out[0].FilterReasons)
+	}
+	if !model.HasFilterReasonKind(out[0].FilterReasons, model.FilterKindDisabledGroup) {
+		t.Fatalf("disabled-group missing: %+v", out[0].FilterReasons)
+	}
+	if out[0].FilterReason != model.FilterReasonDRM {
+		t.Fatalf("primary should stay DRM: %q", out[0].FilterReason)
 	}
 }

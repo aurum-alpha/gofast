@@ -459,6 +459,40 @@
   color: var(--ink);
 }
 
+/* Shared action button (Channel Detail Probe L1, Dedupes Apply, etc.).
+   No React Button component — plain <button class="btn">. */
+.btn,
+.probe-actions button {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled),
+.probe-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn:disabled,
+.probe-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+}
+
 .url-break {
   word-break: break-all;
   font-size: 0.85em;
@@ -487,6 +521,16 @@
   font-size: 0.9rem;
   line-height: 1.4;
   white-space: normal;
+}
+
+.status-reason-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  max-width: 28rem;
+}
+
+.status-reason-list .status-reason {
+  margin: 0.2rem 0;
 }
 
 .channel-description {
@@ -829,26 +873,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 0.75rem;
-}
-
-.probe-actions button {
-  font: inherit;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  padding: 0.4rem 0.85rem;
-  cursor: pointer;
-}
-
-.probe-actions button:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.probe-actions button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .settings-grid {

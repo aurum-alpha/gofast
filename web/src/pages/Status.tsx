@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   type Channel,
+  type LineupStatusKind,
+  STATUS_FILTERS,
   canonicalClassification,
   healthStatus,
-  lineupStatus,
+  lineupStatusKinds,
 } from '../lib/channel'
 
 type HealthzProvider = {
@@ -222,14 +224,9 @@ export function StatusPage() {
 
   const rollups = useMemo(() => {
     const health = { healthy: 0, degraded: 0, down: 0, untested: 0 }
-    const lineup = {
-      'in-lineup': 0,
-      proxied: 0,
-      'needs-proxy': 0,
-      drm: 0,
-      'disabled-group': 0,
-      excluded: 0,
-    }
+    const lineup = Object.fromEntries(
+      STATUS_FILTERS.map((s) => [s.value, 0]),
+    ) as Record<LineupStatusKind, number>
     const dialect = {
       NATIVE: 0,
       AMAGI_SSAI: 0,
@@ -243,7 +240,9 @@ export function StatusPage() {
     }
     for (const ch of channels) {
       health[healthStatus(ch)]++
-      lineup[lineupStatus(ch)]++
+      for (const kind of lineupStatusKinds(ch)) {
+        lineup[kind]++
+      }
       const cls = canonicalClassification(ch.classification)
       if (cls in dialect) {
         dialect[cls as keyof typeof dialect]++
@@ -364,6 +363,11 @@ export function StatusPage() {
               label="Disabled group"
               value={rollups.lineup['disabled-group'].toLocaleString()}
               title="Dropped because their group is disabled in the taxonomy"
+            />
+            <Metric
+              label="Duplicate"
+              value={rollups.lineup.duplicate.toLocaleString()}
+              title="Dropped by Dedupes (may also have other exclusion reasons)"
             />
             <Metric
               label="Excluded (other)"

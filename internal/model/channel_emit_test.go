@@ -55,25 +55,27 @@ func TestApplyChannelEmitExportPrecedence(t *testing.T) {
 		ch        Channel
 		emit      ChannelEmit
 		wantExcl  bool
-		wantReas  string
+		wantReas  FilterReason
 		wantForce bool
 	}{
 		{
 			name: "auto keeps exclusion",
 			ch: Channel{
-				NormalizedID: "a",
-				Excluded:     true,
-				FilterReason: `exclusion "(?i)blocked" matched`,
+				NormalizedID:  "a",
+				Excluded:      true,
+				FilterReason:  ExclusionMatched(re),
+				FilterReasons: []FilterReason{ExclusionMatched(re)},
 			},
 			wantExcl: true,
-			wantReas: `exclusion "(?i)blocked" matched`,
+			wantReas: ExclusionMatched(re),
 		},
 		{
 			name: "enabled clears exclusion",
 			ch: Channel{
-				NormalizedID: "a",
-				Excluded:     true,
-				FilterReason: `exclusion "(?i)blocked" matched`,
+				NormalizedID:  "a",
+				Excluded:      true,
+				FilterReason:  ExclusionMatched(re),
+				FilterReasons: []FilterReason{ExclusionMatched(re)},
 			},
 			emit:      ChannelEmit{Export: ExportEnabled},
 			wantExcl:  false,
@@ -91,11 +93,23 @@ func TestApplyChannelEmitExportPrecedence(t *testing.T) {
 			wantReas: FilterReasonEmitDisabled,
 		},
 		{
-			name: "enabled does not clear DRM",
+			name: "dedupe disabled",
 			ch: Channel{
 				NormalizedID: "a",
-				Excluded:     true,
-				FilterReason: FilterReasonDRM,
+				Name:         "Ok",
+				StreamURL:    "https://ok",
+			},
+			emit:     ChannelEmit{Export: ExportDisabled, Dedupe: true},
+			wantExcl: true,
+			wantReas: FilterReasonDuplicate,
+		},
+		{
+			name: "enabled does not clear DRM",
+			ch: Channel{
+				NormalizedID:  "a",
+				Excluded:      true,
+				FilterReason:  FilterReasonDRM,
+				FilterReasons: []FilterReason{FilterReasonDRM},
 			},
 			emit:      ChannelEmit{Export: ExportEnabled},
 			wantExcl:  true,
@@ -105,16 +119,16 @@ func TestApplyChannelEmitExportPrecedence(t *testing.T) {
 		{
 			name: "enabled clears disabled group",
 			ch: Channel{
-				NormalizedID: "a",
-				Excluded:     true,
-				FilterReason: DisabledGroupReason("News"),
+				NormalizedID:  "a",
+				Excluded:      true,
+				FilterReason:  DisabledGroupReason("News"),
+				FilterReasons: []FilterReason{DisabledGroupReason("News")},
 			},
 			emit:      ChannelEmit{Export: ExportEnabled},
 			wantExcl:  false,
 			wantForce: true,
 		},
 	}
-	_ = re
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			emits := map[string]ChannelEmit{tc.ch.NormalizedID: tc.emit}

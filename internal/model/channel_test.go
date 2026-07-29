@@ -96,11 +96,11 @@ func TestDinosplutoExclusion(t *testing.T) {
 		StreamURL: "https://cdn.example/dinospluto-lgus/master.m3u8",
 	}
 	ch.Normalize()
-	ok, reason := ch.MatchesExclusion([]*regexp.Regexp{re})
+	ok, reasons := ch.MatchesExclusion([]*regexp.Regexp{re})
 	if !ok {
 		t.Fatal("expected exclusion match")
 	}
-	if reason == "" {
+	if len(reasons) == 0 {
 		t.Fatal("expected reason")
 	}
 

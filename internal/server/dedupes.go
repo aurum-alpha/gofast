@@ -146,10 +146,13 @@ func buildDedupeApplyOps(cfg *config.Config, req dedupeApplyRequest) ([]config.P
 			switch ch.export {
 			case model.ExportEnabled:
 				row.Export = model.ExportEnabled
+				row.Dedupe = false
 			case model.ExportDisabled:
 				row.Export = model.ExportDisabled
+				row.Dedupe = true
 			default:
 				row.Export = ""
+				row.Dedupe = false
 			}
 			norm := row.Normalized()
 			if err := norm.Validate(); err != nil {
@@ -200,19 +203,14 @@ func writeDedupes(w http.ResponseWriter, store *config.Store, reg *provider.Regi
 				ch = painted[0]
 				// Reflect emit:disabled even if prepare has not re-run yet.
 				if ch.Emit != nil && ch.Emit.ExportMode() == model.ExportDisabled {
-					ch.Excluded = true
-					if ch.FilterReason == "" {
-						ch.FilterReason = model.FilterReasonEmitDisabled
+					if ch.Emit.Dedupe {
+						ch.AddFilterReason(model.FilterReasonDuplicate)
+					} else {
+						ch.AddFilterReason(model.FilterReasonEmitDisabled)
 					}
 				}
 				if ch.Emit != nil && ch.Emit.ExportMode() == model.ExportEnabled {
-					// Soft blocks only — leave hard exclusions alone.
-					if ch.FilterReason == model.FilterReasonEmitDisabled ||
-						strings.HasPrefix(ch.FilterReason, model.FilterReasonDisabledGroupPrefix) ||
-						ch.FilterReason == model.FilterReasonUnhealthy {
-						ch.Excluded = false
-						ch.FilterReason = ""
-					}
+					ch.ClearSoftFilterReasons()
 				}
 				channels = append(channels, ch)
 			}

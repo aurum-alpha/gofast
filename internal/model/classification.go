@@ -37,6 +37,16 @@ func (c Classification) Canonical() Classification {
 	return c
 }
 
+// Known reports whether c is a recognized dialect (empty counts as known/unset).
+func (c Classification) Known() bool {
+	switch c.Canonical() {
+	case "", ClassNative, ClassAmagiSSAI, ClassSession, ClassXumoSSAI, ClassDRM:
+		return true
+	default:
+		return false
+	}
+}
+
 // ProxyKind reports the FASTProxy branch for this dialect.
 func (c Classification) ProxyKind() ProxyKind {
 	switch c.Canonical() {

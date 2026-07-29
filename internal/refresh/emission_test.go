@@ -32,8 +32,9 @@ func TestGroupPolicyThenEmission(t *testing.T) {
 	if !got[1].Excluded || got[1].FilterReason != model.DisabledGroupReason("Shopping") {
 		t.Fatalf("shopping channel = %+v", got[1])
 	}
-	if got[1].EmittedURL != "" {
-		t.Fatalf("disabled channel must not emit a URL: %q", got[1].EmittedURL)
+	// Excluded for group still gets a playback URL when a path exists.
+	if got[1].EmittedURL != "https://up.test/b.m3u8" {
+		t.Fatalf("disabled channel should still mint EmittedURL: %q", got[1].EmittedURL)
 	}
 }
 
@@ -45,7 +46,7 @@ func TestApplyEmissionPolicy(t *testing.T) {
 		policy         EmissionPolicy
 		wantURL        string
 		wantExcluded   bool
-		wantReason     string
+		wantReason     model.FilterReason
 		wantDropped    int
 	}{
 		{
@@ -148,12 +149,46 @@ func TestApplyEmissionPolicy(t *testing.T) {
 
 func TestApplyEmissionPolicyPreservesEarlierExclusion(t *testing.T) {
 	got, stats := applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderLG,
+		NormalizedID:   "news",
+		StreamURL:      "https://upstream.test/live.m3u8",
 		Classification: model.ClassAmagiSSAI,
 		Excluded:       true,
-		FilterReason:   "configured exclusion",
+		FilterReason:   model.ExclusionMatched(nil),
+		FilterReasons:  []model.FilterReason{model.FilterReason("exclusion matched")},
 	}}, EmissionPolicy{})
-	if !got[0].Excluded || got[0].FilterReason != "configured exclusion" || stats.NeedsProxyDropped != 0 {
-		t.Fatalf("channel=%+v stats=%+v", got[0], stats)
+	if !got[0].Excluded {
+		t.Fatal("expected excluded")
+	}
+	if !model.HasFilterReasonKind(got[0].FilterReasons, model.FilterKindExclusion) {
+		t.Fatalf("expected exclusion kept: %+v", got[0].FilterReasons)
+	}
+	if !model.HasFilterReason(got[0].FilterReasons, model.FilterReasonNeedsFASTProxy) {
+		t.Fatalf("expected needs-proxy accumulated: %+v", got[0].FilterReasons)
+	}
+	if stats.NeedsProxyDropped != 1 {
+		t.Fatalf("stats=%+v", stats)
+	}
+	if got[0].EmittedURL != "" {
+		t.Fatalf("no proxy base → no EmittedURL: %q", got[0].EmittedURL)
+	}
+}
+
+func TestApplyEmissionPolicyMintsURLDespiteSoftExclusion(t *testing.T) {
+	got, _ := applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderLG,
+		NormalizedID:   "news",
+		StreamURL:      "https://upstream.test/live.m3u8",
+		Classification: model.ClassNative,
+		Excluded:       true,
+		FilterReason:   model.FilterReasonDuplicate,
+		FilterReasons:  []model.FilterReason{model.FilterReasonDuplicate},
+	}}, EmissionPolicy{ProxyBaseURL: "https://proxy.test"})
+	if !got[0].Excluded || got[0].FilterReason != model.FilterReasonDuplicate {
+		t.Fatalf("channel=%+v", got[0])
+	}
+	if got[0].EmittedURL != "https://upstream.test/live.m3u8" {
+		t.Fatalf("should mint direct URL despite duplicate: %q", got[0].EmittedURL)
 	}
 }
 
@@ -169,6 +204,8 @@ func TestApplyEmissionPolicyExcludeUnhealthy(t *testing.T) {
 		t.Fatalf("channel=%+v stats=%+v", got[0], stats)
 	}
 	got2, stats2 := applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderLG,
+		NormalizedID:   "news",
 		Classification: model.ClassNative,
 		StreamURL:      "https://upstream.test/live.m3u8",
 		Health:         model.ChannelHealth{Status: model.HealthDown},

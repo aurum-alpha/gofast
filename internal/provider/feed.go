@@ -226,8 +226,8 @@ func (f *Feed) Stats() Stats {
 		stats.ByGroup[group]++
 		if channel.Excluded {
 			stats.ExcludedChannels++
-			if channel.FilterReason != "" {
-				stats.FilterReasons[channel.FilterReason]++
+			for _, r := range channel.EffectiveFilterReasons() {
+				stats.FilterReasons[string(r)]++
 			}
 		}
 		if !channel.Excluded && channel.NormalizedID != "" && channel.StreamURL != "" {

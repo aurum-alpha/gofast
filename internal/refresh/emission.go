@@ -27,36 +27,50 @@ func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]mod
 		channel := &out[index]
 		channel.Classification = channel.Classification.Canonical()
 		channel.EmittedURL = ""
-		if channel.Excluded {
-			continue
+
+		if channel.NormalizedID == "" {
+			channel.AddFilterReason(model.FilterReasonMissingIdentity)
 		}
-		if channel.Classification == model.ClassDRM {
-			channel.Excluded = true
-			if channel.FilterReason == "" {
-				channel.FilterReason = model.FilterReasonDRM
-			}
-			continue
+		if strings.TrimSpace(channel.StreamURL) == "" {
+			channel.AddFilterReason(model.FilterReasonMissingStream)
 		}
+
+		class := channel.Classification
+		if class == model.ClassDRM {
+			channel.AddFilterReason(model.FilterReasonDRM)
+		} else if class != "" && !class.Known() {
+			channel.AddFilterReason(model.FilterReasonUnsupportedClassification)
+		}
+
 		if policy.ExcludeUnhealthy && !channel.ForceInclude &&
 			channel.Health.StatusOrUntested() == model.HealthDown {
-			channel.Excluded = true
-			if channel.FilterReason == "" {
-				channel.FilterReason = model.FilterReasonUnhealthy
-			}
+			channel.AddFilterReason(model.FilterReasonUnhealthy)
 			stats.UnhealthyDropped++
-			continue
 		}
-		requiresProxy := policy.ProxyAll || channel.Classification.RequiresProxy()
-		if requiresProxy && policy.ProxyBaseURL == "" {
-			channel.Excluded = true
-			if channel.FilterReason == "" {
-				channel.FilterReason = model.FilterReasonNeedsFASTProxy
-			}
+
+		requiresProxy := policy.ProxyAll || class.RequiresProxy()
+		proxyBase := strings.TrimSpace(policy.ProxyBaseURL)
+		canMintProxy := requiresProxy && proxyBase != ""
+		needsProxyMissing := requiresProxy && proxyBase == ""
+
+		if needsProxyMissing {
+			// Only when proxy is not configured — never when ProxyBaseURL is set.
+			channel.AddFilterReason(model.FilterReasonNeedsFASTProxy)
 			stats.NeedsProxyDropped++
+		}
+
+		// Mint EmittedURL whenever a playback path exists, even if other reasons
+		// exclude the channel from the playlist (duplicate, regex, …).
+		noPlayback := class == model.ClassDRM ||
+			(class != "" && !class.Known()) ||
+			channel.NormalizedID == "" ||
+			strings.TrimSpace(channel.StreamURL) == "" ||
+			needsProxyMissing
+		if noPlayback {
 			continue
 		}
-		if requiresProxy {
-			channel.EmittedURL = proxyStreamURL(policy.ProxyBaseURL, channel.Provider, channel.NormalizedID)
+		if canMintProxy {
+			channel.EmittedURL = proxyStreamURL(proxyBase, channel.Provider, channel.NormalizedID)
 			continue
 		}
 		channel.EmittedURL = channel.StreamURL

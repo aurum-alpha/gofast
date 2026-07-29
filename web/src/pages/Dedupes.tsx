@@ -381,18 +381,31 @@ export function DedupesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <button type="button" onClick={() => setEditingPreferred((v) => !v)}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setEditingPreferred((v) => !v)}
+          >
             Preferred: {preferred.slice(0, 3).join(', ')}
             {preferred.length > 3 ? '…' : ''}
           </button>
-          <button type="button" onClick={keepPreferredVisible} disabled={server.read_only}>
+          <button
+            type="button"
+            className="btn"
+            onClick={keepPreferredVisible}
+            disabled={server.read_only}
+          >
             Keep preferred (visible)
           </button>
           <button
             type="button"
-            className="primary"
+            className="btn primary"
             onClick={apply}
-            disabled={server.read_only || saving || (pendingCount === 0 && !preferredChanged(server, preferred, keepAllKeys))}
+            disabled={
+              server.read_only ||
+              saving ||
+              (pendingCount === 0 && !preferredChanged(server, preferred, keepAllKeys))
+            }
           >
             {saving ? 'Applying…' : `Apply${pendingCount ? ` (${pendingCount})` : ''}`}
           </button>
@@ -409,7 +422,7 @@ export function DedupesPage() {
               onFocus={() => setPreferredDraft(preferred.join(', '))}
             />
           </label>
-          <button type="button" onClick={savePreferredDraft}>
+          <button type="button" className="btn" onClick={savePreferredDraft}>
             Set order
           </button>
         </div>
@@ -507,16 +520,26 @@ export function DedupesPage() {
                 </tbody>
               </table>
               <div className="dedupe-actions">
-                <button type="button" onClick={keepSelected} disabled={server.read_only || selectedMembers.size === 0}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={keepSelected}
+                  disabled={server.read_only || selectedMembers.size === 0}
+                >
                   Keep selected
                 </button>
-                <button type="button" onClick={() => keepPreferredInCluster(selected)} disabled={server.read_only}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => keepPreferredInCluster(selected)}
+                  disabled={server.read_only}
+                >
                   Keep preferred
                 </button>
-                <button type="button" onClick={keepAll} disabled={server.read_only}>
+                <button type="button" className="btn" onClick={keepAll} disabled={server.read_only}>
                   Keep all
                 </button>
-                <button type="button" onClick={dropAll} disabled={server.read_only}>
+                <button type="button" className="btn" onClick={dropAll} disabled={server.read_only}>
                   Drop all
                 </button>
               </div>

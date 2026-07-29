@@ -271,10 +271,20 @@ streams).
   ` · {provider label}` and folding case/`&`/`+`/punctuation — **without**
   stripping brand tokens, so `BET`, `BET Pluto TV`, and `BET Her` stay distinct.
   Clusters require ≥2 providers. The Dedupes UI (`/dedupes`, `GET /api/dedupes`,
-  `PUT /api/dedupes/apply`) lets operators Keep selected / Keep preferred /
-  Keep all / Drop all; apply writes `channel_emit.export` (and optional
+  `PUT /api/dedupes/apply`) lets operators   Keep selected / Keep preferred /
+  Keep all / Drop all; apply writes `channel_emit.export` (and `channel_emit.dedupe:
+  true` on losers) plus optional
   `dedupe.preferred_providers` / `dedupe.keep_all_keys`). No silent auto-purge;
-  LLM / health auto-pick are follow-ons.
+  LLM / health auto-pick are follow-ons. Dedupes losers get FilterReason
+  `duplicate` (distinct from manual `emit disabled`).
+- **Exclusion reasons (multi):** a channel may carry **multiple**
+  `FilterReason` values at once (`filter_reasons` + primary `filter_reason`).
+  Soft reasons (regex exclusion, disabled group, unhealthy, emit disabled,
+  duplicate) clear under force-include / `export:enabled`; hard reasons (DRM,
+  unsupported classification, needs-FASTProxy when proxy is unset, missing
+  identity/stream) never soft-clear. `EmittedURL` is minted whenever a playback
+  path exists (including on duplicate/regex-excluded channels); playlist
+  membership is gated only by exclusion reasons via `ForExport`.
 - **Exclusion filters:** per-provider list of case-insensitive regexes matched
   against stream URL + provider id + channel name (fast first pass; the
   classifier probe is the authoritative gate). Filtered channels are removed

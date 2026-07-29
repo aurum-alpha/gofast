@@ -104,8 +104,14 @@ func TestDedupesApplyKeepOne(t *testing.T) {
 	if cfg.Providers[model.ProviderPluto].ChannelEmit["p1"].ExportMode() != model.ExportDisabled {
 		t.Fatalf("pluto emit %+v", cfg.Providers[model.ProviderPluto].ChannelEmit)
 	}
+	if !cfg.Providers[model.ProviderPluto].ChannelEmit["p1"].Dedupe {
+		t.Fatalf("pluto should mark dedupe:true %+v", cfg.Providers[model.ProviderPluto].ChannelEmit["p1"])
+	}
 	if cfg.Providers[model.ProviderSamsung].ChannelEmit["s1"].ExportMode() != model.ExportEnabled {
 		t.Fatalf("samsung emit %+v", cfg.Providers[model.ProviderSamsung].ChannelEmit)
+	}
+	if cfg.Providers[model.ProviderSamsung].ChannelEmit["s1"].Dedupe {
+		t.Fatalf("samsung enabled must clear dedupe %+v", cfg.Providers[model.ProviderSamsung].ChannelEmit["s1"])
 	}
 	if len(cfg.Dedupe.PreferredProviders) != 2 {
 		t.Fatalf("dedupe doc %+v", cfg.Dedupe)
@@ -151,7 +157,7 @@ func TestDedupesApplyPreservesOtherEmitFields(t *testing.T) {
 		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
 	}
 	row := store.Current().Providers[model.ProviderSamsung].ChannelEmit["s1"]
-	if row.Name != "Custom Cheaters" || row.ExportMode() != model.ExportDisabled {
+	if row.Name != "Custom Cheaters" || row.ExportMode() != model.ExportDisabled || !row.Dedupe {
 		t.Fatalf("row %+v", row)
 	}
 }

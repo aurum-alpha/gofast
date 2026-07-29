@@ -53,6 +53,17 @@ func TestRequiresAmagiProxy(t *testing.T) {
 	}
 }
 
+func TestClassificationKnown(t *testing.T) {
+	for _, c := range []Classification{"", ClassNative, ClassAmagiSSAI, ClassSession, ClassXumoSSAI, ClassDRM, classBeaconLegacy} {
+		if !c.Known() {
+			t.Fatalf("%q should be known", c)
+		}
+	}
+	if (Classification("WEIRD")).Known() {
+		t.Fatal("unknown class should not be Known")
+	}
+}
+
 func TestRequiresProxy(t *testing.T) {
 	for _, c := range []Classification{ClassAmagiSSAI, classBeaconLegacy, ClassSession} {
 		if !c.RequiresProxy() {

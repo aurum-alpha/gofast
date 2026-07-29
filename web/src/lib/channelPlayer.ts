@@ -12,9 +12,10 @@ export type PreviewURLs = {
 }
 
 /** Resolve raw vs emitted playback URLs for the channel preview player. */
-export function previewURLs(ch: Pick<Channel, 'stream_url' | 'emitted_url' | 'excluded'>): PreviewURLs {
+export function previewURLs(ch: Pick<Channel, 'stream_url' | 'emitted_url'>): PreviewURLs {
   const raw = ch.stream_url?.trim() || undefined
-  const emitted = ch.excluded ? undefined : ch.emitted_url?.trim() || undefined
+  // EmittedURL may exist on excluded channels (duplicate/regex); still previewable.
+  const emitted = ch.emitted_url?.trim() || undefined
   return { raw, emitted }
 }
 

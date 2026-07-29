@@ -5,11 +5,6 @@ import (
 	"strings"
 )
 
-const (
-	// FilterReasonEmitDisabled is set when the operator excludes a channel from emit.
-	FilterReasonEmitDisabled = "emit disabled"
-)
-
 // ExportMode controls whether a channel is included in the exported lineup.
 type ExportMode string
 
@@ -23,11 +18,14 @@ const (
 // Omitted fields mean "use the fastgen-produced default." It does not change
 // upstream fetch/raw data.
 type ChannelEmit struct {
-	Export  ExportMode `json:"export,omitempty" yaml:"export,omitempty"`
-	Name    string     `json:"name,omitempty" yaml:"name,omitempty"`
-	Group   string     `json:"group,omitempty" yaml:"group,omitempty"`
-	Number  *int       `json:"number,omitempty" yaml:"number,omitempty"`
-	LogoURL string     `json:"logo_url,omitempty" yaml:"logo_url,omitempty"`
+	Export ExportMode `json:"export,omitempty" yaml:"export,omitempty"`
+	// Dedupe is true when export:disabled was applied by the Dedupes UI (not
+	// manual Channel Detail Customize). Drives FilterReasonDuplicate.
+	Dedupe  bool   `json:"dedupe,omitempty" yaml:"dedupe,omitempty"`
+	Name    string `json:"name,omitempty" yaml:"name,omitempty"`
+	Group   string `json:"group,omitempty" yaml:"group,omitempty"`
+	Number  *int   `json:"number,omitempty" yaml:"number,omitempty"`
+	LogoURL string `json:"logo_url,omitempty" yaml:"logo_url,omitempty"`
 }
 
 // EmitDefaults are the fastgen-produced export values before per-field customs.
@@ -42,6 +40,7 @@ type EmitDefaults struct {
 // IsZero reports whether no emit customization is set.
 func (e ChannelEmit) IsZero() bool {
 	return e.ExportMode() == ExportAuto &&
+		!e.Dedupe &&
 		strings.TrimSpace(e.Name) == "" &&
 		strings.TrimSpace(e.Group) == "" &&
 		e.Number == nil &&
@@ -61,6 +60,7 @@ func (e ChannelEmit) ExportMode() ExportMode {
 }
 
 // Normalized returns a trimmed copy suitable for persistence. Zero rows become IsZero.
+// Dedupe is cleared unless export is disabled.
 func (e ChannelEmit) Normalized() ChannelEmit {
 	out := ChannelEmit{
 		Name:    strings.TrimSpace(e.Name),
@@ -72,6 +72,7 @@ func (e ChannelEmit) Normalized() ChannelEmit {
 		out.Export = ExportEnabled
 	case ExportDisabled:
 		out.Export = ExportDisabled
+		out.Dedupe = e.Dedupe
 	}
 	if e.Number != nil {
 		n := *e.Number
@@ -94,7 +95,7 @@ func (e ChannelEmit) Validate() error {
 
 // Equal reports whether two emit rows are the same.
 func (e ChannelEmit) Equal(o ChannelEmit) bool {
-	if e.ExportMode() != o.ExportMode() {
+	if e.ExportMode() != o.ExportMode() || e.Dedupe != o.Dedupe {
 		return false
 	}
 	if e.Name != o.Name || e.Group != o.Group || e.LogoURL != o.LogoURL {
@@ -179,7 +180,7 @@ func ApplyChannelEmitPresentation(channels []Channel, emits map[string]ChannelEm
 }
 
 // ApplyChannelEmitGroup snapshots the default emitted group-title and applies a
-// custom group (wins over taxonomy). Force-include soft-clears disabled-group.
+// custom group (wins over taxonomy). Force-include soft-clears soft reasons.
 func ApplyChannelEmitGroup(channels []Channel, emits map[string]ChannelEmit) []Channel {
 	if len(channels) == 0 {
 		return channels
@@ -203,17 +204,16 @@ func ApplyChannelEmitGroup(channels []Channel, emits map[string]ChannelEmit) []C
 		if em.Group != "" {
 			out[i].EmittedGroup = em.Group
 		}
-		if em.ExportMode() == ExportEnabled && out[i].Excluded && isSoftEmitReason(out[i].FilterReason) {
-			out[i].Excluded = false
-			out[i].FilterReason = ""
+		if em.ExportMode() == ExportEnabled {
+			out[i].ClearSoftFilterReasons()
 		}
 	}
 	return out
 }
 
 // ApplyChannelEmitPreExport applies export mode before emission policy: disabled
-// excludes the channel; enabled soft-clears operator exclusions and marks
-// ForceInclude so unhealthy prune can be skipped.
+// adds duplicate or emit-disabled; enabled soft-clears operator exclusions and
+// marks ForceInclude so unhealthy prune can be skipped.
 func ApplyChannelEmitPreExport(channels []Channel, emits map[string]ChannelEmit) []Channel {
 	if len(emits) == 0 {
 		return channels
@@ -225,17 +225,18 @@ func ApplyChannelEmitPreExport(channels []Channel, emits map[string]ChannelEmit)
 		if !ok {
 			continue
 		}
+		em = em.Normalized()
 		switch em.ExportMode() {
 		case ExportDisabled:
-			out[i].Excluded = true
-			out[i].FilterReason = FilterReasonEmitDisabled
 			out[i].ForceInclude = false
+			if em.Dedupe {
+				out[i].AddFilterReason(FilterReasonDuplicate)
+			} else {
+				out[i].AddFilterReason(FilterReasonEmitDisabled)
+			}
 		case ExportEnabled:
 			out[i].ForceInclude = true
-			if out[i].Excluded && isSoftEmitReason(out[i].FilterReason) {
-				out[i].Excluded = false
-				out[i].FilterReason = ""
-			}
+			out[i].ClearSoftFilterReasons()
 		}
 	}
 	return out
@@ -268,22 +269,4 @@ func (c *Channel) emitDefaults() *EmitDefaults {
 		c.EmitDefaults = &EmitDefaults{}
 	}
 	return c.EmitDefaults
-}
-
-func isSoftEmitReason(reason string) bool {
-	if reason == "" {
-		return false
-	}
-	if reason == FilterReasonUnhealthy || reason == FilterReasonEmitDisabled {
-		return true
-	}
-	if strings.HasPrefix(reason, FilterReasonDisabledGroupPrefix) {
-		return true
-	}
-	return strings.HasPrefix(reason, "exclusion ")
-}
-
-// IsHardEmitBlock reports whether a filter reason cannot be cleared by force-include.
-func IsHardEmitBlock(reason string) bool {
-	return reason == FilterReasonDRM || reason == FilterReasonNeedsFASTProxy
 }

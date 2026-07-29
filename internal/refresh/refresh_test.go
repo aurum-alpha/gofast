@@ -59,13 +59,13 @@ func (staticReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, err
 
 func TestApplyEmissionPolicyDropsDRM(t *testing.T) {
 	got, _ := applyEmissionPolicy([]model.Channel{
-		{ID: "native", Classification: model.ClassNative},
-		{ID: "drm", Classification: model.ClassDRM, LicenseURL: "https://license.example"},
+		{ID: "native", NormalizedID: "native", StreamURL: "https://up.test/n.m3u8", Classification: model.ClassNative},
+		{ID: "drm", NormalizedID: "drm", StreamURL: "https://up.test/d.m3u8", Classification: model.ClassDRM, LicenseURL: "https://license.example"},
 	}, EmissionPolicy{})
 	if got[0].Excluded {
 		t.Fatalf("native channel excluded: %+v", got[0])
 	}
-	if !got[1].Excluded || got[1].FilterReason != "DRM" {
+	if !got[1].Excluded || got[1].FilterReason != model.FilterReasonDRM {
 		t.Fatalf("DRM channel not excluded: %+v", got[1])
 	}
 }

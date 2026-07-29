@@ -86,7 +86,8 @@ type Member struct {
 	Health         string               `json:"health,omitempty"`
 	Exportable     bool                 `json:"exportable"`
 	Export         model.ExportMode     `json:"export"`
-	FilterReason   string               `json:"filter_reason,omitempty"`
+	FilterReason   model.FilterReason   `json:"filter_reason,omitempty"`
+	FilterReasons  []model.FilterReason `json:"filter_reasons,omitempty"`
 }
 
 // Cluster is one multi-provider same-title bucket.
@@ -238,6 +239,7 @@ func Scan(channels []model.Channel, labels map[model.ProviderID]string, keepAll 
 				Exportable:     exp,
 				Export:         exportMode,
 				FilterReason:   r.ch.FilterReason,
+				FilterReasons:  append([]model.FilterReason(nil), r.ch.EffectiveFilterReasons()...),
 			})
 		}
 		title := bestTitle(titleCounts, rows[0].title)

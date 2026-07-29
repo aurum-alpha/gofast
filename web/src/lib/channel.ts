@@ -19,6 +19,7 @@ export type ChannelHealth = {
 
 export type ChannelEmit = {
   export?: 'auto' | 'enabled' | 'disabled' | ''
+  dedupe?: boolean
   name?: string
   group?: string
   number?: number
@@ -50,6 +51,7 @@ export type Channel = {
   classification?: string
   license_url?: string
   filter_reason?: string
+  filter_reasons?: string[]
   excluded: boolean
   description?: string
   health?: ChannelHealth
@@ -60,6 +62,12 @@ export type Channel = {
 export const FILTER_REASON_DRM = 'DRM'
 export const FILTER_REASON_NEEDS_PROXY =
   'needs FASTProxy (proxy_base_url not configured)'
+export const FILTER_REASON_UNHEALTHY = 'unhealthy (exclude_unhealthy)'
+export const FILTER_REASON_EMIT_DISABLED = 'emit disabled'
+export const FILTER_REASON_DUPLICATE = 'duplicate'
+export const FILTER_REASON_MISSING_IDENTITY = 'missing identity'
+export const FILTER_REASON_MISSING_STREAM = 'missing stream'
+export const FILTER_REASON_UNSUPPORTED = 'unsupported classification'
 /** Prefix of FilterReason set when a channel's group was disabled in the taxonomy. */
 export const FILTER_REASON_DISABLED_GROUP = 'disabled group'
 
@@ -68,7 +76,14 @@ export type LineupStatusKind =
   | 'proxied'
   | 'needs-proxy'
   | 'drm'
+  | 'unsupported'
+  | 'duplicate'
   | 'disabled-group'
+  | 'unhealthy'
+  | 'emit-disabled'
+  | 'exclusion'
+  | 'missing-identity'
+  | 'missing-stream'
   | 'excluded'
 
 export type LineupBadge = {
@@ -107,64 +122,197 @@ export const HEALTH_FILTERS: { value: HealthFilterValue; label: string }[] = [
   { value: 'untested', label: 'Untested' },
 ]
 
-export function lineupStatus(
-  ch: Pick<Channel, 'excluded' | 'emitted_url' | 'stream_url' | 'filter_reason' | 'classification'>,
-): LineupStatusKind {
-  if (!ch.excluded) {
-    return ch.emitted_url && ch.emitted_url !== ch.stream_url ? 'proxied' : 'in-lineup'
-  }
-  if (ch.filter_reason === FILTER_REASON_NEEDS_PROXY) return 'needs-proxy'
-  if (ch.filter_reason === FILTER_REASON_DRM || ch.classification === 'DRM') return 'drm'
-  if (ch.filter_reason?.startsWith(FILTER_REASON_DISABLED_GROUP)) return 'disabled-group'
+/** Effective filter reason strings (multi or legacy single). */
+export function effectiveFilterReasons(
+  ch: Pick<Channel, 'filter_reason' | 'filter_reasons'>,
+): string[] {
+  if (ch.filter_reasons && ch.filter_reasons.length > 0) return ch.filter_reasons
+  if (ch.filter_reason) return [ch.filter_reason]
+  return []
+}
+
+/** Map one wire FilterReason string to a status kind. */
+export function filterReasonKind(reason: string): LineupStatusKind {
+  if (reason === FILTER_REASON_DRM) return 'drm'
+  if (reason === FILTER_REASON_NEEDS_PROXY) return 'needs-proxy'
+  if (reason === FILTER_REASON_UNHEALTHY) return 'unhealthy'
+  if (reason === FILTER_REASON_EMIT_DISABLED) return 'emit-disabled'
+  if (reason === FILTER_REASON_DUPLICATE) return 'duplicate'
+  if (reason === FILTER_REASON_MISSING_IDENTITY) return 'missing-identity'
+  if (reason === FILTER_REASON_MISSING_STREAM) return 'missing-stream'
+  if (reason === FILTER_REASON_UNSUPPORTED) return 'unsupported'
+  if (reason.startsWith(FILTER_REASON_DISABLED_GROUP)) return 'disabled-group'
+  if (reason.startsWith('exclusion ')) return 'exclusion'
   return 'excluded'
 }
 
-export function lineupBadge(ch: Channel): LineupBadge {
-  const kind = lineupStatus(ch)
-  switch (kind) {
-    case 'in-lineup':
-      return {
-        kind,
+const BADGE_BY_KIND: Record<
+  Exclude<LineupStatusKind, 'in-lineup' | 'proxied'>,
+  Omit<LineupBadge, 'title'> & { titleFor: (reason: string) => string }
+> = {
+  'needs-proxy': {
+    kind: 'needs-proxy',
+    label: 'Needs proxy',
+    className: 'badge-drm',
+    titleFor: (r) => r || FILTER_REASON_NEEDS_PROXY,
+  },
+  drm: {
+    kind: 'drm',
+    label: 'DRM blocked',
+    className: 'badge-drm',
+    titleFor: (r) => r || FILTER_REASON_DRM,
+  },
+  unsupported: {
+    kind: 'unsupported',
+    label: 'Unsupported',
+    className: 'badge-drm',
+    titleFor: (r) => r || FILTER_REASON_UNSUPPORTED,
+  },
+  duplicate: {
+    kind: 'duplicate',
+    label: 'Duplicate',
+    className: 'badge-beacon',
+    titleFor: (r) => r || 'Dropped by Dedupes',
+  },
+  'disabled-group': {
+    kind: 'disabled-group',
+    label: 'Disabled group',
+    className: 'badge-none',
+    titleFor: (r) => r || 'Channel is in a disabled group',
+  },
+  unhealthy: {
+    kind: 'unhealthy',
+    label: 'Unhealthy',
+    className: 'badge-drm',
+    titleFor: (r) => r || FILTER_REASON_UNHEALTHY,
+  },
+  'emit-disabled': {
+    kind: 'emit-disabled',
+    label: 'Emit disabled',
+    className: 'badge-none',
+    titleFor: (r) => r || FILTER_REASON_EMIT_DISABLED,
+  },
+  exclusion: {
+    kind: 'exclusion',
+    label: 'Regex exclusion',
+    className: 'badge-none',
+    titleFor: (r) => r || 'Matched an exclusion regex',
+  },
+  'missing-identity': {
+    kind: 'missing-identity',
+    label: 'Missing id',
+    className: 'badge-drm',
+    titleFor: (r) => r || FILTER_REASON_MISSING_IDENTITY,
+  },
+  'missing-stream': {
+    kind: 'missing-stream',
+    label: 'Missing stream',
+    className: 'badge-drm',
+    titleFor: (r) => r || FILTER_REASON_MISSING_STREAM,
+  },
+  excluded: {
+    kind: 'excluded',
+    label: 'Excluded',
+    className: 'badge-none',
+    titleFor: (r) => r || 'Excluded from export',
+  },
+}
+
+/** All status kinds that apply (in-lineup/proxied XOR exclusion chips). */
+export function lineupStatusKinds(
+  ch: Pick<
+    Channel,
+    | 'excluded'
+    | 'emitted_url'
+    | 'stream_url'
+    | 'filter_reason'
+    | 'filter_reasons'
+    | 'classification'
+  >,
+): LineupStatusKind[] {
+  if (!ch.excluded) {
+    return [
+      ch.emitted_url && ch.emitted_url !== ch.stream_url ? 'proxied' : 'in-lineup',
+    ]
+  }
+  const reasons = effectiveFilterReasons(ch)
+  const kinds: LineupStatusKind[] = []
+  const seen = new Set<LineupStatusKind>()
+  for (const r of reasons) {
+    const k = filterReasonKind(r)
+    if (!seen.has(k)) {
+      seen.add(k)
+      kinds.push(k)
+    }
+  }
+  if (kinds.length === 0) {
+    if (ch.classification === 'DRM') return ['drm']
+    return ['excluded']
+  }
+  return kinds
+}
+
+/** Primary status (first kind) — for sort / single-status callers. */
+export function lineupStatus(
+  ch: Pick<
+    Channel,
+    | 'excluded'
+    | 'emitted_url'
+    | 'stream_url'
+    | 'filter_reason'
+    | 'filter_reasons'
+    | 'classification'
+  >,
+): LineupStatusKind {
+  return lineupStatusKinds(ch)[0] ?? 'excluded'
+}
+
+export function lineupBadges(ch: Channel): LineupBadge[] {
+  if (!ch.excluded) {
+    const kind = lineupStatus(ch)
+    if (kind === 'proxied') {
+      return [
+        {
+          kind,
+          label: 'Via proxy',
+          className: 'badge-beacon',
+          title: 'Included via FASTProxy playback URL',
+        },
+      ]
+    }
+    return [
+      {
+        kind: 'in-lineup',
         label: 'In lineup',
         className: 'badge-native',
         title: 'Included in M3U / Jellyfin lineup',
-      }
-    case 'proxied':
-      return {
-        kind,
-        label: 'Via proxy',
-        className: 'badge-beacon',
-        title: 'Included via FASTProxy playback URL',
-      }
-    case 'needs-proxy':
-      return {
-        kind,
-        label: 'Needs proxy',
-        className: 'badge-drm',
-        title: ch.filter_reason || FILTER_REASON_NEEDS_PROXY,
-      }
-    case 'drm':
-      return {
-        kind,
-        label: 'DRM blocked',
-        className: 'badge-drm',
-        title: ch.filter_reason || FILTER_REASON_DRM,
-      }
-    case 'disabled-group':
-      return {
-        kind,
-        label: 'Disabled group',
-        className: 'badge-none',
-        title: ch.filter_reason || 'Channel is in a disabled group',
-      }
-    case 'excluded':
-      return {
-        kind,
-        label: 'Excluded',
-        className: 'badge-none',
-        title: ch.filter_reason || 'Excluded from export',
-      }
+      },
+    ]
   }
+  const reasons = effectiveFilterReasons(ch)
+  if (reasons.length === 0) {
+    return [lineupBadge(ch)]
+  }
+  const out: LineupBadge[] = []
+  const seen = new Set<LineupStatusKind>()
+  for (const r of reasons) {
+    const k = filterReasonKind(r)
+    if (seen.has(k)) continue
+    seen.add(k)
+    if (k === 'in-lineup' || k === 'proxied') continue
+    const meta = BADGE_BY_KIND[k]
+    out.push({
+      kind: k,
+      label: meta.label,
+      className: meta.className,
+      title: meta.titleFor(r),
+    })
+  }
+  return out
+}
+
+export function lineupBadge(ch: Channel): LineupBadge {
+  return lineupBadges(ch)[0]
 }
 
 /** Fixed Class filter options (stream dialect). */
@@ -180,10 +328,17 @@ export const CLASS_FILTERS = [
 export const STATUS_FILTERS: { value: LineupStatusKind; label: string }[] = [
   { value: 'in-lineup', label: 'In lineup' },
   { value: 'proxied', label: 'Via proxy' },
+  { value: 'duplicate', label: 'Duplicate' },
   { value: 'needs-proxy', label: 'Needs proxy' },
   { value: 'drm', label: 'DRM blocked' },
+  { value: 'unsupported', label: 'Unsupported class' },
   { value: 'disabled-group', label: 'Disabled group' },
-  { value: 'excluded', label: 'Excluded' },
+  { value: 'unhealthy', label: 'Unhealthy' },
+  { value: 'emit-disabled', label: 'Emit disabled' },
+  { value: 'exclusion', label: 'Regex exclusion' },
+  { value: 'missing-identity', label: 'Missing id' },
+  { value: 'missing-stream', label: 'Missing stream' },
+  { value: 'excluded', label: 'Excluded (other)' },
 ]
 
 /** Map legacy BEACON → AMAGI_SSAI for filters and display. */

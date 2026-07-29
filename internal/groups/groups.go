@@ -147,9 +147,10 @@ func (p *Policy) AssignedName(upstream string) (string, bool) {
 }
 
 // Apply sets EmittedGroup on exportable channels and marks channels in disabled
-// groups Excluded (leaving upstream Channel.Group untouched). It is a no-op when
-// the taxonomy is off, so emit falls back to the legacy "{label}: {group}".
-// Already-excluded channels keep their existing reason.
+// groups with a disabled-group FilterReason (leaving upstream Channel.Group
+// untouched). It is a no-op when the taxonomy is off, so emit falls back to the
+// legacy "{label}: {group}". Reasons accumulate — already-excluded channels
+// still gain the disabled-group reason when applicable.
 func Apply(chs []model.Channel, providerID model.ProviderID, p *Policy) []model.Channel {
 	if p == nil || !p.enabled {
 		return chs
@@ -157,22 +158,18 @@ func Apply(chs []model.Channel, providerID model.ProviderID, p *Policy) []model.
 	out := make([]model.Channel, len(chs))
 	copy(out, chs)
 	for i := range out {
-		if out[i].Excluded {
-			continue
-		}
 		title, _, disabled := p.Lookup(providerID, out[i].Group)
 		if disabled {
-			out[i].Excluded = true
-			if out[i].FilterReason == "" {
-				name := title
-				if name == "" {
-					name = strings.TrimSpace(out[i].Group)
-				}
-				out[i].FilterReason = model.DisabledGroupReason(name)
+			name := title
+			if name == "" {
+				name = strings.TrimSpace(out[i].Group)
 			}
+			out[i].AddFilterReason(model.DisabledGroupReason(name))
 			continue
 		}
-		out[i].EmittedGroup = title
+		if !out[i].Excluded {
+			out[i].EmittedGroup = title
+		}
 	}
 	return out
 }

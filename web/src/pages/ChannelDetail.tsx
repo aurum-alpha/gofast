@@ -9,6 +9,9 @@ import {
   healthBadge,
   nextL1Label,
   lineupBadge,
+  lineupBadges,
+  lineupStatusKinds,
+  effectiveFilterReasons,
 } from '../lib/channel'
 import type { Channel, ChannelEmit, ChannelHealth } from '../lib/channel'
 import {
@@ -458,7 +461,9 @@ export function ChannelDetailPage() {
     )
   }
 
-  const status = lineupBadge(channel)
+  const statuses = lineupBadges(channel)
+  const status = statuses[0] ?? lineupBadge(channel)
+  const statusKinds = lineupStatusKinds(channel)
   const cls = classBadge(channel.classification)
   const hb = healthBadge(channel.health?.status)
   const nextL1 = nextL1Label(channel, schedule ?? undefined)
@@ -468,6 +473,7 @@ export function ChannelDetailPage() {
     : channel.emitted_url || channel.stream_url
   const exportedLogo = channel.logo_url || undefined
   const inLineup = status.kind === 'in-lineup' || status.kind === 'proxied'
+  const reasons = effectiveFilterReasons(channel)
   const defaults = channel.emit_defaults
   const setEmit = <K extends keyof EmitDraft>(key: K, value: EmitDraft[K]) =>
     setEmitDraft((prev) => (prev ? { ...prev, [key]: value } : prev))
@@ -493,30 +499,44 @@ export function ChannelDetailPage() {
           <div className="badge-row">
             <span className={`badge badge-${cls.kind}`}>{cls.label}</span>
             <span className={`badge badge-${hb.kind}`}>{hb.label}</span>
-            <span className={`badge ${status.className}`} title={status.title}>
-              {status.label}
-            </span>
+            {statuses.map((s) => (
+              <span key={s.kind} className={`badge ${s.className}`} title={s.title}>
+                {s.label}
+              </span>
+            ))}
           </div>
-          {!inLineup && channel.filter_reason ? (
-            <p className="status-reason">{channel.filter_reason}</p>
+          {!inLineup && reasons.length > 0 ? (
+            <ul className="status-reason-list">
+              {reasons.map((r) => (
+                <li key={r} className="status-reason">
+                  {r}
+                </li>
+              ))}
+            </ul>
           ) : null}
-          {status.kind === 'needs-proxy' ? (
+          {statusKinds.includes('needs-proxy') ? (
             <p className="status-reason">
               Configure <code>proxy_base_url</code> / FASTProxy so Amagi SSAI streams can
               be emitted.
             </p>
           ) : null}
-          {status.kind === 'disabled-group' ? (
+          {statusKinds.includes('disabled-group') ? (
             <p className="status-reason">
               This channel's group is disabled in the{' '}
               <Link to="/groups">Groups</Link> editor, so it is not emitted to
               the M3U/XMLTV. Re-enable the group to include it.
             </p>
           ) : null}
-          {status.kind === 'drm' && channel.license_url ? (
+          {statusKinds.includes('drm') && channel.license_url ? (
             <p className="status-reason">
               DRM license evidence:{' '}
               <code className="url-break">{channel.license_url}</code>
+            </p>
+          ) : null}
+          {statusKinds.includes('duplicate') ? (
+            <p className="status-reason">
+              Dropped as a cross-provider duplicate in{' '}
+              <Link to="/dedupes">Dedupes</Link>.
             </p>
           ) : null}
         </div>
@@ -562,9 +582,9 @@ export function ChannelDetailPage() {
             </span>
           ) : null}
         </div>
-        {channel.emit?.export === 'enabled' && channel.excluded && channel.filter_reason ? (
+        {channel.emit?.export === 'enabled' && channel.excluded && reasons.length > 0 ? (
           <p className="status-reason" role="status">
-            Cannot emit: {channel.filter_reason}
+            Cannot emit: {reasons.join('; ')}
           </p>
         ) : null}
         <div className="table-wrap">
