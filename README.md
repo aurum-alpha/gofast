@@ -52,17 +52,20 @@ Optional **`proxy_all`**: every tune starts at the proxy (better observability; 
 ### Operator UI (embedded)
 
 - **Channels / Providers / Guide** — browse lineup, per-channel detail, HLS preview (raw vs emitted)
-- **Config** — live settings (no restart for app knobs): providers, health, groups, logos, proxy URLs
-- **Groups** — taxonomy so upstream group strings become consistent Jellyfin categories
-- **Dedupes** — same-title clusters across providers; prefer / drop so you don’t keep five “BET”s
+- **Status filters that match how export works** — In lineup / Via proxy, plus why something is out (Duplicate, Needs proxy, DRM, disabled group, emit disabled, regex, …). A channel can show **multiple** reasons at once
+- **Absent** — channels dropped from a provider catalog stay findable (ghost rows + presence history); Status shows Absent now / Dropped (7d)
+- **Config** — live settings (no restart for app knobs): providers, health, groups, categories, logos, proxy URLs, per-channel emit overrides
+- **Groups / Categories** — taxonomy so upstream folders and programme genres become consistent Jellyfin labels
+- **Dedupes** — same-title clusters across providers; prefer / drop so you don’t keep five “BET”s (losers marked Duplicate, distinct from manual emit-disable)
 - **Health** — scheduled L1 segment probes + optional L2 ffprobe; history and on-demand tests
 - **Cache** — disk inventory (generations, logos, attr history); soft purge & logo clear without a serving gap
-- **Access / Proxy / Status** — who pulled your playlists, proxy events, build identity & logo warm progress
+- **Access / Proxy / Status** — who pulled your playlists, proxy events, build identity, logo warm progress, lineup problem rollups
 
 ### Reliability & ops
 
 - Atomic cache generations under `/data` — playlist and guide publish as a pair
 - Soft purge keeps the current generation until refresh commits
+- **Channel attributes** (health, classification, catalog **presence**) in SQLite outside generations — durable add/drop history for digests and the UI
 - Optional logo cache + rewrite to your `FASTGEN_BASE_URL` (clients never hit upstream CDNs)
 - Client-access log for Jellyfin pulls of root M3U/XMLTV
 - Prometheus `/metrics`, rich `/healthz`, compose profiles: gen-only, `proxy`; works behind a reverse proxy for TLS
