@@ -33,9 +33,27 @@ GoFAST is built for that operator: Docker Compose / Portainer, persistent cache,
 ### Lineups & guides for Jellyfin
 
 - Aggregate **`/playlist.m3u`** + **`/epg.xml`**, or per-provider `/{id}.m3u` + `/{id}.xml`
-- Built-in providers: **LG Channels**, **Pluto**, **Samsung TV Plus**, **Roku**, **Plex** (via mjh), **Xumo**, **Tubi**, **TCL**, **DistroTV**, **LocalNow**
 - Stable channel numbers (offsets / synthesize), namespaced aggregate IDs, XMLTV with Now/Next-friendly programmes
 - Last-known-good generations — failed refreshes keep serving so Jellyfin isn’t left empty
+
+#### Built-in providers (where data comes from)
+
+Providers are **Go packages compiled into fastgen** — not plugins. YAML only overlays settings (enable, offsets, URL overrides). Defaults below are what the binary fetches unless you override `channels_url` / `epg_url` / `m3u_url`.
+
+| Id | Brand | Upstream source | Default fetch |
+|----|-------|-----------------|---------------|
+| `lg` | LG Channels | **LG Channels API** (official schedulelist) | `https://api.lgchannels.com/api/v1.0/schedulelist` — channels + programmes in one payload |
+| `pluto` | Pluto TV | **[i.mjh.nz](https://i.mjh.nz)** (Matt Huisman) + **jmp2.uk** stream CDN | Channels `https://i.mjh.nz/PlutoTV/.channels.json.gz`; EPG `…/PlutoTV/us.xml.gz`; streams `https://jmp2.uk/plu-{id}.m3u8` |
+| `samsung` | Samsung TV Plus | i.mjh.nz + jmp2.uk | `https://i.mjh.nz/SamsungTVPlus/.channels.json.gz` + `…/us.xml.gz`; stream slug from metadata (e.g. `stvp-{id}`) on jmp2.uk |
+| `roku` | The Roku Channel | i.mjh.nz + jmp2.uk | `https://i.mjh.nz/Roku/.channels.json.gz` + regionless EPG `…/Roku/all.xml.gz`; streams `https://jmp2.uk/rok-{id}.m3u8` |
+| `plex` | Plex FAST | i.mjh.nz + jmp2.uk | `https://i.mjh.nz/Plex/.channels.json.gz` + `…/Plex/us.xml.gz`; streams `https://jmp2.uk/plex-{id}.m3u8` |
+| `xumo` | Xumo Play | **Published M3U + XMLTV** ([BuddyChewChew/xumo-playlist-generator](https://github.com/BuddyChewChew/xumo-playlist-generator)) | `…/playlists/xumo_playlist.m3u` + `…/xumo_epg.xml.gz` on GitHub raw |
+| `tubi` | Tubi | Published pair ([BuddyChewChew/app-m3u-generator](https://github.com/BuddyChewChew/app-m3u-generator)) | `…/playlists/tubi_all.m3u` + `…/tubi_epg.xml` |
+| `tcl` | TCL channels | Published pair ([BuddyChewChew/tcl-playlist-generator](https://github.com/BuddyChewChew/tcl-playlist-generator)) | `…/tcl.m3u8` + `…/tcl_epg.xml` |
+| `distrotv` | DistroTV | Published pair ([vraomoturi/DistroTV](https://github.com/vraomoturi/DistroTV)) | `…/distrotv.m3u` + `…/distrotv.xml.gz` — many streams are Google DAI (**SESSION**; needs fastproxy) |
+| `localnow` | LocalNow | M3U from **apsattv.com**; EPG from BuddyChewChew | `https://www.apsattv.com/localnow.m3u` + GitHub `…/localnow-playlist-generator/…/epg.xml` |
+
+**Three fetch strategies in code:** LG’s own API; shared MJH JSON+XMLTV (`internal/provider/mjh`); shared published M3U/XMLTV pairs (`internal/provider/published`). Community scrapes can break when upstream generators change — GoFAST keeps last-known-good when a refresh fails. Full dialect/gotcha notes: [docs/SPEC.md](docs/SPEC.md).
 
 ### Stream dialects that match how playback actually works
 
@@ -58,14 +76,29 @@ Optional **`proxy_all`**: every tune starts at the proxy (better observability; 
 - **Groups / Categories** — taxonomy so upstream folders and programme genres become consistent Jellyfin labels
 - **Dedupes** — same-title clusters across providers; prefer / drop so you don’t keep five “BET”s (losers marked Duplicate, distinct from manual emit-disable)
 - **Health** — scheduled L1 segment probes + optional L2 ffprobe; history and on-demand tests
-- **Ops report email** — daily rich HTML digest (SMTP / SES) at a local IANA time: fleet health, providers, channel add/drop/class/health deltas; Test SMTP + preview send + 90-day archive/resend
-- **Cache** — disk inventory (generations, logos, attr history); soft purge & logo clear without a serving gap
-- **Access / Proxy / Status** — who pulled your playlists, proxy events, build identity, logo warm progress, lineup problem rollups
+- **Cache** — disk inventory (generations, logo **file count + size**, attr history); soft purge & logo clear without a serving gap
+- **Access / Proxy / Status** — who pulled your playlists, proxy events, build identity, logo warm progress, lineup problem rollups, ops-report schedule when enabled
+
+### Daily ops-report email
+
+Optional once-per-local-day digest so you can see overnight refresh/health/lineup churn without opening the UI. Off by default; enable under **Config → Ops report** (or `ops_report` in YAML).
+
+| Piece | Behavior |
+|-------|----------|
+| **Schedule** | IANA timezone + local `HH:MM` (default `America/Los_Angeles` / `00:00`). DST-aware; 2h grace catch-up if gen was down at send time. One official send per local calendar day. |
+| **Delivery** | Multipart plain text + rich HTML (matches the dark operator UI). SES-friendly SMTP (`host` / `port` / STARTTLS / username / password). Prefer `FASTGEN_SMTP_PASSWORD` (and optional `FASTGEN_SMTP_USERNAME`) — env wins and locks the Config field. |
+| **Subject** | `GoFAST ops report — YYYY-MM-DD` (local date; timezone lives in the body). |
+| **Always send** | Even when deltas are empty (“no changes in window”). |
+| **Fleet snapshot** | Per-provider refresh outcome / age, durable refresh success/fail tallies since the last official send, channel health rollup (healthy / degraded / down / untested). |
+| **Channel deltas** | Adds, drops, classification changes, and health **status transitions** (not every probe tick) since the prior successful send — backed by the channel-attr store. |
+| **Manual actions** | **Test SMTP** (smoke, not archived); **Generate and Send Report** (full preview: archived, does not advance `last_success` or reset tallies); **Resend** from the 90-day archive under `{data_dir}/ops_reports/`. |
+| **APIs** | `/api/ops-report/*` (schedule, archives, resend, test-smtp, send-preview). Status UI shows last/next when enabled. |
 
 ### Reliability & ops
 
 - Atomic cache generations under `/data` — playlist and guide publish as a pair
 - Soft purge keeps the current generation until refresh commits
+- **`min_channels`** gates on **upstream catalog** size (before Dedupes / emit-disable / dialect filters), not the exported M3U count — editable per provider in Config; Providers UI shows Catalog vs Exported; `/healthz` exposes both
 - **Channel attributes** (health, classification, catalog **presence**) in SQLite outside generations — durable add/drop history for digests and the UI
 - Optional logo cache + rewrite to your `FASTGEN_BASE_URL` (clients never hit upstream CDNs)
 - Client-access log for Jellyfin pulls of root M3U/XMLTV
@@ -173,9 +206,10 @@ Production files (pull-only, no secrets):
 | `/playlist.m3u` | Aggregate playlist across enabled providers |
 | `/epg.xml` | Aggregate XMLTV across enabled providers |
 | `/logos/{provider}/{file}` | Cached logos when `cache_logos` is on |
-| `/api/cache` | Cache inventory (sizes, generations, channelattr stats) |
+| `/api/cache` | Cache inventory (sizes, logo file counts, generations, channelattr stats) |
+| `/api/ops-report/*` | Ops-report schedule, archives, test SMTP, preview send, resend |
 | `/` | Embedded operator UI |
-| `/healthz` | Liveness + per-provider stale/export status |
+| `/healthz` | Liveness + per-provider catalog/export counts and stale status |
 | `/metrics` | Prometheus text exposition |
 
 Channel detail includes an HLS **Preview** player (raw upstream vs emitted
@@ -220,11 +254,11 @@ curl -sS 'https://gofast-proxy.example.com/stream/<provider>/<id>.m3u8' | head -
 
 ### Config (`/data/config.yaml`)
 
-Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. Implemented ids are `lg`, `pluto`, `samsung`, `roku`, `plex`, `xumo`, `tubi`, `tcl`, `distrotv`, and `localnow`. Pluto/Samsung/Roku/Plex use Matt Huisman's `i.mjh.nz` feeds; Xumo/Tubi/TCL/DistroTV/LocalNow consume maintained M3U/XMLTV pairs. Every provider (LG included) runs only when its YAML block is present; `enabled: false` disables an existing block. A fresh `/data` with no `config.yaml` generates a defaults-only file with no providers enabled.
+Runtime YAML on the gen data volume (not baked into the image). **Provider implementations are code** — each is a package compiled into the binary. This file only *customizes* a known provider (offsets, exclusions, enabled, URL overrides); it cannot add a provider without shipping Go, and ids with no implementation are ignored (warned) at startup. See [Built-in providers](#built-in-providers-where-data-comes-from) for each id and the default upstream URL(s). Every provider runs only when its YAML block is present; `enabled: false` disables an existing block. A fresh `/data` with no `config.yaml` generates a defaults-only file with no providers enabled.
 
 `config.yaml` is **operator-writable** — mount `/data` read-write. If the file is missing on first boot, fastgen generates it from the baked-in code defaults (deploy-varying values stay in the environment). App-managed settings are persisted back atomically, preserving your comments and any keys fastgen does not manage (a `.bak` of the prior file is kept). A read-only mount surfaces a clear "config is read-only" message instead of failing.
 
-**Settings UI (live, no restart):** the web UI's **Config** page edits settings as typed controls and applies them live — base/proxy URLs, logo caching, log level, all health knobs, the **Groups** taxonomy, **Dedupes** (same-title cross-provider prefer/drop via `channel_emit`), and every per-provider setting including enable/disable (disable stops fetches, hides the channels, and 404s `/{id}.m3u`; the cache is kept so re-enabling is instant). The **Cache** page inventories on-disk generations/logos and channelattr history depth, and offers soft purge / logo clear (also on Config, Provider detail, and Channel detail). Soft purge keeps the serving generation until refresh commits. The rule is: **edit in the UI = applies live; hand-edit the file = restart the container.** `listen`/`PORT` and `data_dir` are restart-only by design and have no UI control. Values set via environment variables show as locked in the UI (env always wins).
+**Settings UI (live, no restart):** the web UI's **Config** page edits settings as typed controls and applies them live — base/proxy URLs, logo caching, log level, all health knobs, **ops report** (schedule + SMTP non-secrets), the **Groups** taxonomy, **Dedupes** (same-title cross-provider prefer/drop via `channel_emit`), and every per-provider setting including enable/disable and **`min_channels`** (disable stops fetches, hides the channels, and 404s `/{id}.m3u`; the cache is kept so re-enabling is instant). The **Cache** page inventories on-disk generations, logo file count/size, and channelattr history depth, and offers soft purge / logo clear (also on Config, Provider detail, and Channel detail). Soft purge keeps the serving generation until refresh commits. The rule is: **edit in the UI = applies live; hand-edit the file = restart the container.** `listen`/`PORT` and `data_dir` are restart-only by design and have no UI control. Values set via environment variables show as locked in the UI (env always wins).
 
 - [`config.example.yaml`](config.example.yaml) — starter template with the well-known provider overlays. Local compose auto-seeds it into `./.data/config.yaml` on first run (`seed-config` service); delete that file to re-seed. In prod, copy it to `/data/config.yaml` before first boot; otherwise a defaults-only file with no providers enabled is generated.
 
@@ -253,4 +287,4 @@ go run ./cmd/fastgen
 
 ## Status
 
-Providers implemented: LG, Pluto, Samsung TV Plus, Roku, Plex, Xumo, Tubi, TCL, DistroTV, and LocalNow.
+Ten baked-in providers (LG API, i.mjh.nz/jmp2.uk, and published M3U/XMLTV pairs) — see [Built-in providers](#built-in-providers-where-data-comes-from).

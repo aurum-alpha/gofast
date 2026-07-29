@@ -192,7 +192,12 @@ export function ProvidersPage() {
                 <th>ID</th>
                 <th>Enabled</th>
                 <th>Label</th>
-                <th className="number-cell">Exported</th>
+                <th className="number-cell" title="Upstream catalog size (before Dedupes / export filters)">
+                  Catalog
+                </th>
+                <th className="number-cell" title="In the emitted M3U/XMLTV">
+                  Exported
+                </th>
                 <th className="number-cell">Programmes</th>
                 <th className="number-cell">Excluded</th>
                 <th>Status</th>
@@ -207,7 +212,7 @@ export function ProvidersPage() {
             <tbody>
               {data.providers.length === 0 ? (
                 <tr className="empty">
-                  <td colSpan={13}>
+                  <td colSpan={14}>
                     No providers in config. Copy config.example.yaml to
                     /data/config.yaml and restart.
                   </td>
@@ -225,6 +230,9 @@ export function ProvidersPage() {
                       </td>
                       <td>{p.enabled ? 'yes' : 'no'}</td>
                       <td>{p.label || '—'}</td>
+                      <td className="number-cell">
+                        {(p.stats?.total_channels ?? 0).toLocaleString()}
+                      </td>
                       <td className="number-cell">
                         {(p.stats?.exported_channels ?? 0).toLocaleString()}
                       </td>

@@ -169,6 +169,56 @@ func TestSyntheticNumberPersistsAcrossRefreshAndRestore(t *testing.T) {
 	}
 }
 
+func TestMinChannelsGatesCatalogNotExport(t *testing.T) {
+	// Three upstream channels, two DRM-excluded → only 1 exported, but catalog=3.
+	start := time.Now().UTC()
+	rd := readerFunc{
+		fetch: func(context.Context) (provider.Raw, error) {
+			return provider.Raw{"fixture": []byte("RAW")}, nil
+		},
+		parse: func(provider.Raw) ([]model.Channel, []model.Programme, error) {
+			chs := []model.Channel{
+				{ID: "a", Name: "A", StreamURL: "https://example.test/a.m3u8", Classification: model.ClassNative},
+				{ID: "b", Name: "B", StreamURL: "https://example.test/b.m3u8", Classification: model.ClassDRM, LicenseURL: "https://license"},
+				{ID: "c", Name: "C", StreamURL: "https://example.test/c.m3u8", Classification: model.ClassDRM, LicenseURL: "https://license"},
+			}
+			progs := []model.Programme{{ChannelID: "a", Title: "A", Start: start, Stop: start.Add(time.Hour)}}
+			return chs, progs, nil
+		},
+	}
+
+	settings := model.ProviderSettings{
+		ID:          model.ProviderLG,
+		MinChannels: 2, // would fail if gated on exported (1)
+	}
+	registry := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: rd},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := registry.Feed(model.ProviderLG)
+	cc := cache.New(t.TempDir())
+	if err := (&providerRefresher{feed: feed, cache: cc}).Refresh(context.Background()); err != nil {
+		t.Fatalf("catalog gate should pass: %v", err)
+	}
+	stats := feed.Stats()
+	if stats.TotalChannels != 3 {
+		t.Fatalf("catalog=%d want 3", stats.TotalChannels)
+	}
+	if stats.ExportedChannels != 1 {
+		t.Fatalf("exported=%d want 1", stats.ExportedChannels)
+	}
+}
+
+type readerFunc struct {
+	fetch func(context.Context) (provider.Raw, error)
+	parse func(provider.Raw) ([]model.Channel, []model.Programme, error)
+}
+
+func (r readerFunc) Fetch(ctx context.Context) (provider.Raw, error) { return r.fetch(ctx) }
+func (r readerFunc) Parse(raw provider.Raw) ([]model.Channel, []model.Programme, error) {
+	return r.parse(raw)
+}
+
 func TestFailedGateDoesNotConsumeSyntheticNumber(t *testing.T) {
 	settings := model.ProviderSettings{
 		ID:                       model.ProviderXumo,

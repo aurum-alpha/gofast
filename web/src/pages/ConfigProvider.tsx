@@ -16,6 +16,7 @@ type Draft = {
   label: string
   channel_number_offset: string
   synthesize_channel_numbers: string
+  min_channels: string
   refresh_interval: string
   exclusions: string
   slug_template: string
@@ -41,6 +42,7 @@ function draftFrom(entry: ConfigProviderEntry): Draft {
       s.synthesize_channel_numbers != null && s.synthesize_channel_numbers !== 0
         ? String(s.synthesize_channel_numbers)
         : '',
+    min_channels: String(s.min_channels ?? 1),
     refresh_interval: s.refresh_interval ?? '',
     exclusions: (s.exclusions ?? []).join('\n'),
     slug_template: s.slug_template ?? '',
@@ -158,6 +160,15 @@ export function ConfigProviderPage() {
       }
       if (!pushOptionalInt('channel_number_offset', 'Channel number offset')) return
       if (!pushOptionalInt('synthesize_channel_numbers', 'Synthesize channel numbers')) return
+      if (draft.min_channels !== original.min_channels) {
+        const n = parseIntStrict(String(draft.min_channels))
+        if (n === null || n < 1) {
+          setToast({ ok: false, message: 'Min channels: must be an integer ≥ 1' })
+          setSaving(false)
+          return
+        }
+        ops.push({ path: `${prefix}min_channels`, value: n })
+      }
       pushText('label')
       pushText('refresh_interval')
       for (const f of OPTIONAL_FIELDS) pushText(f.key)
@@ -307,13 +318,11 @@ export function ConfigProviderPage() {
             'Synthesize channel numbers',
             'Base for providers without numbers; blank or 0 = off',
           )}
-          <div className="config-field">
-            <span className="config-field-label">Min channels</span>
-            <code>{entry.settings.min_channels}</code>
-            <span className="field-hint">
-              Internal safeguard (rejects a gutted fetch) — file-only
-            </span>
-          </div>
+          {textField(
+            'min_channels',
+            'Min channels',
+            'Reject a refresh whose upstream catalog is smaller than this (before Dedupes / export filters)',
+          )}
           {textField('refresh_interval', 'Refresh interval', 'Go duration, e.g. 3h')}
           <div className="config-field">
             <span className="config-field-label">Exclusions</span>

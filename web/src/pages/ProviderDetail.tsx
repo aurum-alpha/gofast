@@ -350,7 +350,7 @@ export function ProviderDetailPage() {
       <div className="stat-grid">
         <div className="stat"><span>Last success</span><strong>{relativeTime(stats.fetched_at)}</strong></div>
         <div className="stat"><span>Last attempt</span><strong>{relativeTime(stats.last_attempt_at)}</strong></div>
-        <div className="stat"><span>Channels</span><strong>{stats.total_channels.toLocaleString()}</strong></div>
+        <div className="stat"><span>Catalog</span><strong>{stats.total_channels.toLocaleString()}</strong></div>
         <div className="stat"><span>Exported</span><strong>{stats.exported_channels.toLocaleString()}</strong></div>
         <div className="stat"><span>Excluded</span><strong>{stats.excluded_channels.toLocaleString()}</strong></div>
         <div className="stat"><span>Programmes</span><strong>{stats.total_programmes.toLocaleString()}</strong></div>

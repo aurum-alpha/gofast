@@ -667,13 +667,16 @@ func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, pr
 		label = string(id)
 	}
 
+	// min_channels guards against a gutted *upstream catalog*, not against
+	// Dedupes / emit-disable / dialect filters leaving few exportable rows.
+	catalog := len(chs)
 	exported := len(model.ForExport(chs))
 	minCh := s.MinChannels
 	if minCh <= 0 {
 		minCh = 1
 	}
-	if exported < minCh {
-		return provider.Lineup{}, nil, nil, fmt.Errorf("provider %s: %d exported channels below min_channels %d", id, exported, minCh)
+	if catalog < minCh {
+		return provider.Lineup{}, nil, nil, fmt.Errorf("provider %s: %d catalog channels below min_channels %d (exported %d)", id, catalog, minCh, exported)
 	}
 
 	exportedIDs := make(map[string]struct{}, exported)

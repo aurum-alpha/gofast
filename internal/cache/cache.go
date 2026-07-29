@@ -544,6 +544,7 @@ type Inventory struct {
 	Aggregate       *ProviderInventory  `json:"aggregate,omitempty"`
 	BytesTotal      int64               `json:"bytes_total"`
 	LogoBytes       int64               `json:"logo_bytes"`
+	LogoFiles       int                 `json:"logo_files"`
 	GenerationCount int                 `json:"generation_count"`
 	UnknownDirs     []string            `json:"unknown_dirs,omitempty"`
 }
@@ -578,6 +579,7 @@ func (c *Cache) Inventory(known []model.ProviderID) (Inventory, error) {
 			out.Aggregate = &inv
 			out.BytesTotal += inv.BytesTotal
 			out.LogoBytes += inv.Logos.Bytes
+			out.LogoFiles += inv.Logos.Files
 			for _, g := range inv.Generations {
 				if !g.IsStaging {
 					out.GenerationCount++
@@ -596,6 +598,7 @@ func (c *Cache) Inventory(known []model.ProviderID) (Inventory, error) {
 			out.Providers = append(out.Providers, inv)
 			out.BytesTotal += inv.BytesTotal
 			out.LogoBytes += inv.Logos.Bytes
+			out.LogoFiles += inv.Logos.Files
 			for _, g := range inv.Generations {
 				if !g.IsStaging {
 					out.GenerationCount++

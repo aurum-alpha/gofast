@@ -37,6 +37,7 @@ type CacheResponse = {
   aggregate?: ProviderInventory
   bytes_total: number
   logo_bytes: number
+  logo_files: number
   generation_count: number
   unknown_dirs?: string[]
   channelattr: ChannelAttrStats
@@ -220,7 +221,8 @@ export function CachePage() {
         <h2>Summary</h2>
         <div className="stat-grid">
           <Metric label="Cache total" value={formatBytes(data.bytes_total)} />
-          <Metric label="Logos" value={formatBytes(data.logo_bytes)} />
+          <Metric label="Logo files" value={String(data.logo_files ?? 0)} />
+          <Metric label="Logo size" value={formatBytes(data.logo_bytes)} />
           <Metric label="Generations" value={String(data.generation_count)} />
           <Metric label="Attr DB" value={formatBytes(attr.db_bytes)} />
           <Metric label="Attr current" value={String(attr.current_rows)} />

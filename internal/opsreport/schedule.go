@@ -103,7 +103,7 @@ func FormatLocalDate(t time.Time, loc *time.Location) string {
 
 // Subject builds the email subject line.
 func Subject(kind Kind, localDate, zone string) string {
-	base := fmt.Sprintf("GoFAST ops report — %s (%s)", localDate, zone)
+	base := fmt.Sprintf("GoFAST ops report — %s", localDate)
 	switch kind {
 	case KindPreview:
 		return "[Preview] " + base

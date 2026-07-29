@@ -382,10 +382,12 @@ When caching is enabled:
   `guide_hours_ahead`. Exhausted horizon (`guide_end` before now, or ahead
   shorter than the effective interval) logs `guide_horizon_exhausted` but does
   not fail HEALTHCHECK.
-- A refresh is published only if it passes gates: channel count ≥ per-provider
-  `min_channels`, XML re-parses, programme count > 0. Otherwise keep serving
-  the previous good snapshot. `/healthz` marks a provider `stale: true` when
-  `status.json` still holds a `LastError` while last-known-good is served.
+- A refresh is published only if it passes gates: **upstream catalog** size ≥
+  per-provider `min_channels` (count before Dedupes / emit-disable / dialect
+  filters — not the exported M3U size), XML re-parses, programme count > 0.
+  Otherwise keep serving the previous good snapshot. `/healthz` marks a
+  provider `stale: true` when `status.json` still holds a `LastError` while
+  last-known-good is served.
 - Snapshots are atomic swaps of in-memory objects (RWMutex or atomic.Pointer);
   additionally persist last-good output to `/data/cache/` so a container
   restart serves immediately even if upstreams are down at boot. Per-provider

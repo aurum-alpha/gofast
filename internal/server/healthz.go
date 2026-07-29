@@ -25,7 +25,9 @@ type healthzProvider struct {
 	LastAttemptAt                 time.Time `json:"last_attempt_at,omitempty"`
 	LastError                     string    `json:"last_error,omitempty"`
 	LastErrorAt                   time.Time `json:"last_error_at,omitempty"`
+	CatalogChannels               int       `json:"catalog_channels"`
 	ExportedChannels              int       `json:"exported_channels"`
+	ExcludedChannels              int       `json:"excluded_channels"`
 	ExportedProgrammes            int       `json:"exported_programmes"`
 	GuideHoursAhead               float64   `json:"guide_hours_ahead"`
 	RefreshIntervalClamped        bool      `json:"refresh_interval_clamped"`
@@ -69,6 +71,8 @@ func HealthzHandler(reg *provider.Registry) http.HandlerFunc {
 				LastErrorAt:                   stats.LastErrorAt,
 				ExportedChannels:              stats.ExportedChannels,
 				ExportedProgrammes:            stats.ExportedProgrammes,
+				CatalogChannels:               stats.TotalChannels,
+				ExcludedChannels:              stats.ExcludedChannels,
 				GuideHoursAhead:               stats.GuideHoursAhead,
 				RefreshIntervalClamped:        clamped,
 				RefreshIntervalConfigured:     stats.RefreshIntervalConfigured,

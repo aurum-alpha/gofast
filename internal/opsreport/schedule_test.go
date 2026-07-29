@@ -125,7 +125,7 @@ func TestRenderHTMLContainsBrand(t *testing.T) {
 		Providers: []ProviderRow{{ID: "lg", Label: "LG Channels", Enabled: true, Exported: 42}},
 		Added:     []DeltaRow{{Provider: "lg", ChannelID: "abc", Name: "Demo"}},
 	})
-	for _, want := range []string{"GoFAST", "#00a4dc", "Fleet health", "LG Channels", "Demo", "Open Status"} {
+	for _, want := range []string{"GoFAST", "#00a4dc", "#101014", "#e8ebef", "#1a1c22", "Fleet health", "LG Channels", "Demo", "Open Status", `color-scheme" content="dark`} {
 		if !contains(html, want) {
 			t.Fatalf("html missing %q", want)
 		}
