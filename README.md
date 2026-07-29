@@ -26,6 +26,14 @@ Gen works standalone. Add the proxy when you want Amagi / SESSION playback (or f
 
 GoFAST is built for that operator: Docker Compose / Portainer, persistent cache, live settings UI, no cloud account required.
 
+## Screenshots
+
+| ![Status](docs/screenshots/status.jpg) | ![Providers](docs/screenshots/providers.jpg) |
+|:---:|:---:|
+| Status | Providers |
+| ![Channels](docs/screenshots/channels.jpg) | ![Guide](docs/screenshots/guide.jpg) |
+| Channels | Guide |
+
 ---
 
 ## Features
@@ -68,6 +76,8 @@ Providers are **Go packages compiled into fastgen** — not plugins. YAML only o
 Optional **`proxy_all`**: every tune starts at the proxy (better observability; proxy becomes critical for all channels). Default is selective: proxy only Amagi + SESSION.
 
 ### Operator UI (embedded)
+
+Embedded SPA in the fastgen binary — see [screenshots](#screenshots) for Status, Providers, Channels, and Guide.
 
 - **Channels / Providers / Guide** — browse lineup, per-channel detail, HLS preview (raw vs emitted)
 - **Status filters that match how export works** — In lineup / Via proxy, plus why something is out (Duplicate, Needs proxy, DRM, disabled group, emit disabled, regex, …). A channel can show **multiple** reasons at once
@@ -122,7 +132,7 @@ Optional once-per-local-day digest so you can see overnight refresh/health/lineu
 | [docs/SPEC.md](docs/SPEC.md) | Requirements, dialects, gotchas |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Dual-binary design, persistence, milestones |
 | [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md) | Glossary (HLS, SSAI, dialects, mint, proxy URLs) |
-| [AGENTS.md](AGENTS.md) | How to work in this repo (branches, PRs, quality gates) |
+| [AGENTS.md](AGENTS.md) | Agent workflow: GitHub Issues, branches, PRs, quality gates |
 
 ---
 

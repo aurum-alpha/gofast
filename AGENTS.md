@@ -6,41 +6,57 @@ Instructions for humans and coding agents working in this repository.
 
 - Product requirements: `docs/SPEC.md`
 - Architecture / build approach: `docs/ARCHITECTURE.md`
+- Work queue: **GitHub Issues** on [j27-aurum/gofast](https://github.com/j27-aurum/gofast/issues)
 
-Implement **one task at a time**. Do not invent parallel workstreams from a plan file.
+Implement **one GitHub issue at a time**. Do not invent parallel workstreams from a plan file.
+
+Linear (team J27) is legacy — do not create or update Linear issues for new work. Prefer GitHub for task tracking, discussion, and linking PRs.
 
 ## Branch and pull request rules
 
-1. **One task per pull request.** Do not combine unrelated work in one PR.
-2. **Branch names** should be descriptive, e.g. `cache-management` or `add-tcl-provider`.
-3. Open the PR against `main` (unless the task says otherwise).
+1. **One GitHub issue per pull request.** Do not combine unrelated issues in one PR.
+2. **Branch name** should include the issue number, e.g.:
+   - `37-distrotv-session-mint`
+   - `issue-37-distrotv-session-mint`
+3. Open the PR against `main` (unless the issue says otherwise). Link the GitHub issue in the PR description (`Fixes #N` / `Closes #N` when the PR completes the work).
 
 ## Quality gates (before commit and before push)
 
 1. **Automated tests must pass** before commit:
- - `test -z "$(gofmt -l .)"` (or the CI gofmt step)
- - `go test ./...`
- - Any task-specific checks called out in the acceptance criteria
+   - `test -z "$(gofmt -l .)"` (or the CI gofmt step)
+   - `go test ./...`
+   - Any issue-specific checks called out in the acceptance criteria
 2. **Agent smoke checks** (optional, on the branch): run quick local verification to catch obvious breakage before handing off.
 3. Do not commit or push with failing tests.
 4. Do not use `--no-verify` to skip hooks.
 
 ## Human approval gate (required)
 
-**Do not commit, push, or merge until the human has manually tested and given feedback.**
+**Do not commit, push, merge, or close a GitHub issue until the human has manually tested and given feedback.**
 
 Workflow for agents:
 
 1. Implement on a branch; leave changes **uncommitted** or **committed locally only** until the human confirms — ask if unclear.
 2. Post a short handoff: what changed, **exact commands to run**, and **what to look for** (expected logs, files, API fields, UI). Always include this verification block at the end of an implementation turn — do not wait to be asked.
 3. Wait for explicit human sign-off (e.g. “looks good”, “merge it”, “commit and push”).
-4. Only after sign-off: commit (if needed), push, open/update PR, merge if requested.
+4. Only after sign-off: commit (if needed), push, open/update PR, merge if requested, and close or let `Fixes #N` close the issue.
 
-Never treat agent-only verification as done.
+Agents may comment on the GitHub issue while coding (progress, blockers, PR link). Never close an issue on agent-only verification.
+
+## Issue status workflow
+
+Keep the GitHub issue honest as you work:
+
+| When | What to do |
+|------|------------|
+| Not started | Leave **open**; optional label `todo` / no assignee |
+| Actively coding | Comment that work started; assign yourself if appropriate; open a draft PR early if useful |
+| Ready for human manual test | Open/update PR; comment with verification steps; request review |
+| Human verified; merged or accepted | Close via `Fixes #N` on merge, or close manually with a short note |
 
 ## Milestone order
 
-Honor project milestones M0 → M5 (see `docs/ARCHITECTURE.md`). Do not start work in milestone N+1 until milestone N exit criteria are met (tests green, milestone work accepted), unless the task is explicitly unblocked and parallel-safe.
+Honor project milestones M0 → M5 (see `docs/ARCHITECTURE.md`). Do not start work in milestone N+1 until milestone N exit criteria are met (tests green, milestone work accepted), unless the issue is explicitly unblocked and parallel-safe.
 
 **Vertical slice over adapter breadth:** ship one provider end-to-end (fetch → emit → HTTP playlist) before starting the next adapter epic.
 
