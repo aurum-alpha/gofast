@@ -37,8 +37,15 @@ func ChannelHealthHistoryHandler(reg *provider.Registry, attrs *channelattr.Stor
 		providerID := model.ProviderID(r.PathValue("provider"))
 		normalizedID := r.PathValue("normalizedId")
 		if _, _, ok := lookupChannel(reg, providerID, normalizedID); !ok {
-			http.NotFound(w, r)
-			return
+			// Allow history for absent ghosts that still have attr rows.
+			if attrs == nil {
+				http.NotFound(w, r)
+				return
+			}
+			if _, ok := findChannelOrGhost(reg, attrs, string(providerID), normalizedID); !ok {
+				http.NotFound(w, r)
+				return
+			}
 		}
 		limit := 0
 		if raw := r.URL.Query().Get("limit"); raw != "" {

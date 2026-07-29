@@ -53,6 +53,7 @@ export type Channel = {
   filter_reason?: string
   filter_reasons?: string[]
   excluded: boolean
+  presence?: string
   description?: string
   health?: ChannelHealth
   emit?: ChannelEmit
@@ -65,6 +66,7 @@ export const FILTER_REASON_NEEDS_PROXY =
 export const FILTER_REASON_UNHEALTHY = 'unhealthy (exclude_unhealthy)'
 export const FILTER_REASON_EMIT_DISABLED = 'emit disabled'
 export const FILTER_REASON_DUPLICATE = 'duplicate'
+export const FILTER_REASON_ABSENT = 'absent from provider'
 export const FILTER_REASON_MISSING_IDENTITY = 'missing identity'
 export const FILTER_REASON_MISSING_STREAM = 'missing stream'
 export const FILTER_REASON_UNSUPPORTED = 'unsupported classification'
@@ -78,6 +80,7 @@ export type LineupStatusKind =
   | 'drm'
   | 'unsupported'
   | 'duplicate'
+  | 'absent'
   | 'disabled-group'
   | 'unhealthy'
   | 'emit-disabled'
@@ -138,6 +141,7 @@ export function filterReasonKind(reason: string): LineupStatusKind {
   if (reason === FILTER_REASON_UNHEALTHY) return 'unhealthy'
   if (reason === FILTER_REASON_EMIT_DISABLED) return 'emit-disabled'
   if (reason === FILTER_REASON_DUPLICATE) return 'duplicate'
+  if (reason === FILTER_REASON_ABSENT) return 'absent'
   if (reason === FILTER_REASON_MISSING_IDENTITY) return 'missing-identity'
   if (reason === FILTER_REASON_MISSING_STREAM) return 'missing-stream'
   if (reason === FILTER_REASON_UNSUPPORTED) return 'unsupported'
@@ -173,6 +177,12 @@ const BADGE_BY_KIND: Record<
     label: 'Duplicate',
     className: 'badge-beacon',
     titleFor: (r) => r || 'Dropped by Dedupes',
+  },
+  absent: {
+    kind: 'absent',
+    label: 'Absent',
+    className: 'badge-none',
+    titleFor: (r) => r || FILTER_REASON_ABSENT,
   },
   'disabled-group': {
     kind: 'disabled-group',
@@ -329,6 +339,7 @@ export const STATUS_FILTERS: { value: LineupStatusKind; label: string }[] = [
   { value: 'in-lineup', label: 'In lineup' },
   { value: 'proxied', label: 'Via proxy' },
   { value: 'duplicate', label: 'Duplicate' },
+  { value: 'absent', label: 'Absent' },
   { value: 'needs-proxy', label: 'Needs proxy' },
   { value: 'drm', label: 'DRM blocked' },
   { value: 'unsupported', label: 'Unsupported class' },

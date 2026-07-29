@@ -1145,3 +1145,80 @@ func (r *gateReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, er
 			ChannelID: "news", Title: "News", Start: start, Stop: start.Add(time.Hour),
 		}}, nil
 }
+
+func TestEmitPresenceAddDropNoOp(t *testing.T) {
+	attrs, err := channelattr.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = attrs.Close() })
+
+	settings := model.ProviderSettings{ID: model.ProviderLG, MinChannels: 1}
+	reg := provider.NewRegistry(
+		map[model.ProviderID]provider.Reader{model.ProviderLG: staticReader{}},
+		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},
+	)
+	feed, _ := reg.Feed(model.ProviderLG)
+	pr := &providerRefresher{feed: feed, attrs: attrs}
+	ctx := context.Background()
+
+	pr.emitPresence(ctx, []model.Channel{
+		{NormalizedID: "a", Name: "Alpha"},
+		{NormalizedID: "b", Name: "Beta"},
+	}, "refresh")
+
+	cur := attrs.CurrentPresence(model.ProviderLG)
+	if len(cur) != 2 || !cur["a"].IsPresent() || !cur["b"].IsPresent() {
+		t.Fatalf("bootstrap present: %+v", cur)
+	}
+	n, err := attrs.EventCount(ctx)
+	if err != nil || n != 2 {
+		t.Fatalf("bootstrap events: n=%d err=%v", n, err)
+	}
+
+	// No-op: same catalog.
+	pr.emitPresence(ctx, []model.Channel{
+		{NormalizedID: "a", Name: "Alpha"},
+		{NormalizedID: "b", Name: "Beta"},
+	}, "refresh")
+	n, err = attrs.EventCount(ctx)
+	if err != nil || n != 2 {
+		t.Fatalf("noop should not append: n=%d err=%v", n, err)
+	}
+
+	// Drop b, add c.
+	pr.emitPresence(ctx, []model.Channel{
+		{NormalizedID: "a", Name: "Alpha"},
+		{NormalizedID: "c", Name: "Charlie"},
+	}, "refresh")
+	cur = attrs.CurrentPresence(model.ProviderLG)
+	if !cur["a"].IsPresent() || cur["b"].IsPresent() || !cur["c"].IsPresent() {
+		t.Fatalf("after add/drop: %+v", cur)
+	}
+	if cur["b"].State != channelattr.PresenceAbsent || cur["b"].Name != "Beta" {
+		t.Fatalf("absent should keep name: %+v", cur["b"])
+	}
+	n, err = attrs.EventCount(ctx)
+	if err != nil || n != 4 { // 2 bootstrap + absent b + present c
+		t.Fatalf("add/drop events: n=%d err=%v", n, err)
+	}
+
+	// Restore path with same set must not re-bootstrap.
+	pr.emitPresence(ctx, []model.Channel{
+		{NormalizedID: "a", Name: "Alpha"},
+		{NormalizedID: "c", Name: "Charlie"},
+	}, "restore")
+	n, err = attrs.EventCount(ctx)
+	if err != nil || n != 4 {
+		t.Fatalf("restore noop: n=%d err=%v", n, err)
+	}
+
+	since := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	events, err := attrs.EventsSince(ctx, since, []channelattr.Kind{channelattr.KindPresence}, model.ProviderLG, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 4 {
+		t.Fatalf("EventsSince presence: %d", len(events))
+	}
+}

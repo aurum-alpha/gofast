@@ -262,3 +262,114 @@ func openTestStore(t *testing.T) *Store {
 	t.Cleanup(func() { _ = store.Close() })
 	return store
 }
+
+func TestPresenceCurrentAndEventsSince(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	at1 := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	at2 := time.Date(2026, 7, 1, 13, 0, 0, 0, time.UTC)
+	at3 := time.Date(2026, 7, 1, 14, 0, 0, 0, time.UTC)
+
+	presentNews, _ := json.Marshal(Presence{State: PresencePresent, Name: "News", TvgID: "news"})
+	if err := store.Handle(ctx, Event{
+		Provider: model.ProviderLG, ChannelID: "news", Kind: KindPresence,
+		Value: presentNews, At: at1, Source: "refresh",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	classNative, _ := json.Marshal(model.ClassNative)
+	if err := store.Handle(ctx, Event{
+		Provider: model.ProviderLG, ChannelID: "news", Kind: KindClassification,
+		Value: classNative, At: at2, Source: "classifier",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	absentNews, _ := json.Marshal(Presence{State: PresenceAbsent, Name: "News", TvgID: "news"})
+	if err := store.Handle(ctx, Event{
+		Provider: model.ProviderLG, ChannelID: "news", Kind: KindPresence,
+		Value: absentNews, At: at3, Source: "refresh",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Different provider / health noise should not appear in default EventsSince.
+	health, _ := json.Marshal(model.ChannelHealth{Status: model.HealthHealthy})
+	if err := store.Handle(ctx, Event{
+		Provider: model.ProviderXumo, ChannelID: "other", Kind: KindHealth,
+		Value: health, At: at2, Source: "probe",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cur := store.CurrentPresence(model.ProviderLG)
+	if len(cur) != 1 {
+		t.Fatalf("CurrentPresence: %+v", cur)
+	}
+	if cur["news"].State != PresenceAbsent || cur["news"].Name != "News" {
+		t.Fatalf("want absent News, got %+v", cur["news"])
+	}
+
+	events, err := store.EventsSince(ctx, at1, nil, model.ProviderLG, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("EventsSince len=%d want 3: %+v", len(events), events)
+	}
+	if events[0].Kind != KindPresence || events[1].Kind != KindClassification || events[2].Kind != KindPresence {
+		t.Fatalf("order/kinds: %+v", events)
+	}
+	if !events[0].At.Equal(at1) || !events[2].At.Equal(at3) {
+		t.Fatalf("want oldest→newest, got %v then %v", events[0].At, events[2].At)
+	}
+
+	onlyPresence, err := store.EventsSince(ctx, at1, []Kind{KindPresence}, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(onlyPresence) != 2 {
+		t.Fatalf("presence-only: got %d", len(onlyPresence))
+	}
+}
+
+func TestPruneDropsOldEventsKeepsCurrent(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	oldAt := time.Now().UTC().Add(-100 * 24 * time.Hour)
+	newAt := time.Now().UTC()
+
+	oldVal, _ := json.Marshal(Presence{State: PresencePresent, Name: "Old"})
+	if err := store.Handle(ctx, Event{
+		Provider: model.ProviderLG, ChannelID: "ch", Kind: KindPresence,
+		Value: oldVal, At: oldAt, Source: "refresh",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Force prune due on next Handle.
+	store.mu.Lock()
+	store.lastPrune = time.Time{}
+	store.mu.Unlock()
+
+	newVal, _ := json.Marshal(Presence{State: PresenceAbsent, Name: "Old"})
+	if err := store.Handle(ctx, Event{
+		Provider: model.ProviderLG, ChannelID: "ch", Kind: KindPresence,
+		Value: newVal, At: newAt, Source: "refresh",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := store.EventCount(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("after prune want 1 event, got %d", n)
+	}
+	raw, ok := store.Current(model.ProviderLG, "ch", KindPresence)
+	if !ok {
+		t.Fatal("current must survive prune")
+	}
+	var p Presence
+	if err := json.Unmarshal(raw, &p); err != nil || p.State != PresenceAbsent {
+		t.Fatalf("current: %s err=%v", raw, err)
+	}
+}

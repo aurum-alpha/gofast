@@ -287,6 +287,7 @@ func (p *providerRefresher) refreshLocked(ctx context.Context) error {
 	if err != nil {
 		return p.fail(err, time.Since(start))
 	}
+	p.emitPresence(ctx, lineup.Channels, "refresh")
 	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
 		return p.fail(err, time.Since(start))
 	}
@@ -323,6 +324,7 @@ func (p *providerRefresher) rehydrate(raw provider.Raw, meta provider.Meta) erro
 	if err != nil {
 		return err
 	}
+	p.emitPresence(context.Background(), lineup.Channels, "restore")
 	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
 		return err
 	}
@@ -350,6 +352,7 @@ func (p *providerRefresher) reapplyFromCache() error {
 	if err != nil {
 		return err
 	}
+	p.emitPresence(context.Background(), lineup.Channels, "restore")
 	if err := p.cache.CommitProvider(p.feed.ID(), raw, m3uData, xmlData, provider.MetaOf(lineup)); err != nil {
 		return err
 	}
@@ -454,6 +457,97 @@ func (p *providerRefresher) emitClassifications(ctx context.Context, chs []model
 			Source:    "classifier",
 		}); err != nil {
 			slog.Warn("classification emit", "provider", p.feed.ID(), "channel", ch.NormalizedID, "err", err)
+		}
+	}
+}
+
+// emitPresence diffs the prepared catalog against Current KindPresence and
+// emits present/absent for adds/drops. Tracks provider catalog membership, not
+// M3U export. Uses Emit when the bus is up; Handle during Restore (bus nil).
+func (p *providerRefresher) emitPresence(ctx context.Context, chs []model.Channel, source string) {
+	if p.attrs == nil {
+		return
+	}
+	if source == "" {
+		source = "refresh"
+	}
+	at := time.Now().UTC()
+	providerID := p.feed.ID()
+
+	prev := p.attrs.CurrentPresence(providerID)
+
+	newIDs := make(map[string]model.Channel, len(chs))
+	for _, ch := range chs {
+		if ch.NormalizedID == "" {
+			continue
+		}
+		newIDs[ch.NormalizedID] = ch
+	}
+
+	for id, ch := range newIDs {
+		if cur, ok := prev[id]; ok && cur.IsPresent() {
+			continue
+		}
+		value, err := json.Marshal(channelattr.Presence{
+			State: channelattr.PresencePresent,
+			Name:  ch.DisplayName(),
+			TvgID: ch.NormalizedID,
+		})
+		if err != nil {
+			slog.Warn("presence emit marshal", "provider", providerID, "channel", id, "err", err)
+			continue
+		}
+		p.writePresence(ctx, channelattr.Event{
+			Provider:  providerID,
+			ChannelID: id,
+			Kind:      channelattr.KindPresence,
+			Value:     value,
+			At:        at,
+			Source:    source,
+		})
+	}
+
+	for id, cur := range prev {
+		if !cur.IsPresent() {
+			continue
+		}
+		if _, ok := newIDs[id]; ok {
+			continue
+		}
+		absent := channelattr.Presence{
+			State: channelattr.PresenceAbsent,
+			Name:  cur.Name,
+			TvgID: cur.TvgID,
+		}
+		if absent.TvgID == "" {
+			absent.TvgID = id
+		}
+		value, err := json.Marshal(absent)
+		if err != nil {
+			slog.Warn("presence emit marshal", "provider", providerID, "channel", id, "err", err)
+			continue
+		}
+		p.writePresence(ctx, channelattr.Event{
+			Provider:  providerID,
+			ChannelID: id,
+			Kind:      channelattr.KindPresence,
+			Value:     value,
+			At:        at,
+			Source:    source,
+		})
+	}
+}
+
+func (p *providerRefresher) writePresence(ctx context.Context, ev channelattr.Event) {
+	if p.attrBus != nil {
+		if err := channelattr.Emit(ctx, p.attrBus, ev); err != nil {
+			slog.Warn("presence emit", "provider", ev.Provider, "channel", ev.ChannelID, "err", err)
+		}
+		return
+	}
+	if p.attrs != nil {
+		if err := p.attrs.Handle(ctx, ev); err != nil {
+			slog.Warn("presence seed", "provider", ev.Provider, "channel", ev.ChannelID, "err", err)
 		}
 	}
 }

@@ -116,6 +116,32 @@ type HistoryResponse = {
   success_rate_30d: number | null
 }
 
+type PresenceHistoryEvent = {
+  at: string
+  source?: string
+  value: PresenceValue | string
+}
+
+type PresenceHistoryResponse = {
+  events: PresenceHistoryEvent[]
+}
+
+type PresenceValue = {
+  state?: string
+  name?: string
+  tvg_id?: string
+}
+
+function parsePresenceValue(value: PresenceHistoryEvent['value']): PresenceValue {
+  if (!value) return {}
+  try {
+    if (typeof value === 'string') return JSON.parse(value) as PresenceValue
+    return value
+  } catch {
+    return {}
+  }
+}
+
 type ProbeResponse = {
   check: {
     result: string
@@ -234,6 +260,10 @@ export function ChannelDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryResponse | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
+  const [presenceHistory, setPresenceHistory] = useState<PresenceHistoryResponse | null>(
+    null,
+  )
+  const [presenceError, setPresenceError] = useState<string | null>(null)
   const [probeBusy, setProbeBusy] = useState<'l1' | 'l2' | null>(null)
   const [logoBusy, setLogoBusy] = useState(false)
   const [logoNote, setLogoNote] = useState<string | null>(null)
@@ -268,6 +298,22 @@ export function ChannelDetailPage() {
       })
   }, [provider, normalizedId])
 
+  const loadPresenceHistory = useCallback(() => {
+    const path = `/api/channels/${encodeURIComponent(provider)}/${encodeURIComponent(normalizedId)}/presence/history`
+    fetch(path)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+        return res.json() as Promise<PresenceHistoryResponse>
+      })
+      .then((body) => {
+        setPresenceHistory(body)
+        setPresenceError(null)
+      })
+      .catch((err: unknown) => {
+        setPresenceError(err instanceof Error ? err.message : String(err))
+      })
+  }, [provider, normalizedId])
+
   const loadChannel = useCallback(async () => {
     const body = await fetchChannelEmit(provider, normalizedId)
     setChannel(body.channel)
@@ -293,6 +339,10 @@ export function ChannelDetailPage() {
   useEffect(() => {
     loadHistory()
   }, [loadHistory])
+
+  useEffect(() => {
+    loadPresenceHistory()
+  }, [loadPresenceHistory])
 
   useEffect(() => {
     let cancelled = false
@@ -539,13 +589,83 @@ export function ChannelDetailPage() {
               <Link to="/dedupes">Dedupes</Link>.
             </p>
           ) : null}
+          {statusKinds.includes('absent') || channel.presence === 'absent' ? (
+            <p className="status-reason">
+              No longer in this provider&apos;s catalog (upstream dropped or
+              renamed the id). It is not on the live feed; presence history
+              below shows when it left.
+            </p>
+          ) : null}
         </div>
       </div>
 
-      <ChannelPlayer channel={channel} />
+      {channel.presence === 'absent' ? null : <ChannelPlayer channel={channel} />}
+
+      <section className="detail-section">
+        <h2>Catalog presence</h2>
+        <p className="meta">
+          Provider lineup membership over time (not M3U export / Dedupes).{' '}
+          <code>present</code> = in catalog; <code>absent</code> = dropped.
+        </p>
+        {presenceError ? (
+          <p className="compare-error" role="alert">
+            {presenceError}
+          </p>
+        ) : null}
+        {!presenceError && !presenceHistory ? (
+          <p className="meta">Loading presence history…</p>
+        ) : null}
+        {presenceHistory && (presenceHistory.events?.length ?? 0) === 0 ? (
+          <p className="meta">No presence events yet.</p>
+        ) : null}
+        {presenceHistory && (presenceHistory.events?.length ?? 0) > 0 ? (
+          <div className="table-wrap">
+            <table className="compare-table history-table">
+              <thead>
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Name</th>
+                </tr>
+              </thead>
+              <tbody>
+                {presenceHistory.events.map((ev, i) => {
+                  const p = parsePresenceValue(ev.value)
+                  return (
+                    <tr key={`${ev.at}-${i}`}>
+                      <td>{formatHealthWhen(ev.at)}</td>
+                      <td>
+                        <code>{ev.source || '—'}</code>
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${
+                            p.state === 'absent' ? 'badge-none' : 'badge-native'
+                          }`}
+                        >
+                          {p.state || '—'}
+                        </span>
+                      </td>
+                      <td>{p.name || '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
 
       <section className="detail-section">
         <h2>Provider vs Fastgen</h2>
+        {channel.presence === 'absent' ? (
+          <p className="meta">
+            Emit customization is unavailable while this channel is absent from
+            the provider catalog.
+          </p>
+        ) : (
+          <>
         <p className="meta">
           Customize Fastgen export values for this channel. Uncheck to use the
           default fastgen produces. Does not change the upstream feed.
@@ -842,6 +962,8 @@ export function ChannelDetailPage() {
             </tbody>
           </table>
         </div>
+          </>
+        )}
       </section>
 
       <section className="detail-section">

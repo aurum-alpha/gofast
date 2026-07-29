@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,15 +23,22 @@ const (
 
 	historyDefaultLimit = 50
 	historyMaxLimit     = 200
+
+	eventsSinceDefaultLimit = 500
+	eventsSinceMaxLimit     = 2000
+
+	eventRetention = 90 * 24 * time.Hour
+	pruneEvery     = time.Minute
 )
 
 // Store is SQLite-backed current + history for channel attributes.
 type Store struct {
-	db    *sql.DB
-	path  string // absolute path to attr.db
-	dir   string // channelattr directory
-	mu    sync.RWMutex
-	byKey map[string]entry // provider\x00channel\x00kind
+	db        *sql.DB
+	path      string // absolute path to attr.db
+	dir       string // channelattr directory
+	mu        sync.RWMutex
+	byKey     map[string]entry // provider\x00channel\x00kind
+	lastPrune time.Time
 }
 
 type entry struct {
@@ -44,6 +52,16 @@ type HistoryEvent struct {
 	At     time.Time       `json:"at"`
 	Source string          `json:"source,omitempty"`
 	Value  json.RawMessage `json:"value"`
+}
+
+// TimelineEvent is one cross-channel history row (oldest-first from EventsSince).
+type TimelineEvent struct {
+	Provider  model.ProviderID `json:"provider"`
+	ChannelID string           `json:"channel_id"`
+	Kind      Kind             `json:"kind"`
+	At        time.Time        `json:"at"`
+	Source    string           `json:"source,omitempty"`
+	Value     json.RawMessage  `json:"value"`
 }
 
 // Open creates/opens attr.db under dataDir/channelattr/.
@@ -88,6 +106,8 @@ CREATE TABLE IF NOT EXISTS channel_attr_events (
 );
 CREATE INDEX IF NOT EXISTS channel_attr_events_lookup
   ON channel_attr_events (provider, channel_id, kind, at);
+CREATE INDEX IF NOT EXISTS channel_attr_events_kind_at
+  ON channel_attr_events (kind, at);
 `)
 	if err != nil {
 		return fmt.Errorf("channelattr: migrate: %w", err)
@@ -147,6 +167,109 @@ func (s *Store) Current(provider model.ProviderID, channelID string, kind Kind) 
 		return nil, false
 	}
 	return append(json.RawMessage(nil), e.value...), true
+}
+
+// CurrentPresence returns KindPresence current values for provider, keyed by
+// channel id. Includes both present and absent rows.
+func (s *Store) CurrentPresence(provider model.ProviderID) map[string]Presence {
+	out := make(map[string]Presence)
+	if s == nil {
+		return out
+	}
+	prefix := string(provider) + "\x00"
+	suffix := "\x00" + string(KindPresence)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for k, e := range s.byKey {
+		if !strings.HasPrefix(k, prefix) || !strings.HasSuffix(k, suffix) {
+			continue
+		}
+		channelID := strings.TrimSuffix(strings.TrimPrefix(k, prefix), suffix)
+		if channelID == "" {
+			continue
+		}
+		var p Presence
+		if err := json.Unmarshal(e.value, &p); err != nil {
+			slog.Warn("channelattr: bad presence json", "provider", provider, "channel", channelID, "err", err)
+			continue
+		}
+		out[channelID] = p
+	}
+	return out
+}
+
+// AbsentEntries returns every Current presence row with state=absent.
+func (s *Store) AbsentEntries() []AbsentEntry {
+	if s == nil {
+		return nil
+	}
+	suffix := "\x00" + string(KindPresence)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []AbsentEntry
+	for k, e := range s.byKey {
+		if !strings.HasSuffix(k, suffix) {
+			continue
+		}
+		rest := strings.TrimSuffix(k, suffix)
+		provider, channelID, ok := strings.Cut(rest, "\x00")
+		if !ok || provider == "" || channelID == "" {
+			continue
+		}
+		var p Presence
+		if err := json.Unmarshal(e.value, &p); err != nil || p.State != PresenceAbsent {
+			continue
+		}
+		out = append(out, AbsentEntry{
+			Provider:  model.ProviderID(provider),
+			ChannelID: channelID,
+			Presence:  p,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Provider != out[j].Provider {
+			return out[i].Provider < out[j].Provider
+		}
+		return out[i].ChannelID < out[j].ChannelID
+	})
+	return out
+}
+
+// PresenceSummary counts current absents and present/absent events since `since`.
+type PresenceSummary struct {
+	AbsentNow int `json:"absent_now"`
+	Dropped7d int `json:"dropped_7d"`
+	Added7d   int `json:"added_7d"`
+}
+
+// SummarizePresence builds a PresenceSummary for Status (7-day window from now).
+func (s *Store) SummarizePresence(ctx context.Context, now time.Time) (PresenceSummary, error) {
+	var out PresenceSummary
+	if s == nil {
+		return out, nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	out.AbsentNow = len(s.AbsentEntries())
+	since := now.UTC().Add(-7 * 24 * time.Hour)
+	events, err := s.EventsSince(ctx, since, []Kind{KindPresence}, "", 0)
+	if err != nil {
+		return out, err
+	}
+	for _, ev := range events {
+		var p Presence
+		if err := json.Unmarshal(ev.Value, &p); err != nil {
+			continue
+		}
+		switch p.State {
+		case PresenceAbsent:
+			out.Dropped7d++
+		case PresencePresent:
+			out.Added7d++
+		}
+	}
+	return out, nil
 }
 
 // EventCount returns how many history rows exist (tests / ops).
@@ -296,8 +419,91 @@ ON CONFLICT(provider, channel_id, kind) DO UPDATE SET
 		at:     ev.At.UTC(),
 		source: ev.Source,
 	}
+	due := s.lastPrune.IsZero() || time.Since(s.lastPrune) >= pruneEvery
+	s.mu.Unlock()
+
+	if due {
+		_ = s.prune(ev.At.UTC())
+	}
+	return nil
+}
+
+// prune deletes event rows older than eventRetention. Current rows are kept.
+func (s *Store) prune(now time.Time) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	cutoff := now.UTC().Add(-eventRetention).Format(time.RFC3339Nano)
+	_, err := s.db.Exec(`DELETE FROM channel_attr_events WHERE at < ?`, cutoff)
+	if err != nil {
+		return fmt.Errorf("channelattr: prune: %w", err)
+	}
+	s.mu.Lock()
+	s.lastPrune = time.Now()
 	s.mu.Unlock()
 	return nil
+}
+
+// EventsSince returns presence/classification (or caller-specified) events at or
+// after since, oldest-first, for report assembly. Empty provider means all
+// providers. Empty kinds defaults to presence + classification.
+func (s *Store) EventsSince(ctx context.Context, since time.Time, kinds []Kind, provider model.ProviderID, limit int) ([]TimelineEvent, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("channelattr: nil store")
+	}
+	if limit <= 0 {
+		limit = eventsSinceDefaultLimit
+	}
+	if limit > eventsSinceMaxLimit {
+		limit = eventsSinceMaxLimit
+	}
+	if len(kinds) == 0 {
+		kinds = []Kind{KindPresence, KindClassification}
+	}
+	placeholders := make([]string, len(kinds))
+	args := make([]any, 0, 2+len(kinds))
+	for i, k := range kinds {
+		placeholders[i] = "?"
+		args = append(args, string(k))
+	}
+	sinceStr := since.UTC().Format(time.RFC3339Nano)
+	args = append(args, sinceStr)
+	q := `SELECT provider, channel_id, kind, at, source, value FROM channel_attr_events
+WHERE kind IN (` + strings.Join(placeholders, ",") + `) AND at >= ?`
+	if provider != "" {
+		q += ` AND provider = ?`
+		args = append(args, string(provider))
+	}
+	q += ` ORDER BY at ASC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("channelattr: events since: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TimelineEvent
+	for rows.Next() {
+		var providerStr, channelID, kindStr, atStr, source, value string
+		if err := rows.Scan(&providerStr, &channelID, &kindStr, &atStr, &source, &value); err != nil {
+			return nil, fmt.Errorf("channelattr: events since scan: %w", err)
+		}
+		at, ok := parseAttrTime(atStr)
+		if !ok {
+			slog.Warn("channelattr: bad events-since at", "provider", providerStr, "channel", channelID, "at", atStr)
+			continue
+		}
+		out = append(out, TimelineEvent{
+			Provider:  model.ProviderID(providerStr),
+			ChannelID: channelID,
+			Kind:      Kind(kindStr),
+			At:        at,
+			Source:    source,
+			Value:     json.RawMessage(value),
+		})
+	}
+	return out, rows.Err()
 }
 
 // History returns newest-first events for one channel attribute.

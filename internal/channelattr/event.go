@@ -1,5 +1,5 @@
 // Package channelattr stores current + history channel labels (health,
-// classification, …) in SQLite outside cache generations.
+// classification, presence, …) in SQLite outside cache generations.
 package channelattr
 
 import (
@@ -15,6 +15,7 @@ type Kind string
 const (
 	KindHealth         Kind = "health"
 	KindClassification Kind = "classification"
+	KindPresence       Kind = "presence"
 )
 
 // Event is what producers Emit. Value is kind-specific JSON.
@@ -24,5 +25,5 @@ type Event struct {
 	Kind      Kind
 	Value     json.RawMessage
 	At        time.Time
-	Source    string // "probe", "playback", "classifier", …
+	Source    string // "probe", "playback", "classifier", "refresh", …
 }

@@ -46,6 +46,9 @@ type Channel struct {
 	// Health is the current playability stamp (from channel-attr store Annotate).
 	// Zero / empty status means untested.
 	Health ChannelHealth `json:"health"`
+	// Presence is catalog membership: "present", "absent", or empty (live feed =
+	// treated as present). Ghost rows for dropped channels set "absent".
+	Presence string `json:"presence,omitempty"`
 	// FilterReason is the primary (badge-driving) exclusion reason.
 	FilterReason FilterReason `json:"filter_reason,omitempty"`
 	// FilterReasons lists every applicable exclusion reason (may be multiple).

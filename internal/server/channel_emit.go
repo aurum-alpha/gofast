@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 
+	"github.com/j27-aurum/gofast/internal/channelattr"
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider"
@@ -25,18 +26,20 @@ type channelEmitRequest struct {
 
 // ChannelEmitHandler serves GET /api/channels/{provider}/{normalizedId}/emit —
 // the channel plus config revision/writability for the emit editor.
-func ChannelEmitHandler(store *config.Store, reg *provider.Registry) http.HandlerFunc {
+func ChannelEmitHandler(store *config.Store, reg *provider.Registry, attrs *channelattr.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		ch, ok := findChannel(reg, r.PathValue("provider"), r.PathValue("normalizedId"))
+		ch, ok := findChannelOrGhost(reg, attrs, r.PathValue("provider"), r.PathValue("normalizedId"))
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		ch = paintEmitFromSettings(ch, reg)
+		if ch.Presence != channelattr.PresenceAbsent {
+			ch = paintEmitFromSettings(ch, reg)
+		}
 		writeChannelEmit(w, store, ch, nil)
 	}
 }
@@ -63,6 +66,10 @@ func ChannelEmitSaveHandler(store *config.Store, reg *provider.Registry) http.Ha
 		ch, ok := findChannel(reg, string(providerID), normalizedID)
 		if !ok {
 			http.NotFound(w, r)
+			return
+		}
+		if ch.Presence == channelattr.PresenceAbsent {
+			http.Error(w, "channel absent from provider catalog", http.StatusConflict)
 			return
 		}
 

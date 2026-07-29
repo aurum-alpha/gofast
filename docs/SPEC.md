@@ -282,9 +282,10 @@ streams).
   Soft reasons (regex exclusion, disabled group, unhealthy, emit disabled,
   duplicate) clear under force-include / `export:enabled`; hard reasons (DRM,
   unsupported classification, needs-FASTProxy when proxy is unset, missing
-  identity/stream) never soft-clear. `EmittedURL` is minted whenever a playback
-  path exists (including on duplicate/regex-excluded channels); playlist
-  membership is gated only by exclusion reasons via `ForExport`.
+  identity/stream, **absent from provider**) never soft-clear. `EmittedURL` is
+  minted whenever a playback path exists (including on duplicate/regex-excluded
+  channels); playlist membership is gated only by exclusion reasons via
+  `ForExport`. UI Status filter meanings are listed under **Web UI** below.
 - **Exclusion filters:** per-provider list of case-insensitive regexes matched
   against stream URL + provider id + channel name (fast first pass; the
   classifier probe is the authoritative gate). Filtered channels are removed
@@ -396,6 +397,19 @@ When caching is enabled:
   the serving `current` until refresh commits; optional `?logos=1` clears logos.
   Orphan sweep removes unconfigured provider dirs, out-of-lineup logos, and
   generations beyond current+1. Channelattr is inventory-only (never purged).
+- **Provider catalog deltas (presence):** each successful refresh (and warm
+  restore/reapply) records channel **add/drop** in `channelattr` as
+  `presence` events (`present` / `absent`), keyed like health and
+  classification. Presence means membership in the provider catalog after
+  `prepare` — not M3U export (Dedupes / emit-disable / DRM exclusions do not
+  count as drops). Diffs use Current presence, not the live Feed, so reboot
+  does not re-treat every channel as new. Classification change history
+  continues alongside. Cross-channel `EventsSince` assembles report windows
+  (adds/drops/class changes); see ARCHITECTURE for the full narrative.
+  Event history older than 90 days is pruned; current rows are kept.
+  **UI:** `GET /api/channels` appends ghost rows for Current `absent` (Status
+  filter **Absent**); Channel Detail shows presence history; Status shows
+  **Absent now** and **Dropped (7d)** via `GET /api/presence/summary`.
 - Structured refresh success/failure logs include counts and `duration`, plus
   `guide_horizon` / `refresh_interval` / `effective_interval` on publish.
 - Cache-backed playlist/guide responses carry a strong body `ETag` (SHA-256);
@@ -498,19 +512,48 @@ fastgen process — no separate frontend container. Node is required only to
 Proxy has no product UI. Ship the UI foundation early and feather features as
 gen capabilities land (classification, export reasons, health, config editor).
 
-Core view — the channel table: every channel from every provider with a
-classification badge and a short export badge (`exported` / `proxied` /
-`filtered` / `needs proxy` / `DRM`). The grid stays lean (name + logo thumb;
-no raw/normalized ids or logo errors in-row). Filterable/searchable by
-provider, name, and channel number.
+Core view — the channel table: every channel from every provider (including
+**Absent** ghosts no longer in a provider catalog) with a classification badge
+and one or more status badges. The grid stays lean (name + logo thumb; no
+raw/normalized ids or logo errors in-row). Filterable/searchable by provider,
+group, class, **status**, health, and name.
+
+### Channels Status filter (what each value means)
+
+Status is **playlist / catalog outcome**, not stream dialect (that is Class)
+and not probe health (that is Health). A channel may match **multiple** status
+kinds (ANY-match filter). Wire reasons live in `filter_reasons` /
+`filter_reason`; UI kinds map from those (plus in-lineup / proxied when not
+excluded).
+
+| Status | Meaning |
+|--------|---------|
+| **In lineup** | Included in the emitted M3U/XMLTV (Jellyfin can tune it). Direct upstream URL (not rewritten through FASTProxy). |
+| **Via proxy** | Included in the playlist, but `emitted_url` goes through FASTProxy (Amagi rewrite, SESSION mint, or `proxy_all`). |
+| **Duplicate** | Dropped by Dedupes (`channel_emit.dedupe` / FilterReason `duplicate`). Still in the provider catalog; not in M3U. Distinct from manual emit-disable. |
+| **Absent** | No longer in the provider’s **catalog** after refresh (upstream dropped/renamed the id). Ghost row from channelattr presence; not on the live feed; not exportable. Open detail for presence history. |
+| **Needs proxy** | Would need FASTProxy to play (typically Amagi SSAI / SESSION) but `proxy_base_url` is unset, so it is blocked from export. |
+| **DRM blocked** | Widevine / license-gated; hard-dropped from export. |
+| **Unsupported class** | Classification the emitter does not know how to handle; hard-dropped. |
+| **Disabled group** | Group taxonomy disabled this channel’s group; soft-dropped from export. |
+| **Unhealthy** | Health is down/degraded and `exclude_unhealthy` is on; soft-dropped. |
+| **Emit disabled** | Operator set `channel_emit.export: disabled` (manual), without the Dedupes `dedupe` marker. |
+| **Regex exclusion** | Matched a provider exclusion regex (URL / id / name). |
+| **Missing id** | No usable normalized identity for emit. |
+| **Missing stream** | No stream URL to emit. |
+| **Excluded (other)** | Has an exclusion reason that does not map to a more specific kind above. |
+
+**Not the same as Health:** Healthy / Degraded / Down / Untested answer “does it play right now?” and use a separate filter. A channel can be **In lineup** and **Down**.
+
+**Not the same as Class:** NATIVE / Amagi SSAI / SESSION / Xumo SSAI / DRM answer “what dialect is this?” Class DRM often coincides with Status **DRM blocked**, but Class is the dialect badge; Status is the export/catalog outcome.
 
 Per-channel detail (`/channels/{provider}/{normalizedId}`): export status and
-full filter reason, DRM `license_url` evidence, upstream vs emitted URL, raw
-and normalized ids, logo URL or `logo_error`, health/probes, a compact **Guide**
-strip (Now / Next + expandable programme list from in-memory EPG), and
-**per-field Customize** controls on the Fastgen export column (name, number,
-group, logo, in-export). Uncheck uses the fastgen-produced default; save
-applies live.
+all filter reasons, DRM `license_url` evidence, upstream vs emitted URL, raw
+and normalized ids, logo URL or `logo_error`, **catalog presence history**,
+health/probes, a compact **Guide** strip (Now / Next + expandable programme
+list from in-memory EPG), and **per-field Customize** controls on the Fastgen
+export column (name, number, group, logo, in-export) when the channel is still
+in the catalog. Uncheck uses the fastgen-produced default; save applies live.
 
 Provider list shows triage summaries (exported / excluded / stale / last
 success). Provider detail holds full rollups (classifications, filter

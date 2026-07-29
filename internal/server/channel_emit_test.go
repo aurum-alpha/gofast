@@ -43,7 +43,7 @@ func TestChannelEmitGETAndPUT(t *testing.T) {
 		StreamURL:    "https://example/a.m3u8",
 	})
 
-	get := ChannelEmitHandler(store, reg)
+	get := ChannelEmitHandler(store, reg, nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/channels/lg/ch1/emit", nil)
 	req.SetPathValue("provider", "lg")

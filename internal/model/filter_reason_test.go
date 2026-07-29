@@ -35,6 +35,12 @@ func TestFilterReasonKinds(t *testing.T) {
 	if FilterReasonDuplicate.Kind() != FilterKindDuplicate {
 		t.Fatal(FilterReasonDuplicate.Kind())
 	}
+	if FilterReasonAbsent.Kind() != FilterKindAbsent {
+		t.Fatal(FilterReasonAbsent.Kind())
+	}
+	if !FilterReasonAbsent.IsHard() {
+		t.Fatal("absent should be hard")
+	}
 	if DisabledGroupReason("News").Kind() != FilterKindDisabledGroup {
 		t.Fatal(DisabledGroupReason("News").Kind())
 	}

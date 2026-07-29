@@ -109,6 +109,12 @@ type ProxyStatusResponse = {
   recent_failures?: ProxyEvent[]
 }
 
+type PresenceSummary = {
+  absent_now: number
+  dropped_7d: number
+  added_7d: number
+}
+
 function validDate(value?: string): Date | null {
   if (!value) return null
   const date = new Date(value)
@@ -158,6 +164,7 @@ export function StatusPage() {
   const [schedule, setSchedule] = useState<HealthSchedule | null>(null)
   const [access, setAccess] = useState<ClientAccessResponse | null>(null)
   const [proxyStatus, setProxyStatus] = useState<ProxyStatusResponse | null>(null)
+  const [presence, setPresence] = useState<PresenceSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -192,8 +199,13 @@ export function StatusPage() {
           if (!res.ok) throw new Error(`proxy-status ${res.status}`)
           return res.json() as Promise<ProxyStatusResponse>
         }),
+        fetch('/api/presence/summary').then(async (res) => {
+          if (res.status === 503) return null
+          if (!res.ok) throw new Error(`presence ${res.status}`)
+          return res.json() as Promise<PresenceSummary>
+        }),
       ])
-        .then(([hz, st, ch, sched, ca, px]) => {
+        .then(([hz, st, ch, sched, ca, px, pr]) => {
           if (cancelled) return
           setHealthz(hz)
           setBoot(st)
@@ -201,6 +213,7 @@ export function StatusPage() {
           setSchedule(sched)
           setAccess(ca)
           setProxyStatus(px)
+          setPresence(pr)
           setError(null)
           const delay = st.logos.running ? 1000 : 5000
           timer = window.setTimeout(poll, delay)
@@ -321,7 +334,9 @@ export function StatusPage() {
           <h2 className="status-section-title">Lineup problems</h2>
           <p className="meta">
             Live channel rollup for Jellyfin risk.{' '}
-            <Link to="/">Open Channels</Link> to filter and inspect.
+            <Link to="/">Open Channels</Link> to filter and inspect. Use Status
+            filter <Link to="/?status=absent">Absent</Link> for channels dropped
+            from a provider catalog.
           </p>
           <div className="stat-grid">
             <Metric
@@ -368,6 +383,20 @@ export function StatusPage() {
               label="Duplicate"
               value={rollups.lineup.duplicate.toLocaleString()}
               title="Dropped by Dedupes (may also have other exclusion reasons)"
+            />
+            <Metric
+              label="Absent now"
+              value={(
+                presence?.absent_now ?? rollups.lineup.absent ?? 0
+              ).toLocaleString()}
+              warn={(presence?.absent_now ?? rollups.lineup.absent ?? 0) > 0}
+              title="Channels dropped from a provider catalog (still listed so you can open history)"
+            />
+            <Metric
+              label="Dropped (7d)"
+              value={(presence?.dropped_7d ?? 0).toLocaleString()}
+              warn={(presence?.dropped_7d ?? 0) > 0}
+              title="Presence absent events in the last 7 days"
             />
             <Metric
               label="Excluded (other)"

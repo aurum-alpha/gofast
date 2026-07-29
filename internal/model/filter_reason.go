@@ -15,6 +15,7 @@ const (
 	FilterReasonUnhealthy                 FilterReason = "unhealthy (exclude_unhealthy)"
 	FilterReasonEmitDisabled              FilterReason = "emit disabled"
 	FilterReasonDuplicate                 FilterReason = "duplicate"
+	FilterReasonAbsent                    FilterReason = "absent from provider"
 	FilterReasonMissingIdentity           FilterReason = "missing identity"
 	FilterReasonMissingStream             FilterReason = "missing stream"
 	FilterReasonUnsupportedClassification FilterReason = "unsupported classification"
@@ -33,6 +34,7 @@ const (
 	FilterKindUnhealthy     FilterReasonKind = "unhealthy"
 	FilterKindEmitDisabled  FilterReasonKind = "emit-disabled"
 	FilterKindDuplicate     FilterReasonKind = "duplicate"
+	FilterKindAbsent        FilterReasonKind = "absent"
 	FilterKindMissingID     FilterReasonKind = "missing-identity"
 	FilterKindMissingStream FilterReasonKind = "missing-stream"
 	FilterKindUnsupported   FilterReasonKind = "unsupported"
@@ -65,7 +67,8 @@ func (r FilterReason) IsHard() bool {
 		FilterReasonNeedsFASTProxy,
 		FilterReasonMissingIdentity,
 		FilterReasonMissingStream,
-		FilterReasonUnsupportedClassification:
+		FilterReasonUnsupportedClassification,
+		FilterReasonAbsent:
 		return true
 	default:
 		return false
@@ -85,6 +88,8 @@ func (r FilterReason) Kind() FilterReasonKind {
 		return FilterKindEmitDisabled
 	case r == FilterReasonDuplicate:
 		return FilterKindDuplicate
+	case r == FilterReasonAbsent:
+		return FilterKindAbsent
 	case r == FilterReasonMissingIdentity:
 		return FilterKindMissingID
 	case r == FilterReasonMissingStream:
@@ -126,6 +131,7 @@ var primaryFilterReasonOrder = []FilterReason{
 	FilterReasonNeedsFASTProxy,
 	FilterReasonMissingIdentity,
 	FilterReasonMissingStream,
+	FilterReasonAbsent,
 	FilterReasonDuplicate,
 	FilterReasonEmitDisabled,
 	FilterReasonUnhealthy,
