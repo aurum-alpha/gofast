@@ -16,6 +16,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/config"
 	"github.com/j27-aurum/gofast/internal/health"
 	"github.com/j27-aurum/gofast/internal/httpx"
+	"github.com/j27-aurum/gofast/internal/opsreport"
 	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/providerset"
 	"github.com/j27-aurum/gofast/internal/proxyactivity"
@@ -119,6 +120,16 @@ func main() {
 		}
 	}
 
+	opsSched := &opsreport.Scheduler{
+		Store:   store,
+		Reg:     reg,
+		Attrs:   attrs,
+		DataDir: cfg.DataDir,
+		Mailer:  &opsreport.Mailer{},
+	}
+	svc.SetRefreshTally(opsSched)
+	go opsSched.Run(ctx)
+
 	if err := agg.Rebuild(); err != nil && !errors.Is(err, aggregate.ErrEmptyAggregate) {
 		slog.Warn("initial aggregate rebuild failed", "err", err)
 	}
@@ -134,6 +145,7 @@ func main() {
 		return nil
 	}))
 	store.Register("health", sched)
+	store.Register("ops_report", opsSched)
 	store.Register("refresh", svc)
 
 	uiHandler := ui.Handler()
@@ -153,6 +165,12 @@ func main() {
 			mux.HandleFunc("GET /api/dedupes", server.DedupesHandler(store, reg))
 			mux.HandleFunc("PUT /api/dedupes/apply", server.DedupesApplyHandler(store, reg))
 			mux.HandleFunc("GET /api/health/schedule", server.HealthScheduleHandler(sched))
+			mux.HandleFunc("GET /api/ops-report/schedule", server.OpsReportScheduleHandler(opsSched))
+			mux.HandleFunc("GET /api/ops-report/archives", server.OpsReportArchivesHandler(opsSched))
+			mux.HandleFunc("GET /api/ops-report/archives/{id}", server.OpsReportArchiveHandler(opsSched))
+			mux.HandleFunc("POST /api/ops-report/archives/{id}/resend", server.OpsReportResendHandler(opsSched))
+			mux.HandleFunc("POST /api/ops-report/test-smtp", server.OpsReportTestSMTPHandler(opsSched))
+			mux.HandleFunc("POST /api/ops-report/send-preview", server.OpsReportSendPreviewHandler(opsSched))
 			mux.HandleFunc("GET /api/providers", server.ProvidersHandler(reg))
 			mux.HandleFunc("GET /api/providers/{id}", server.ProviderDetailHandler(reg))
 			mux.HandleFunc("POST /api/providers/{id}/refresh", server.ProviderRefreshHandler(svc, ctx))

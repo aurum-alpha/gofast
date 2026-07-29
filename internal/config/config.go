@@ -46,6 +46,7 @@ type Config struct {
 	Timeouts         Timeouts                                    `yaml:"timeouts"`
 	Logging          Logging                                     `yaml:"logging"`
 	Health           Health                                      `yaml:"health"`
+	OpsReport        OpsReport                                   `yaml:"ops_report"`
 	Groups           groups.Doc                                  `yaml:"groups"`
 	Categories       categories.Doc                              `yaml:"categories"`
 	Dedupe           dedupe.Doc                                  `yaml:"dedupe"`
@@ -237,6 +238,10 @@ func New(path string) (*Config, error) {
 	if cfg.Health.SoftRetries != nil && *cfg.Health.SoftRetries < 0 {
 		return nil, fmt.Errorf("config: health.soft_retries must be >= 0")
 	}
+	cfg.OpsReport.To = normalizeEmailList(cfg.OpsReport.To)
+	if err := cfg.validateOpsReport(); err != nil {
+		return nil, err
+	}
 
 	providers, err := compileProviders(cfg.Providers)
 	if err != nil {
@@ -251,6 +256,8 @@ func defaults() *Config {
 	cacheLogos := false
 	excludeUnhealthy := false
 	l2Enabled := false
+	opsEnabled := false
+	startTLS := true
 	return &Config{
 		Listen:     DefaultListen,
 		BaseURL:    "",
@@ -276,6 +283,15 @@ func defaults() *Config {
 			MaxPerHost:          2,
 			SoftRetries:         intPtr(1),
 			FFProbePath:         "/usr/bin/ffprobe",
+		},
+		OpsReport: OpsReport{
+			Enabled:  &opsEnabled,
+			Timezone: defaultOpsTimezone,
+			SendAt:   defaultOpsSendAt,
+			SMTP: OpsReportSMTP{
+				Port:     defaultSMTPPort,
+				STARTTLS: &startTLS,
+			},
 		},
 	}
 }
@@ -420,6 +436,12 @@ func envOverlay() (*Config, error) {
 		}
 		o.Health.L1Workers = n
 	}
+	if v := os.Getenv("FASTGEN_SMTP_USERNAME"); v != "" {
+		o.OpsReport.SMTP.Username = v
+	}
+	if v := os.Getenv("FASTGEN_SMTP_PASSWORD"); v != "" {
+		o.OpsReport.SMTP.Password = v
+	}
 	return o, nil
 }
 
@@ -460,6 +482,8 @@ func EnvShadow() map[string]string {
 	if _, set := out["health.l1_workers"]; !set {
 		shadow("health.l1_workers", "FASTGEN_HEALTH_L2_WORKERS")
 	}
+	shadow("ops_report.smtp.username", "FASTGEN_SMTP_USERNAME")
+	shadow("ops_report.smtp.password", "FASTGEN_SMTP_PASSWORD")
 	return out
 }
 
@@ -485,6 +509,7 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"health_l1_interval", c.HealthL1Interval().String(),
 		"health_l2_enabled", c.HealthL2Enabled(),
 		"health_ffprobe_path", c.HealthFFProbePath(),
+		"ops_report_enabled", c.OpsReport.IsEnabled(),
 		"provider_overlays", len(c.Providers),
 	)
 	c.WarnProxyProbeTopology()
@@ -586,6 +611,7 @@ func (c *Config) merge(o *Config) {
 	if o.Health.FFProbePath != "" {
 		c.Health.FFProbePath = o.Health.FFProbePath
 	}
+	mergeOpsReport(&c.OpsReport, &o.OpsReport)
 	if !o.Groups.IsZero() {
 		c.Groups = o.Groups.Clone()
 	}

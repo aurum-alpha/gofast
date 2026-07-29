@@ -8,6 +8,7 @@ import {
   healthStatus,
   lineupStatusKinds,
 } from '../lib/channel'
+import { fetchOpsSchedule, type OpsReportSchedule } from '../lib/opsReport'
 
 type HealthzProvider = {
   id: string
@@ -165,6 +166,7 @@ export function StatusPage() {
   const [access, setAccess] = useState<ClientAccessResponse | null>(null)
   const [proxyStatus, setProxyStatus] = useState<ProxyStatusResponse | null>(null)
   const [presence, setPresence] = useState<PresenceSummary | null>(null)
+  const [opsReport, setOpsReport] = useState<OpsReportSchedule | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -204,8 +206,9 @@ export function StatusPage() {
           if (!res.ok) throw new Error(`presence ${res.status}`)
           return res.json() as Promise<PresenceSummary>
         }),
+        fetchOpsSchedule().catch(() => null),
       ])
-        .then(([hz, st, ch, sched, ca, px, pr]) => {
+        .then(([hz, st, ch, sched, ca, px, pr, ops]) => {
           if (cancelled) return
           setHealthz(hz)
           setBoot(st)
@@ -214,6 +217,7 @@ export function StatusPage() {
           setAccess(ca)
           setProxyStatus(px)
           setPresence(pr)
+          setOpsReport(ops)
           setError(null)
           const delay = st.logos.running ? 1000 : 5000
           timer = window.setTimeout(poll, delay)
@@ -325,6 +329,20 @@ export function StatusPage() {
               warn={staleCount > 0}
             />
             <Metric label="Channels in memory" value={rollups.total.toLocaleString()} />
+            {opsReport?.enabled ? (
+              <Metric
+                label="Ops report"
+                value={
+                  opsReport.last_success_at
+                    ? `last ${formatWhen(opsReport.last_success_at)}`
+                    : `next ${formatWhen(opsReport.next_at)}`
+                }
+                title={`Next ${formatWhen(opsReport.next_at)} · ${opsReport.timezone} ${opsReport.send_at}${
+                  opsReport.last_error ? ` · error: ${opsReport.last_error}` : ''
+                }`}
+                warn={Boolean(opsReport.last_error)}
+              />
+            ) : null}
           </div>
           <p className="meta">
             Process <code>ok</code> means fastgen is up. Stale providers keep

@@ -54,10 +54,11 @@ Optional **`proxy_all`**: every tune starts at the proxy (better observability; 
 - **Channels / Providers / Guide** — browse lineup, per-channel detail, HLS preview (raw vs emitted)
 - **Status filters that match how export works** — In lineup / Via proxy, plus why something is out (Duplicate, Needs proxy, DRM, disabled group, emit disabled, regex, …). A channel can show **multiple** reasons at once
 - **Absent** — channels dropped from a provider catalog stay findable (ghost rows + presence history); Status shows Absent now / Dropped (7d)
-- **Config** — live settings (no restart for app knobs): providers, health, groups, categories, logos, proxy URLs, per-channel emit overrides
+- **Config** — live settings (no restart for app knobs): providers, health, ops report SMTP, groups, categories, logos, proxy URLs, per-channel emit overrides
 - **Groups / Categories** — taxonomy so upstream folders and programme genres become consistent Jellyfin labels
 - **Dedupes** — same-title clusters across providers; prefer / drop so you don’t keep five “BET”s (losers marked Duplicate, distinct from manual emit-disable)
 - **Health** — scheduled L1 segment probes + optional L2 ffprobe; history and on-demand tests
+- **Ops report email** — daily rich HTML digest (SMTP / SES) at a local IANA time: fleet health, providers, channel add/drop/class/health deltas; Test SMTP + preview send + 90-day archive/resend
 - **Cache** — disk inventory (generations, logos, attr history); soft purge & logo clear without a serving gap
 - **Access / Proxy / Status** — who pulled your playlists, proxy events, build identity, logo warm progress, lineup problem rollups
 
@@ -70,6 +71,7 @@ Optional **`proxy_all`**: every tune starts at the proxy (better observability; 
 - Client-access log for Jellyfin pulls of root M3U/XMLTV
 - Prometheus `/metrics`, rich `/healthz`, compose profiles: gen-only, `proxy`; works behind a reverse proxy for TLS
 - Twelve-factor config: env for deploy knobs, optional YAML for structure; UI edits apply live
+- Prefer `FASTGEN_SMTP_PASSWORD` (and optional `FASTGEN_SMTP_USERNAME`) for ops-report credentials — env wins over YAML
 
 ### What you get in Jellyfin
 

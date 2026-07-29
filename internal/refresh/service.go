@@ -83,6 +83,22 @@ type Service struct {
 	runCtx   context.Context
 	running  map[model.ProviderID]*runningProvider
 	applied  *config.Config // last-applied snapshot for Reload diffs
+	tally    RefreshTally
+}
+
+// RefreshTally records durable refresh success/fail counts (ops report).
+type RefreshTally interface {
+	Inc(provider model.ProviderID, ok bool)
+}
+
+// SetRefreshTally wires an optional tally sink (e.g. opsreport.Scheduler).
+func (s *Service) SetRefreshTally(t RefreshTally) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tally = t
 }
 
 // New builds the provider supervisor. The config snapshot from store seeds the
@@ -383,6 +399,7 @@ func (s *Service) newRefresher(f *provider.Feed) *providerRefresher {
 		attrBus: s.attrBus,
 		notify:  s.notify,
 		status:  s.status,
+		tally:   s.tally,
 	}
 }
 

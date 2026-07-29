@@ -143,6 +143,10 @@ func ConfigSaveHandler(store *config.Store, reg *provider.Registry, sched *healt
 		}
 		shadow := config.EnvShadow()
 		for _, op := range req.Ops {
+			if op.Path == "ops_report.smtp.password_set" {
+				http.Error(w, "ops_report.smtp.password_set is read-only", http.StatusUnprocessableEntity)
+				return
+			}
 			if restartOnly[op.Path] {
 				http.Error(w, op.Path+" requires editing config.yaml and restarting; it is not live-editable", http.StatusUnprocessableEntity)
 				return
@@ -212,6 +216,31 @@ func configFields(cfg *config.Config, fileKeys map[string]bool, writable bool) m
 	add("health.max_per_host", cfg.HealthMaxPerHost())
 	add("health.soft_retries", cfg.HealthSoftRetries())
 	add("health.ffprobe_path", cfg.HealthFFProbePath())
+	add("ops_report.enabled", cfg.OpsReport.IsEnabled())
+	add("ops_report.timezone", cfg.OpsReport.TimezoneOrDefault())
+	add("ops_report.send_at", cfg.OpsReport.SendAtOrDefault())
+	add("ops_report.from", cfg.OpsReport.From)
+	add("ops_report.to", cfg.OpsReport.To)
+	add("ops_report.smtp.host", cfg.OpsReport.SMTP.Host)
+	add("ops_report.smtp.port", cfg.OpsReport.SMTP.PortOrDefault())
+	add("ops_report.smtp.starttls", cfg.OpsReport.SMTP.STARTTLSOrDefault())
+	add("ops_report.smtp.username", cfg.OpsReport.SMTP.Username)
+	// Never echo the SMTP password; expose set/not-set only.
+	pw := ConfigField{Value: "", Source: "default"}
+	if fileKeys["ops_report.smtp.password"] {
+		pw.Source = "file"
+	}
+	if env, ok := shadow["ops_report.smtp.password"]; ok {
+		pw.Source = "env"
+		pw.Env = env
+	}
+	pw.Editable = writable && pw.Source != "env"
+	out["ops_report.smtp.password"] = pw
+	out["ops_report.smtp.password_set"] = ConfigField{
+		Value:    cfg.OpsReport.PasswordSet(),
+		Source:   "default",
+		Editable: false,
+	}
 	return out
 }
 

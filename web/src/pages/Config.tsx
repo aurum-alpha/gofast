@@ -10,8 +10,17 @@ import {
   type ConfigResponse,
   type PathOp,
 } from '../lib/config'
+import {
+  fetchOpsArchives,
+  fetchOpsSchedule,
+  resendOpsArchive,
+  sendOpsPreview,
+  testOpsSMTP,
+  type OpsReportArchiveMeta,
+  type OpsReportSchedule,
+} from '../lib/opsReport'
 
-type FieldKind = 'text' | 'bool' | 'int' | 'float' | 'duration' | 'select'
+type FieldKind = 'text' | 'bool' | 'int' | 'float' | 'duration' | 'select' | 'list' | 'password'
 
 type FieldSpec = {
   path: string
@@ -86,6 +95,54 @@ const HEALTH_FIELDS: FieldSpec[] = [
   { path: 'health.ffprobe_path', label: 'ffprobe path', kind: 'text' },
 ]
 
+const OPS_REPORT_FIELDS: FieldSpec[] = [
+  {
+    path: 'ops_report.enabled',
+    label: 'Enabled',
+    kind: 'bool',
+    hint: 'Send one digest per local calendar day at send_at',
+  },
+  {
+    path: 'ops_report.timezone',
+    label: 'Timezone',
+    kind: 'text',
+    hint: 'IANA zone (e.g. America/Los_Angeles). Browser suggestion is only a hint.',
+  },
+  {
+    path: 'ops_report.send_at',
+    label: 'Send at',
+    kind: 'text',
+    hint: 'Local wall clock HH:MM (default 00:00)',
+  },
+  {
+    path: 'ops_report.from',
+    label: 'From',
+    kind: 'text',
+    hint: 'Must be SES-verified when using Amazon SES',
+  },
+  {
+    path: 'ops_report.to',
+    label: 'To',
+    kind: 'list',
+    hint: 'Comma-separated recipient addresses',
+  },
+  { path: 'ops_report.smtp.host', label: 'SMTP host', kind: 'text' },
+  { path: 'ops_report.smtp.port', label: 'SMTP port', kind: 'int', hint: 'SES typically 587' },
+  { path: 'ops_report.smtp.starttls', label: 'STARTTLS', kind: 'bool' },
+  {
+    path: 'ops_report.smtp.username',
+    label: 'SMTP username',
+    kind: 'text',
+    hint: 'Optional FASTGEN_SMTP_USERNAME overrides',
+  },
+  {
+    path: 'ops_report.smtp.password',
+    label: 'SMTP password',
+    kind: 'password',
+    hint: 'Prefer FASTGEN_SMTP_PASSWORD in stack.env; never returned by the API',
+  },
+]
+
 const DEPLOYMENT_FIELDS: FieldSpec[] = [
   { path: 'listen', label: 'Listen', kind: 'text' },
   { path: 'data_dir', label: 'Data dir', kind: 'text' },
@@ -93,17 +150,32 @@ const DEPLOYMENT_FIELDS: FieldSpec[] = [
 
 type DraftValue = string | boolean
 
+function listToDraft(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map(String).join(', ')
+  }
+  return String(value ?? '')
+}
+
 function draftFrom(fields: Record<string, ConfigField>, specs: FieldSpec[]): Record<string, DraftValue> {
   const out: Record<string, DraftValue> = {}
   for (const spec of specs) {
     const f = fields[spec.path]
     if (!f) continue
-    out[spec.path] = spec.kind === 'bool' ? Boolean(f.value) : String(f.value ?? '')
+    if (spec.kind === 'bool') {
+      out[spec.path] = Boolean(f.value)
+    } else if (spec.kind === 'list') {
+      out[spec.path] = listToDraft(f.value)
+    } else if (spec.kind === 'password') {
+      out[spec.path] = ''
+    } else {
+      out[spec.path] = String(f.value ?? '')
+    }
   }
   return out
 }
 
-/** Converts a draft input back to a typed op value; null means invalid. */
+/** Converts a draft input back to a typed op value; null means invalid / skip. */
 function typedValue(spec: FieldSpec, raw: DraftValue): unknown | null {
   switch (spec.kind) {
     case 'bool':
@@ -115,6 +187,15 @@ function typedValue(spec: FieldSpec, raw: DraftValue): unknown | null {
     case 'float': {
       const n = Number.parseFloat(String(raw))
       return Number.isFinite(n) ? n : null
+    }
+    case 'list':
+      return String(raw)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    case 'password': {
+      const s = String(raw)
+      return s === '' ? null : s
     }
     default:
       return String(raw)
@@ -174,7 +255,9 @@ function FieldControl({
   }
   return (
     <input
-      type="text"
+      type={spec.kind === 'password' ? 'password' : 'text'}
+      autoComplete={spec.kind === 'password' ? 'new-password' : undefined}
+      placeholder={spec.kind === 'password' ? '••••••••' : undefined}
       inputMode={spec.kind === 'int' || spec.kind === 'float' ? 'decimal' : undefined}
       value={String(value)}
       disabled={disabled}
@@ -189,17 +272,24 @@ function FieldRow({
   value,
   dirty,
   onChange,
+  passwordSet,
 }: {
   spec: FieldSpec
   field: ConfigField
   value: DraftValue
   dirty: boolean
   onChange: (v: DraftValue) => void
+  passwordSet?: boolean
 }) {
   return (
     <div className={`config-field${dirty ? ' dirty' : ''}`}>
       <span className="config-field-label">
         {spec.label} <SourceBadge field={field} />
+        {spec.kind === 'password' && passwordSet ? (
+          <span className="badge badge-native" title="A password is configured (value never shown)">
+            set
+          </span>
+        ) : null}
       </span>
       <FieldControl spec={spec} field={field} value={value} onChange={onChange} />
       {spec.hint ? <span className="field-hint">{spec.hint}</span> : null}
@@ -216,8 +306,13 @@ export function ConfigPage() {
   const [cacheBusy, setCacheBusy] = useState<string | null>(null)
   const [cacheNote, setCacheNote] = useState<string | null>(null)
   const [cacheError, setCacheError] = useState<string | null>(null)
+  const [opsSchedule, setOpsSchedule] = useState<OpsReportSchedule | null>(null)
+  const [opsArchives, setOpsArchives] = useState<OpsReportArchiveMeta[]>([])
+  const [opsBusy, setOpsBusy] = useState<string | null>(null)
+  const [opsNote, setOpsNote] = useState<string | null>(null)
+  const [opsError, setOpsError] = useState<string | null>(null)
 
-  const editableSpecs = useMemo(() => [...GENERAL_FIELDS, ...HEALTH_FIELDS], [])
+  const editableSpecs = useMemo(() => [...GENERAL_FIELDS, ...HEALTH_FIELDS, ...OPS_REPORT_FIELDS], [])
 
   const hydrate = useCallback(
     (body: ConfigResponse) => {
@@ -227,11 +322,20 @@ export function ConfigPage() {
     [editableSpecs],
   )
 
+  const loadOps = useCallback(async () => {
+    const [schedule, archives] = await Promise.all([fetchOpsSchedule(), fetchOpsArchives()])
+    setOpsSchedule(schedule)
+    setOpsArchives(archives)
+  }, [])
+
   const load = useCallback(async () => {
     const body = await fetchConfig()
     hydrate(body)
     setError(null)
-  }, [hydrate])
+    await loadOps().catch(() => {
+      /* schedule endpoint may be mid-boot; ignore */
+    })
+  }, [hydrate, loadOps])
 
   useEffect(() => {
     let cancelled = false
@@ -249,8 +353,16 @@ export function ConfigPage() {
       .filter((spec) => {
         const f = data.fields[spec.path]
         if (!f || !f.editable) return false
-        const original = spec.kind === 'bool' ? Boolean(f.value) : String(f.value ?? '')
-        return draft[spec.path] !== original
+        if (spec.kind === 'password') {
+          return String(draft[spec.path] ?? '') !== ''
+        }
+        if (spec.kind === 'bool') {
+          return draft[spec.path] !== Boolean(f.value)
+        }
+        if (spec.kind === 'list') {
+          return draft[spec.path] !== listToDraft(f.value)
+        }
+        return draft[spec.path] !== String(f.value ?? '')
       })
       .map((spec) => spec.path)
   }, [data, draft, editableSpecs])
@@ -265,11 +377,16 @@ export function ConfigPage() {
         if (!dirtyPaths.includes(spec.path)) continue
         const value = typedValue(spec, draft[spec.path])
         if (value === null) {
+          if (spec.kind === 'password') continue
           setToast({ ok: false, message: `${spec.label}: invalid value` })
           setSaving(false)
           return
         }
         ops.push({ path: spec.path, value })
+      }
+      if (ops.length === 0) {
+        setSaving(false)
+        return
       }
       const result = await saveConfig(data.revision, ops)
       await load()
@@ -286,6 +403,29 @@ export function ConfigPage() {
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function runOpsAction(kind: 'test' | 'preview' | 'resend', id?: string) {
+    setOpsBusy(kind === 'resend' ? `resend:${id}` : kind)
+    setOpsNote(null)
+    setOpsError(null)
+    try {
+      if (kind === 'test') {
+        await testOpsSMTP()
+        setOpsNote('Test SMTP sent')
+      } else if (kind === 'preview') {
+        const meta = await sendOpsPreview()
+        setOpsNote(`Preview sent · archived ${meta.id}`)
+      } else if (kind === 'resend' && id) {
+        await resendOpsArchive(id)
+        setOpsNote(`Resent ${id}`)
+      }
+      await loadOps()
+    } catch (err: unknown) {
+      setOpsError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setOpsBusy(null)
     }
   }
 
@@ -325,6 +465,11 @@ export function ConfigPage() {
           value={draft[spec.path] ?? (spec.kind === 'bool' ? false : '')}
           dirty={dirtyPaths.includes(spec.path)}
           onChange={setField(spec.path)}
+          passwordSet={
+            spec.kind === 'password'
+              ? Boolean(data.fields['ops_report.smtp.password_set']?.value)
+              : undefined
+          }
         />
       )
     })
@@ -387,6 +532,104 @@ export function ConfigPage() {
             ) : null}
           </p>
         ) : null}
+      </section>
+
+      <section className="detail-section">
+        <h2>Ops report email</h2>
+        <p className="meta">
+          Daily HTML digest (fleet health, provider status, channel deltas) via SMTP /
+          SES. Prefer <code>FASTGEN_SMTP_PASSWORD</code> in the environment for secrets.
+        </p>
+        <div className="config-form">{renderFields(OPS_REPORT_FIELDS)}</div>
+        {opsSchedule ? (
+          <p className="meta">
+            Last official: {formatHealthWhen(opsSchedule.last_success_at)}
+            {opsSchedule.last_success_local ? ` (${opsSchedule.last_success_local})` : ''}
+            {' · '}Next: {formatHealthWhen(opsSchedule.next_at)}
+            {opsSchedule.last_error ? (
+              <>
+                {' · '}
+                <span className="config-toast-error">Error: {opsSchedule.last_error}</span>
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        <p className="probe-actions">
+          <button
+            type="button"
+            disabled={opsBusy !== null}
+            onClick={() => {
+              void runOpsAction('test')
+            }}
+          >
+            {opsBusy === 'test' ? 'Sending…' : 'Test SMTP'}
+          </button>
+          <button
+            type="button"
+            disabled={opsBusy !== null}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  'Generate and send a full preview report now? This archives the message but does not mark the daily send as done.',
+                )
+              ) {
+                return
+              }
+              void runOpsAction('preview')
+            }}
+          >
+            {opsBusy === 'preview' ? 'Sending…' : 'Generate and Send Report'}
+          </button>
+        </p>
+        {opsNote ? (
+          <p className="meta" role="status">
+            {opsNote}
+          </p>
+        ) : null}
+        {opsError ? (
+          <div className="empty-panel" role="alert">
+            <p>{opsError}</p>
+          </div>
+        ) : null}
+        <h3>Recent reports</h3>
+        {opsArchives.length === 0 ? (
+          <p className="meta">No archived reports yet (90-day retention).</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="channels">
+              <thead>
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Kind</th>
+                  <th scope="col">Subject</th>
+                  <th scope="col"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {opsArchives.map((a) => (
+                  <tr key={a.id}>
+                    <td>{formatHealthWhen(a.generated_at)}</td>
+                    <td>
+                      <code>{a.kind}</code>
+                    </td>
+                    <td>{a.subject}</td>
+                    <td>
+                      <button
+                        type="button"
+                        disabled={opsBusy !== null}
+                        onClick={() => {
+                          void runOpsAction('resend', a.id)
+                        }}
+                      >
+                        {opsBusy === `resend:${a.id}` ? 'Sending…' : 'Resend'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="detail-section">

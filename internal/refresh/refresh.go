@@ -209,6 +209,7 @@ type providerRefresher struct {
 	attrBus  channelattr.Bus
 	notify   func()
 	status   *Status
+	tally    RefreshTally
 	inFlight atomic.Bool
 }
 
@@ -298,6 +299,9 @@ func (p *providerRefresher) refreshLocked(ctx context.Context) error {
 	p.setStatus(status)
 	duration := time.Since(start)
 	p.feed.RecordRefresh(true, duration)
+	if p.tally != nil {
+		p.tally.Inc(p.feed.ID(), true)
+	}
 	if p.notify != nil {
 		p.notify()
 	}
@@ -712,6 +716,9 @@ func (p *providerRefresher) fail(err error, duration time.Duration) error {
 	status.LastErrorAt = time.Now()
 	p.setStatus(status)
 	p.feed.RecordRefresh(false, duration)
+	if p.tally != nil {
+		p.tally.Inc(p.feed.ID(), false)
+	}
 	return err
 }
 

@@ -5,7 +5,8 @@
 #   PORT, FASTGEN_BASE_URL, FASTGEN_DATA_DIR, FASTGEN_CONFIG,
 #   FASTGEN_PROXY_BASE_URL, FASTGEN_PROXY_ALL, FASTGEN_CACHE_LOGOS,
 #   FASTGEN_HEALTH_CONSECUTIVE_FAILURES, FASTGEN_HEALTH_EXCLUDE_UNHEALTHY,
-#   FASTGEN_HEALTH_L1_INTERVAL, FASTGEN_HEALTH_L2_ENABLED, FASTGEN_HEALTH_FFPROBE_PATH
+#   FASTGEN_HEALTH_L1_INTERVAL, FASTGEN_HEALTH_L2_ENABLED, FASTGEN_HEALTH_FFPROBE_PATH,
+#   FASTGEN_SMTP_USERNAME, FASTGEN_SMTP_PASSWORD
 # Legacy FASTGEN_HEALTH_L2_INTERVAL and FASTGEN_HEALTH_L3_* aliases remain
 # accepted for one release.
 # Env always wins over this file for overlapping keys.
@@ -15,7 +16,8 @@
 # kept). Hand-editing this file directly requires a container restart — the
 # file is never watched. Env-set keys are locked in the UI (env wins).
 # Restart-only settings (listen / data_dir) intentionally have no UI control.
-# Secrets never live in this file — env only.
+# Prefer env for SMTP passwords in real deploys; YAML password is allowed for
+# local/dev but must not be committed with a real secret.
 #
 # base_url: public origin Jellyfin/browsers use for logos and absolute links.
 # Include the port unless clients hit 80/443. No trailing slash.
@@ -104,6 +106,24 @@ health:
   # Migration: old l2_interval/l2_workers (Health L1) and l3_* (Health L2)
   # aliases are accepted for one release when the corresponding new keys are unset.
   ffprobe_path: /usr/bin/ffprobe
+
+# Daily ops-report email (SMTP / SES-friendly). Off by default.
+# Prefer FASTGEN_SMTP_PASSWORD (and optional FASTGEN_SMTP_USERNAME) in
+# Portainer/stack.env for credentials — env always wins over this file.
+# YAML password is allowed for local/dev; never commit a real secret.
+# ops_report:
+#   enabled: false
+#   timezone: America/Los_Angeles   # IANA; schedule is DST-aware
+#   send_at: "00:00"                # local wall clock HH:MM
+#   from: "gofast@example.com"      # must be SES-verified when using SES
+#   to:
+#     - "ops@example.com"
+#   smtp:
+#     host: email-smtp.us-west-2.amazonaws.com
+#     port: 587
+#     starttls: true
+#     username: ""                  # or FASTGEN_SMTP_USERNAME
+#     # password: ""                # prefer FASTGEN_SMTP_PASSWORD
 
 # Cross-provider group taxonomy. Optional and app-managed: the Groups
 # editor in the UI writes this block back to config.yaml (comments preserved).

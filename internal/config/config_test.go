@@ -37,6 +37,8 @@ func clearDeployEnv(t *testing.T) {
 	t.Setenv("FASTGEN_HEALTH_L3_INTERVAL", "")
 	t.Setenv("FASTGEN_HEALTH_L3_HEALTHY_SAMPLE", "")
 	t.Setenv("FASTGEN_HEALTH_FFPROBE_PATH", "")
+	t.Setenv("FASTGEN_SMTP_USERNAME", "")
+	t.Setenv("FASTGEN_SMTP_PASSWORD", "")
 }
 
 func writeConfig(t *testing.T, body string) string {
@@ -543,5 +545,89 @@ func TestEnvOverlay(t *testing.T) {
 	}
 	if o.Timeouts.HTTPClient != 0 || o.Logging.Level != "" || o.Providers != nil {
 		t.Fatalf("overlay must only set env fields: %+v", o)
+	}
+}
+
+func TestOpsReportDefaultsAndEnvPassword(t *testing.T) {
+	clearDeployEnv(t)
+	cfg, err := New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpsReport.IsEnabled() {
+		t.Fatal("ops report should be off by default")
+	}
+	if cfg.OpsReport.TimezoneOrDefault() != "America/Los_Angeles" || cfg.OpsReport.SendAtOrDefault() != "00:00" {
+		t.Fatalf("schedule defaults: %+v", cfg.OpsReport)
+	}
+	if !cfg.OpsReport.SMTP.STARTTLSOrDefault() || cfg.OpsReport.SMTP.PortOrDefault() != 587 {
+		t.Fatalf("smtp defaults: %+v", cfg.OpsReport.SMTP)
+	}
+
+	path := writeConfig(t, `
+ops_report:
+  enabled: true
+  timezone: America/New_York
+  send_at: "07:30"
+  from: gofast@example.com
+  to: [ops@example.com]
+  smtp:
+    host: smtp.example.com
+    password: yaml-secret
+`)
+	cfg, err = New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.OpsReport.IsEnabled() || cfg.OpsReport.SMTP.Password != "yaml-secret" {
+		t.Fatalf("yaml password: %+v", cfg.OpsReport)
+	}
+	t.Setenv("FASTGEN_SMTP_PASSWORD", "env-secret")
+	t.Setenv("FASTGEN_SMTP_USERNAME", "env-user")
+	cfg, err = New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpsReport.SMTP.Password != "env-secret" || cfg.OpsReport.SMTP.Username != "env-user" {
+		t.Fatalf("env should win: %+v", cfg.OpsReport.SMTP)
+	}
+	shadow := EnvShadow()
+	if shadow["ops_report.smtp.password"] != "FASTGEN_SMTP_PASSWORD" {
+		t.Fatalf("password shadow = %q", shadow["ops_report.smtp.password"])
+	}
+}
+
+func TestOpsReportValidation(t *testing.T) {
+	clearDeployEnv(t)
+	_, err := New(writeConfig(t, `
+ops_report:
+  enabled: true
+  from: a@example.com
+  to: [b@example.com]
+`))
+	if err == nil || !strings.Contains(err.Error(), "smtp.host") {
+		t.Fatalf("expected host required, got %v", err)
+	}
+	_, err = New(writeConfig(t, `
+ops_report:
+  enabled: true
+  timezone: Not/AZone
+  from: a@example.com
+  to: [b@example.com]
+  smtp:
+    host: smtp.example.com
+`))
+	if err == nil || !strings.Contains(err.Error(), "timezone") {
+		t.Fatalf("expected timezone error, got %v", err)
+	}
+}
+
+func TestParseSendAt(t *testing.T) {
+	h, m, err := ParseSendAt("07:30")
+	if err != nil || h != 7 || m != 30 {
+		t.Fatalf("got %d:%d %v", h, m, err)
+	}
+	if _, _, err := ParseSendAt("25:00"); err == nil {
+		t.Fatal("expected bad hour")
 	}
 }

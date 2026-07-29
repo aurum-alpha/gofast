@@ -410,6 +410,22 @@ When caching is enabled:
   **UI:** `GET /api/channels` appends ghost rows for Current `absent` (Status
   filter **Absent**); Channel Detail shows presence history; Status shows
   **Absent now** and **Dropped (7d)** via `GET /api/presence/summary`.
+- **Daily ops-report email (`ops_report`):** optional once-per-local-day HTML
+  digest (multipart plain-text + rich HTML matching the operator UI brand).
+  Schedule is IANA timezone + `HH:MM` (default `America/Los_Angeles` / `00:00`)
+  with a 2h grace catch-up; always-send even when deltas are empty. Content:
+  per-provider refresh status + durable refresh tallies since last official
+  send, fleet health rollup, presence adds/drops, classification changes, and
+  health **status transitions** (not every probe tick). SMTP is SES-friendly
+  (`host`/`port`/`starttls`/`username`/`password`); password may live in YAML
+  for local/dev but **prefer `FASTGEN_SMTP_PASSWORD`** (env wins; Config UI
+  locks the field). State + archives live under `{data_dir}/ops_reports/`
+  (`state.json`, `report-*.json`, 90-day prune) — not under `channelattr/`.
+  Manual actions: **Test SMTP** (smoke, not archived), **Generate and Send
+  Report** (full preview: archive, no `last_success` / no tally reset),
+  **Resend** from archive (replay stored MIME). Official daily fire updates
+  `last_success_*` and resets tallies. APIs under `/api/ops-report/*`; Settings
+  UI section + Status snippet when enabled.
 - Structured refresh success/failure logs include counts and `duration`, plus
   `guide_horizon` / `refresh_interval` / `effective_interval` on publish.
 - Cache-backed playlist/guide responses carry a strong body `ETag` (SHA-256);
