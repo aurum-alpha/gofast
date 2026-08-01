@@ -19,7 +19,7 @@ Gen works standalone. Add the proxy when you want Amagi / SESSION playback (or f
 
 ## Why it exists
 
-- **Jellyfin expects one tuner + one guide**, not ten vendor portals.
+- **One coherent lineup beats ten portals** — Jellyfin can take many M3U/XMLTV sources, but juggling separate vendor playlists means colliding numbers, duplicate brands, and dialect gaps. GoFAST merges that into one guide-friendly lineup.
 - **Upstream formats disagree** — numbers, logos, groups, DRM, SSAI, mint-on-tune.
 - **ffmpeg is strict** — extensionless Amagi beacon URIs fail on modern Jellyfin ([jellyfin#17400](https://github.com/jellyfin/jellyfin/issues/17400)); GoFAST rewrites them so Live TV can play.
 - **Homelab operators need control** — enable/disable providers, exclude junk, prefer one copy of “CNN”, probe health, and keep last-known-good when an upstream blips.
@@ -83,7 +83,7 @@ Embedded SPA in the fastgen binary — see [screenshots](#screenshots) for Statu
 - **Status filters that match how export works** — In lineup / Via proxy, plus why something is out (Duplicate, Needs proxy, DRM, disabled group, emit disabled, regex, …). A channel can show **multiple** reasons at once
 - **Absent** — channels dropped from a provider catalog stay findable (ghost rows + presence history); Status shows Absent now / Dropped (7d)
 - **Config** — live settings (no restart for app knobs): providers, health, ops report SMTP, groups, categories, logos, proxy URLs, per-channel emit overrides
-- **Groups / Categories** — taxonomy so upstream folders and programme genres become consistent Jellyfin labels
+- **Groups / Categories** — taxonomy so upstream folders and programme genres become consistent emitted labels. Jellyfin Live TV only maps categories into **four** guide flags (Movies / Children’s / News / Sports) via pipe-delimited match lists on the listings provider — align Categories merge names with those lists (or extend Jellyfin’s lists to cover what you emit); GoFAST stays client-agnostic and does not ship Jellyfin-specific category knobs.
 - **Dedupes** — same-title clusters across providers; prefer / drop so you don’t keep five “BET”s (losers marked Duplicate, distinct from manual emit-disable)
 - **Health** — scheduled L1 segment probes + optional L2 ffprobe; history and on-demand tests
 - **Cache** — disk inventory (generations, logo **file count + size**, attr history); soft purge & logo clear without a serving gap

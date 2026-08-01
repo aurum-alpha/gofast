@@ -256,6 +256,11 @@ streams).
   block color). There is **no disable** — a category is a label on an airing,
   not a channel you can drop. Managed in the UI Categories editor; `GET/PUT
   /api/categories` persists and hot-reloads like Groups.
+  **Jellyfin note:** Live TV listings providers expose exactly four designation
+  synonym lists (Movies / Kids / News / Sports), matched case-insensitively
+  against emitted `<category>` strings; other labels remain generic genres.
+  Align Categories merge names with those lists, or extend Jellyfin’s lists to
+  include whatever fastgen emits — no GoFAST Jellyfin-specific category remap.
 - **Per-channel emit customization (`channel_emit`):** under each
   provider, a map keyed by normalized channel id customizes **what fastgen
   emits** (not upstream fetch/raw): display name, group-title, channel number,
