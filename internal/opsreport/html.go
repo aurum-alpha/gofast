@@ -27,8 +27,6 @@ const (
 	badgeDownBD     = "#c48080"
 	badgeText       = "#111111"
 	colorWarn       = "#8f4a52"
-	colorAdded      = "#d8f0c8"
-	colorDropped    = "#f0d0d0"
 )
 
 // RenderHTML builds a rich, email-safe HTML body matching the operator UI dark theme.
@@ -86,7 +84,7 @@ func RenderHTML(rep Report) string {
 	b.WriteString(`;">`)
 
 	// Health metrics — .stat-grid / .stat
-	writeSectionStart(&b, "Fleet health")
+	writeSectionStart(&b, "System health")
 	b.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>`)
 	writeMetric(&b, "Healthy", fmt.Sprintf("%d", rep.Health.Healthy), colorInk, false)
 	writeMetric(&b, "Degraded", fmt.Sprintf("%d", rep.Health.Degraded), colorWarn, rep.Health.Degraded > 0)
@@ -94,9 +92,7 @@ func RenderHTML(rep Report) string {
 	writeMetric(&b, "Untested", fmt.Sprintf("%d", rep.Health.Untested), colorInk, false)
 	b.WriteString(`</tr></table>`)
 	if len(rep.Health.Worst) > 0 {
-		b.WriteString(`<div style="margin-top:12px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:`)
-		b.WriteString(colorMuted)
-		b.WriteString(`;margin-bottom:6px;">Worst channels</div>`)
+		writeSubsectionTitle(&b, "Worst channels", len(rep.Health.Worst))
 		writeTableStart(&b, []string{"Provider", "Channel", "Status"})
 		for _, w := range rep.Health.Worst {
 			writeTableRow(&b, []string{string(w.Provider), displayName(w.Name, w.ChannelID), string(w.Status)}, string(w.Status))
@@ -128,50 +124,12 @@ func RenderHTML(rep Report) string {
 	}
 	writeSectionEnd(&b)
 
-	// Deltas
+	// Deltas — same table layout for every subsection
 	writeSectionStart(&b, "Channel deltas")
-	writeDeltaBlock(&b, "Added", colorAdded, deltaNames(rep.Added))
-	writeDeltaBlock(&b, "Dropped", colorDropped, deltaNames(rep.Dropped))
-	if len(rep.ClassChanges) == 0 {
-		writeDeltaBlock(&b, "Classification changes", colorAccent, nil)
-	} else {
-		b.WriteString(`<div style="margin:12px 0 6px;font-size:14px;font-weight:600;color:`)
-		b.WriteString(colorInk)
-		b.WriteString(`;">Classification changes <span style="color:`)
-		b.WriteString(colorMuted)
-		b.WriteString(`;font-weight:400;">(`)
-		b.WriteString(fmt.Sprintf("%d", len(rep.ClassChanges)))
-		b.WriteString(`)</span></div>`)
-		writeTableStart(&b, []string{"Provider", "Channel", "Change"})
-		for _, d := range rep.ClassChanges {
-			writeTableRow(&b, []string{
-				string(d.Provider),
-				displayName(d.Name, d.ChannelID),
-				fmt.Sprintf("%s → %s", emptyDash(d.Old), emptyDash(d.New)),
-			}, "")
-		}
-		writeTableEnd(&b)
-	}
-	if len(rep.HealthChanges) == 0 {
-		writeDeltaBlock(&b, "Health transitions", colorAccent, nil)
-	} else {
-		b.WriteString(`<div style="margin:12px 0 6px;font-size:14px;font-weight:600;color:`)
-		b.WriteString(colorInk)
-		b.WriteString(`;">Health transitions <span style="color:`)
-		b.WriteString(colorMuted)
-		b.WriteString(`;font-weight:400;">(`)
-		b.WriteString(fmt.Sprintf("%d", len(rep.HealthChanges)))
-		b.WriteString(`)</span></div>`)
-		writeTableStart(&b, []string{"Provider", "Channel", "Change"})
-		for _, d := range rep.HealthChanges {
-			writeTableRow(&b, []string{
-				string(d.Provider),
-				displayName(d.Name, d.ChannelID),
-				fmt.Sprintf("%s → %s", d.Old, d.New),
-			}, string(d.New))
-		}
-		writeTableEnd(&b)
-	}
+	writePresenceDeltaTable(&b, "Added", rep.Added)
+	writePresenceDeltaTable(&b, "Dropped", rep.Dropped)
+	writeClassDeltaTable(&b, rep.ClassChanges)
+	writeHealthDeltaTable(&b, rep.HealthChanges)
 	writeSectionEnd(&b)
 
 	if rep.BaseURL != "" {
@@ -319,7 +277,7 @@ func writeEmpty(b *bytes.Buffer, msg string) {
 	b.WriteString(`</div>`)
 }
 
-func writeDeltaBlock(b *bytes.Buffer, title, accent string, lines []string) {
+func writeSubsectionTitle(b *bytes.Buffer, title string, count int) {
 	b.WriteString(`<div style="margin:12px 0 6px;font-size:14px;font-weight:600;color:`)
 	b.WriteString(colorInk)
 	b.WriteString(`;">`)
@@ -327,44 +285,59 @@ func writeDeltaBlock(b *bytes.Buffer, title, accent string, lines []string) {
 	b.WriteString(` <span style="color:`)
 	b.WriteString(colorMuted)
 	b.WriteString(`;font-weight:400;">(`)
-	b.WriteString(fmt.Sprintf("%d", len(lines)))
+	b.WriteString(fmt.Sprintf("%d", count))
 	b.WriteString(`)</span></div>`)
-	if len(lines) == 0 {
+}
+
+func writePresenceDeltaTable(b *bytes.Buffer, title string, rows []DeltaRow) {
+	writeSubsectionTitle(b, title, len(rows))
+	if len(rows) == 0 {
 		writeEmpty(b, "none in window")
 		return
 	}
-	b.WriteString(`<ul style="margin:0;padding-left:18px;font-size:13px;color:`)
-	b.WriteString(colorInk)
-	b.WriteString(`;">`)
-	for _, line := range lines {
-		b.WriteString(`<li style="margin:4px 0;">`)
-		if accent == colorAdded || accent == colorDropped {
-			bg, bd := accent, colorLine
-			if accent == colorAdded {
-				bd = badgeHealthyBD
-			} else {
-				bd = badgeDownBD
-			}
-			b.WriteString(`<span style="display:inline-block;padding:1px 6px;margin-right:6px;border:1px solid `)
-			b.WriteString(bd)
-			b.WriteString(`;background:`)
-			b.WriteString(bg)
-			b.WriteString(`;color:`)
-			b.WriteString(badgeText)
-			b.WriteString(`;font-size:11px;font-weight:700;">•</span>`)
-		}
-		b.WriteString(html.EscapeString(line))
-		b.WriteString(`</li>`)
+	writeTableStart(b, []string{"Provider", "Channel", "When"})
+	for _, r := range rows {
+		writeTableRow(b, []string{
+			string(r.Provider),
+			displayName(r.Name, r.ChannelID),
+			fmtTime(r.At),
+		}, "")
 	}
-	b.WriteString(`</ul>`)
+	writeTableEnd(b)
 }
 
-func deltaNames(rows []DeltaRow) []string {
-	out := make([]string, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, fmt.Sprintf("%s · %s (%s)", r.Provider, displayName(r.Name, r.ChannelID), r.ChannelID))
+func writeClassDeltaTable(b *bytes.Buffer, rows []ClassDeltaRow) {
+	writeSubsectionTitle(b, "Classification changes", len(rows))
+	if len(rows) == 0 {
+		writeEmpty(b, "none in window")
+		return
 	}
-	return out
+	writeTableStart(b, []string{"Provider", "Channel", "Change"})
+	for _, d := range rows {
+		writeTableRow(b, []string{
+			string(d.Provider),
+			displayName(d.Name, d.ChannelID),
+			fmt.Sprintf("%s → %s", emptyDash(d.Old), emptyDash(d.New)),
+		}, "")
+	}
+	writeTableEnd(b)
+}
+
+func writeHealthDeltaTable(b *bytes.Buffer, rows []HealthDeltaRow) {
+	writeSubsectionTitle(b, "Health transitions", len(rows))
+	if len(rows) == 0 {
+		writeEmpty(b, "none in window")
+		return
+	}
+	writeTableStart(b, []string{"Provider", "Channel", "Change"})
+	for _, d := range rows {
+		writeTableRow(b, []string{
+			string(d.Provider),
+			displayName(d.Name, d.ChannelID),
+			fmt.Sprintf("%s → %s", d.Old, d.New),
+		}, string(d.New))
+	}
+	writeTableEnd(b)
 }
 
 func displayName(name, id string) string {

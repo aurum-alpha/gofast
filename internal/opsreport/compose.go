@@ -51,7 +51,7 @@ type ProviderRow struct {
 	RefreshFail     uint64           `json:"refresh_failures"`
 }
 
-// HealthRollup counts fleet health statuses.
+// HealthRollup counts system health statuses.
 type HealthRollup struct {
 	Healthy  int        `json:"healthy"`
 	Degraded int        `json:"degraded"`
@@ -133,16 +133,17 @@ func (c *Composer) Build(ctx context.Context, kind Kind, now time.Time, lastSucc
 	rep.Health = c.healthRollup()
 
 	if c.Attrs != nil {
-		added, dropped, err := c.presenceDeltas(ctx, windowStart)
+		names := c.channelNameIndex()
+		added, dropped, err := c.presenceDeltas(ctx, windowStart, names)
 		if err != nil {
 			return Report{}, err
 		}
 		rep.Added, rep.Dropped = added, dropped
-		rep.ClassChanges, err = c.classDeltas(ctx, windowStart)
+		rep.ClassChanges, err = c.classDeltas(ctx, windowStart, names)
 		if err != nil {
 			return Report{}, err
 		}
-		rep.HealthChanges, err = c.healthDeltas(ctx, windowStart)
+		rep.HealthChanges, err = c.healthDeltas(ctx, windowStart, names)
 		if err != nil {
 			return Report{}, err
 		}
@@ -225,108 +226,234 @@ func (c *Composer) healthRollup() HealthRollup {
 	return out
 }
 
-func (c *Composer) presenceDeltas(ctx context.Context, since time.Time) (added, dropped []DeltaRow, err error) {
+type channelKey struct {
+	p model.ProviderID
+	c string
+}
+
+func (c *Composer) channelNameIndex() map[channelKey]string {
+	out := make(map[channelKey]string)
+	if c.Reg == nil {
+		return out
+	}
+	for _, ch := range c.Reg.Channels() {
+		id := ch.NormalizedID
+		if id == "" {
+			id = ch.ID
+		}
+		if id == "" {
+			continue
+		}
+		name := ch.DisplayName()
+		if name == "" || name == id {
+			continue
+		}
+		out[channelKey{ch.Provider, id}] = name
+	}
+	return out
+}
+
+func (c *Composer) resolveName(names map[channelKey]string, provider model.ProviderID, channelID, fallback string) string {
+	if n := names[channelKey{provider, channelID}]; n != "" {
+		return n
+	}
+	if fallback != "" && fallback != channelID {
+		return fallback
+	}
+	if c.Attrs != nil {
+		if raw, ok := c.Attrs.Current(provider, channelID, channelattr.KindPresence); ok {
+			var p channelattr.Presence
+			if json.Unmarshal(raw, &p) == nil && p.Name != "" && p.Name != channelID {
+				return p.Name
+			}
+		}
+	}
+	return fallback
+}
+
+// presenceDeltas returns net catalog membership changes in the window.
+// Presence events are transitions only, so start-of-window state is the
+// opposite of the first event; end state is the last. Churn that ends where
+// it started is omitted — a channel never appears in both Added and Dropped.
+func (c *Composer) presenceDeltas(ctx context.Context, since time.Time, names map[channelKey]string) (added, dropped []DeltaRow, err error) {
 	events, err := c.Attrs.EventsSince(ctx, since, []channelattr.Kind{channelattr.KindPresence}, "", deltaLimitPerKind)
 	if err != nil {
 		return nil, nil, err
 	}
+	type track struct {
+		firstState string
+		endState   string
+		row        DeltaRow
+	}
+	by := map[channelKey]*track{}
 	for _, ev := range events {
 		var p channelattr.Presence
 		if json.Unmarshal(ev.Value, &p) != nil {
 			continue
 		}
-		name := p.Name
+		if p.State != channelattr.PresencePresent && p.State != channelattr.PresenceAbsent {
+			continue
+		}
+		k := channelKey{ev.Provider, ev.ChannelID}
+		name := c.resolveName(names, ev.Provider, ev.ChannelID, p.Name)
 		if name == "" {
 			name = ev.ChannelID
 		}
 		row := DeltaRow{Provider: ev.Provider, ChannelID: ev.ChannelID, Name: name, At: ev.At}
-		switch p.State {
+		tr, ok := by[k]
+		if !ok {
+			by[k] = &track{firstState: p.State, endState: p.State, row: row}
+			continue
+		}
+		tr.endState = p.State
+		tr.row = row
+	}
+	for _, tr := range by {
+		start := presenceOpposite(tr.firstState)
+		if start == tr.endState {
+			continue
+		}
+		switch tr.endState {
 		case channelattr.PresencePresent:
-			added = append(added, row)
+			added = append(added, tr.row)
 		case channelattr.PresenceAbsent:
-			dropped = append(dropped, row)
+			dropped = append(dropped, tr.row)
 		}
 	}
+	sortDeltaRows(added)
+	sortDeltaRows(dropped)
 	return added, dropped, nil
 }
 
-func (c *Composer) classDeltas(ctx context.Context, since time.Time) ([]ClassDeltaRow, error) {
+func presenceOpposite(state string) string {
+	switch state {
+	case channelattr.PresencePresent:
+		return channelattr.PresenceAbsent
+	case channelattr.PresenceAbsent:
+		return channelattr.PresencePresent
+	default:
+		return ""
+	}
+}
+
+func sortDeltaRows(rows []DeltaRow) {
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Provider != rows[j].Provider {
+			return rows[i].Provider < rows[j].Provider
+		}
+		if rows[i].Name != rows[j].Name {
+			return rows[i].Name < rows[j].Name
+		}
+		return rows[i].ChannelID < rows[j].ChannelID
+	})
+}
+
+func (c *Composer) classDeltas(ctx context.Context, since time.Time, names map[channelKey]string) ([]ClassDeltaRow, error) {
 	events, err := c.Attrs.EventsSince(ctx, since, []channelattr.Kind{channelattr.KindClassification}, "", deltaLimitPerKind)
 	if err != nil {
 		return nil, err
 	}
-	var out []ClassDeltaRow
+	type track struct {
+		old string
+		neu string
+		at  time.Time
+	}
+	by := map[channelKey]*track{}
+	order := make([]channelKey, 0)
 	for _, ev := range events {
 		var neu string
 		if json.Unmarshal(ev.Value, &neu) != nil {
 			neu = strings.Trim(string(ev.Value), `"`)
 		}
-		old := ""
-		hist, herr := c.Attrs.History(ctx, ev.Provider, ev.ChannelID, channelattr.KindClassification, 2)
-		if herr == nil && len(hist) >= 2 {
-			_ = json.Unmarshal(hist[1].Value, &old)
-			if old == "" {
-				old = strings.Trim(string(hist[1].Value), `"`)
-			}
+		k := channelKey{ev.Provider, ev.ChannelID}
+		tr, ok := by[k]
+		if !ok {
+			old := classificationBefore(ctx, c.Attrs, ev)
+			by[k] = &track{old: old, neu: neu, at: ev.At}
+			order = append(order, k)
+			continue
 		}
-		if old == neu {
+		tr.neu = neu
+		tr.at = ev.At
+	}
+	var out []ClassDeltaRow
+	for _, k := range order {
+		tr := by[k]
+		if tr.old == tr.neu {
 			continue
 		}
 		out = append(out, ClassDeltaRow{
-			Provider:  ev.Provider,
-			ChannelID: ev.ChannelID,
-			Old:       old,
-			New:       neu,
-			At:        ev.At,
+			Provider:  k.p,
+			ChannelID: k.c,
+			Name:      c.resolveName(names, k.p, k.c, ""),
+			Old:       tr.old,
+			New:       tr.neu,
+			At:        tr.at,
 		})
 	}
 	return out, nil
 }
 
-func (c *Composer) healthDeltas(ctx context.Context, since time.Time) ([]HealthDeltaRow, error) {
+func classificationBefore(ctx context.Context, attrs *channelattr.Store, ev channelattr.TimelineEvent) string {
+	hist, err := attrs.History(ctx, ev.Provider, ev.ChannelID, channelattr.KindClassification, 20)
+	if err != nil {
+		return ""
+	}
+	for _, he := range hist {
+		if !he.At.Before(ev.At) {
+			continue
+		}
+		var old string
+		if json.Unmarshal(he.Value, &old) != nil {
+			old = strings.Trim(string(he.Value), `"`)
+		}
+		return old
+	}
+	return ""
+}
+
+func (c *Composer) healthDeltas(ctx context.Context, since time.Time, names map[channelKey]string) ([]HealthDeltaRow, error) {
 	events, err := c.Attrs.EventsSince(ctx, since, []channelattr.Kind{channelattr.KindHealth}, "", deltaLimitPerKind)
 	if err != nil {
 		return nil, err
 	}
-	type key struct {
-		p model.ProviderID
-		c string
+	type track struct {
+		old model.Health
+		neu model.Health
+		at  time.Time
+		ok  bool // old resolved
 	}
-	last := map[key]model.Health{}
-	var transitions []HealthDeltaRow
+	by := map[channelKey]*track{}
+	order := make([]channelKey, 0)
 	for _, ev := range events {
 		var h model.ChannelHealth
-		if json.Unmarshal(ev.Value, &h) != nil {
+		if json.Unmarshal(ev.Value, &h) != nil || h.Status == "" {
 			continue
 		}
-		k := key{ev.Provider, ev.ChannelID}
-		prev, ok := last[k]
-		last[k] = h.Status
+		k := channelKey{ev.Provider, ev.ChannelID}
+		tr, ok := by[k]
 		if !ok {
-			hist, herr := c.Attrs.History(ctx, ev.Provider, ev.ChannelID, channelattr.KindHealth, 20)
-			if herr == nil {
-				for _, he := range hist {
-					if !he.At.Before(ev.At) {
-						continue
-					}
-					var older model.ChannelHealth
-					if json.Unmarshal(he.Value, &older) == nil {
-						prev = older.Status
-						ok = true
-					}
-					break
-				}
-			}
+			prev, found := healthBefore(ctx, c.Attrs, ev)
+			by[k] = &track{old: prev, neu: h.Status, at: ev.At, ok: found}
+			order = append(order, k)
+			continue
 		}
-		if !ok || prev == h.Status || h.Status == "" {
+		tr.neu = h.Status
+		tr.at = ev.At
+	}
+	var transitions []HealthDeltaRow
+	for _, k := range order {
+		tr := by[k]
+		if !tr.ok || tr.old == tr.neu {
 			continue
 		}
 		transitions = append(transitions, HealthDeltaRow{
-			Provider:  ev.Provider,
-			ChannelID: ev.ChannelID,
-			Old:       prev,
-			New:       h.Status,
-			At:        ev.At,
+			Provider:  k.p,
+			ChannelID: k.c,
+			Name:      c.resolveName(names, k.p, k.c, ""),
+			Old:       tr.old,
+			New:       tr.neu,
+			At:        tr.at,
 		})
 	}
 	sort.SliceStable(transitions, func(i, j int) bool {
@@ -336,6 +463,24 @@ func (c *Composer) healthDeltas(ctx context.Context, since time.Time) ([]HealthD
 		transitions = transitions[:healthDeltaCap]
 	}
 	return transitions, nil
+}
+
+func healthBefore(ctx context.Context, attrs *channelattr.Store, ev channelattr.TimelineEvent) (model.Health, bool) {
+	hist, err := attrs.History(ctx, ev.Provider, ev.ChannelID, channelattr.KindHealth, 20)
+	if err != nil {
+		return "", false
+	}
+	for _, he := range hist {
+		if !he.At.Before(ev.At) {
+			continue
+		}
+		var older model.ChannelHealth
+		if json.Unmarshal(he.Value, &older) == nil && older.Status != "" {
+			return older.Status, true
+		}
+		break
+	}
+	return "", false
 }
 
 func healthSeverity(h model.Health) int {

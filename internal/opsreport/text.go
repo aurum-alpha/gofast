@@ -19,11 +19,11 @@ func RenderText(rep Report) string {
 	b.WriteString(fmt.Sprintf("Local date: %s (%s)\n", rep.LocalDate, rep.Timezone))
 	b.WriteString(fmt.Sprintf("Window: %s → %s UTC\n\n", fmtTime(rep.WindowStart), fmtTime(rep.WindowEnd)))
 
-	b.WriteString("Fleet health\n------------\n")
+	b.WriteString("System health\n-------------\n")
 	b.WriteString(fmt.Sprintf("healthy=%d degraded=%d down=%d untested=%d\n",
 		rep.Health.Healthy, rep.Health.Degraded, rep.Health.Down, rep.Health.Untested))
 	for _, w := range rep.Health.Worst {
-		b.WriteString(fmt.Sprintf("  %s %s (%s) %s\n", w.Status, w.Provider, w.ChannelID, displayName(w.Name, w.ChannelID)))
+		b.WriteString(fmt.Sprintf("  %s %s · %s\n", w.Status, w.Provider, displayName(w.Name, w.ChannelID)))
 	}
 	b.WriteString("\n")
 
@@ -50,28 +50,28 @@ func RenderText(rep Report) string {
 		b.WriteString("  none in window\n")
 	}
 	for _, r := range rep.Added {
-		b.WriteString(fmt.Sprintf("  + %s %s (%s)\n", r.Provider, displayName(r.Name, r.ChannelID), r.ChannelID))
+		b.WriteString(fmt.Sprintf("  + %s · %s @ %s\n", r.Provider, displayName(r.Name, r.ChannelID), fmtTime(r.At)))
 	}
 	b.WriteString(fmt.Sprintf("Dropped (%d)\n", len(rep.Dropped)))
 	if len(rep.Dropped) == 0 {
 		b.WriteString("  none in window\n")
 	}
 	for _, r := range rep.Dropped {
-		b.WriteString(fmt.Sprintf("  - %s %s (%s)\n", r.Provider, displayName(r.Name, r.ChannelID), r.ChannelID))
+		b.WriteString(fmt.Sprintf("  - %s · %s @ %s\n", r.Provider, displayName(r.Name, r.ChannelID), fmtTime(r.At)))
 	}
 	b.WriteString(fmt.Sprintf("Classification changes (%d)\n", len(rep.ClassChanges)))
 	if len(rep.ClassChanges) == 0 {
 		b.WriteString("  none in window\n")
 	}
 	for _, r := range rep.ClassChanges {
-		b.WriteString(fmt.Sprintf("  ~ %s %s: %s → %s\n", r.Provider, r.ChannelID, emptyDash(r.Old), emptyDash(r.New)))
+		b.WriteString(fmt.Sprintf("  ~ %s · %s: %s → %s\n", r.Provider, displayName(r.Name, r.ChannelID), emptyDash(r.Old), emptyDash(r.New)))
 	}
 	b.WriteString(fmt.Sprintf("Health transitions (%d)\n", len(rep.HealthChanges)))
 	if len(rep.HealthChanges) == 0 {
 		b.WriteString("  none in window\n")
 	}
 	for _, r := range rep.HealthChanges {
-		b.WriteString(fmt.Sprintf("  ! %s %s: %s → %s\n", r.Provider, r.ChannelID, r.Old, r.New))
+		b.WriteString(fmt.Sprintf("  ! %s · %s: %s → %s\n", r.Provider, displayName(r.Name, r.ChannelID), r.Old, r.New))
 	}
 
 	if rep.BaseURL != "" {
