@@ -10,8 +10,8 @@ branches on dialect, see `internal/proxy` package docs (`go doc ./internal/proxy
 | People say… | Actually means… |
 |-------------|-----------------|
 | “SSAI channel” / “beacon channel” | **Not** one playback path. SSAI is a business concept; GoFAST dialects (`AMAGI_SSAI`, `SESSION`, `XUMO_SSAI`) need different handling. |
-| “Needs the proxy” | Only **`AMAGI_SSAI`** (rewrite) and **`SESSION`** (mint) require FASTProxy under selective mode. **`XUMO_SSAI` usually does not.** |
-| “SESSION = Amagi” | **No.** SESSION is Google DAI mint-on-tune-in. Amagi is extensionless beacon segment URIs. Feeding DistroTV into Amagi rewrite does nothing useful. |
+| “Needs the proxy” | **`AMAGI_SSAI`** (rewrite), **`SESSION`** (DAI mint), and **`DISTRO_RESOLVE`** (DistroTV jsrdn) require FASTProxy under selective mode. **`XUMO_SSAI` usually does not.** |
+| “SESSION = Amagi” | **No.** SESSION is Google DAI mint-on-tune-in. Amagi is extensionless beacon segment URIs. DistroTV uses **`DISTRO_RESOLVE`**, not SESSION mint. |
 | “Tubi/Plex adapter” | **FASTGen** provider fetchers (lineup + EPG). Not FASTProxy dialect work. Plex ships via mjh; Tubi and TCL ship as published-pair. |
 
 ---
@@ -50,8 +50,8 @@ FASTProxy must intervene. See dialect / classification.
 ### Dialect / classification
 
 GoFAST **playback-path bucket** set at refresh by `internal/classifier`. Wire
-values: `NATIVE` | `AMAGI_SSAI` | `SESSION` | `XUMO_SSAI` | `DRM`. Legacy
-`BEACON` canonicalizes to `AMAGI_SSAI`. Classification answers “what kind of
+values: `NATIVE` | `AMAGI_SSAI` | `SESSION` | `DISTRO_RESOLVE` | `XUMO_SSAI` | `DRM`.
+Legacy `BEACON` canonicalizes to `AMAGI_SSAI`. Classification answers “what kind of
 stream is this?” — not “is it healthy?” (health is separate).
 
 ### `NATIVE`
@@ -97,8 +97,15 @@ live master. Catalog URLs are labels, not durable playlists.
 ### Google DAI
 
 Google Ad Manager **Dynamic Ad Insertion**. Linear live events use hosts like
-`dai.google.com`. DistroTV published-pair streams commonly classify as
-`SESSION`.
+`dai.google.com`. Unauthenticated mint against dead Distro published event IDs
+returns **404** (not 401) — DistroTV no longer uses this path.
+
+### `DISTRO_RESOLVE`
+
+DistroTV dialect: catalog `StreamURL` is an opaque `distro://channel/{geo}_{id}`
+token. At tune-in FASTProxy fetches Distro’s jsrdn live feed, substitutes ad
+macros, and **302**s to a fresh HLS URL (or **rewrites** Amagi / Origin-locked
+hosts). Not Google DAI mint.
 
 ### `stream_manifest`
 
@@ -136,17 +143,17 @@ Control plane for the lineup.
 ### FASTProxy
 
 Optional binary (`fastproxy`): dialect translation at tune-in (Amagi rewrite,
-SESSION mint). Headless — no `/data`, no product UI; reports into gen.
+SESSION mint, Distro resolve). Headless — no `/data`, no product UI; reports into gen.
 
 ### Selective proxy vs `proxy_all`
 
 **Selective (default):** gen embeds `{proxy_base_url}/stream/...` only for
-dialects that `RequireProxy()` (Amagi + SESSION).
+dialects that `RequireProxy()` (Amagi + SESSION + Distro resolve).
 
 **`proxy_all`:** every exported channel gets that stable `/stream` URL. Proxy
-still **rewrites** Amagi, **mints** SESSION, and **302s** NATIVE/XUMO to
-upstream. Same M3U URL shape; behavior is decided inside the proxy by
-classification.
+still **rewrites** Amagi, **mints** SESSION, **resolves** Distro, and **302s**
+NATIVE/XUMO to upstream. Same M3U URL shape; behavior is decided inside the
+proxy by classification.
 
 ### `proxy_base_url` vs `proxy_internal_url` vs proxy envs
 

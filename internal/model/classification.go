@@ -5,11 +5,12 @@ package model
 type Classification string
 
 const (
-	ClassNative    Classification = "NATIVE"
-	ClassAmagiSSAI Classification = "AMAGI_SSAI"
-	ClassSession   Classification = "SESSION"
-	ClassXumoSSAI  Classification = "XUMO_SSAI"
-	ClassDRM       Classification = "DRM"
+	ClassNative        Classification = "NATIVE"
+	ClassAmagiSSAI     Classification = "AMAGI_SSAI"
+	ClassSession       Classification = "SESSION"
+	ClassXumoSSAI      Classification = "XUMO_SSAI"
+	ClassDRM           Classification = "DRM"
+	ClassDistroResolve Classification = "DISTRO_RESOLVE"
 
 	// classBeaconLegacy is the pre-J27-49 wire value for Amagi SSAI.
 	// Canonical maps it to ClassAmagiSSAI; do not emit this for new writes.
@@ -27,6 +28,8 @@ const (
 	ProxyAmagiRewrite
 	// ProxySessionMint is Google DAI mint-on-tune-in then 302 to stream_manifest.
 	ProxySessionMint
+	// ProxyDistroResolve is DistroTV jsrdn feed resolve at tune-in, then 302 or rewrite.
+	ProxyDistroResolve
 )
 
 // Canonical returns the current wire value for c (maps legacy BEACON → AMAGI_SSAI).
@@ -40,7 +43,7 @@ func (c Classification) Canonical() Classification {
 // Known reports whether c is a recognized dialect (empty counts as known/unset).
 func (c Classification) Known() bool {
 	switch c.Canonical() {
-	case "", ClassNative, ClassAmagiSSAI, ClassSession, ClassXumoSSAI, ClassDRM:
+	case "", ClassNative, ClassAmagiSSAI, ClassSession, ClassXumoSSAI, ClassDRM, ClassDistroResolve:
 		return true
 	default:
 		return false
@@ -54,6 +57,8 @@ func (c Classification) ProxyKind() ProxyKind {
 		return ProxyAmagiRewrite
 	case ClassSession:
 		return ProxySessionMint
+	case ClassDistroResolve:
+		return ProxyDistroResolve
 	default:
 		return ProxyNone
 	}
@@ -65,10 +70,10 @@ func (c Classification) RequiresAmagiProxy() bool {
 }
 
 // RequiresProxy reports whether selective emission must embed a proxy /stream URL.
-// True for Amagi rewrite and SESSION mint; false for NATIVE / XUMO_SSAI / DRM.
+// True for Amagi rewrite, SESSION mint, and Distro resolve; false for NATIVE / XUMO_SSAI / DRM.
 func (c Classification) RequiresProxy() bool {
 	switch c.ProxyKind() {
-	case ProxyAmagiRewrite, ProxySessionMint:
+	case ProxyAmagiRewrite, ProxySessionMint, ProxyDistroResolve:
 		return true
 	default:
 		return false
@@ -78,8 +83,8 @@ func (c Classification) RequiresProxy() bool {
 // ScheduleSegmentHealth reports whether scheduled Health L1 segment probes may
 // apply for this dialect. Amagi SSAI is included so sweeps can cover proxy
 // EmittedURLs; the scheduler still skips Amagi when EmittedURL is empty (never
-// probe upstream beacons on the schedule). SESSION stays excluded (mint = fake
-// tune). DRM is never probed.
+// probe upstream beacons on the schedule). SESSION and DISTRO_RESOLVE stay
+// excluded (resolve/mint = fake tune). DRM is never probed.
 func (c Classification) ScheduleSegmentHealth() bool {
 	switch c.Canonical() {
 	case ClassNative, ClassXumoSSAI, ClassAmagiSSAI:

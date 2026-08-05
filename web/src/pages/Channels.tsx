@@ -231,7 +231,7 @@ export function ChannelsPage() {
       <p className="lead">
         Live lineup from the last successful refresh. Click a row for export
         status, reasons, URLs, health history, and identity. Class is the stream
-        dialect (NATIVE / Amagi SSAI / SESSION / Xumo SSAI / DRM); Health comes from
+        dialect (NATIVE / Amagi SSAI / SESSION / Distro resolve / Xumo SSAI / DRM); Health comes from
         segment/ffprobe checks. Click a column header to sort.
       </p>
 

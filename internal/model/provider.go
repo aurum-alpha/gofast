@@ -48,7 +48,8 @@ type ProviderSettings struct {
 	// SlugTemplate overrides mjh slug construction (e.g. Pluto "plu-{id}.m3u8").
 	SlugTemplate string `yaml:"slug_template" json:"slug_template,omitempty"`
 
-	// Region selects mjh regioned feeds (e.g. "us"). Empty for regionless (Roku).
+	// Region selects mjh regioned feeds (e.g. "us") or DistroTV geo (e.g. "QQ").
+	// Empty for regionless MJH (Roku).
 	Region string `yaml:"region" json:"region,omitempty"`
 
 	// Optional URL overrides (empty = provider built-in defaults).

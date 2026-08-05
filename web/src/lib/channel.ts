@@ -330,6 +330,7 @@ export const CLASS_FILTERS = [
   'NATIVE',
   'AMAGI_SSAI',
   'SESSION',
+  'DISTRO_RESOLVE',
   'XUMO_SSAI',
   'DRM',
 ] as const
@@ -367,6 +368,8 @@ export function classBadge(classification?: string): { label: string; kind: stri
       return { label: 'Amagi SSAI', kind: 'beacon' }
     case 'SESSION':
       return { label: 'SESSION', kind: 'beacon' }
+    case 'DISTRO_RESOLVE':
+      return { label: 'Distro resolve', kind: 'beacon' }
     case 'XUMO_SSAI':
       return { label: 'Xumo SSAI', kind: 'beacon' }
     case 'DRM':
@@ -376,10 +379,10 @@ export function classBadge(classification?: string): { label: string; kind: stri
   }
 }
 
-/** Matches gen l1ShouldSchedule: Amagi only with emitted proxy URL; SESSION never. */
+/** Matches gen l1ShouldSchedule: Amagi only with emitted proxy URL; SESSION/Distro never. */
 export function channelOnScheduledL1(ch: Pick<Channel, 'classification' | 'emitted_url' | 'stream_url'>): boolean {
   const cls = canonicalClassification(ch.classification)
-  if (cls === 'SESSION' || cls === 'DRM' || !cls) return false
+  if (cls === 'SESSION' || cls === 'DISTRO_RESOLVE' || cls === 'DRM' || !cls) return false
   if (cls === 'AMAGI_SSAI') return Boolean(ch.emitted_url)
   return Boolean(ch.emitted_url || ch.stream_url)
 }
@@ -387,6 +390,7 @@ export function channelOnScheduledL1(ch: Pick<Channel, 'classification' | 'emitt
 export function l1SkipReason(ch: Pick<Channel, 'classification' | 'emitted_url'>): string {
   const cls = canonicalClassification(ch.classification)
   if (cls === 'SESSION') return 'not scheduled (SESSION mint — Manual / playback only)'
+  if (cls === 'DISTRO_RESOLVE') return 'not scheduled (Distro resolve — Manual / playback only)'
   if (cls === 'AMAGI_SSAI' && !ch.emitted_url) {
     return 'not scheduled (Amagi needs proxy EmittedURL)'
   }

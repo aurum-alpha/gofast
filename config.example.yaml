@@ -483,17 +483,21 @@ providers:
     # epg_url: https://raw.githubusercontent.com/BuddyChewChew/tcl-playlist-generator/refs/heads/main/tcl_epg.xml
 
   distrotv:
-    # Google DAI masters classify as SESSION. Enable with gen + compose profile
-    # proxy and proxy_base_url so FASTProxy can mint at tune-in. Gen-only drops
-    # SESSION as “needs FASTProxy”.
-    enabled: true
+    # DistroTV live feed from Distro's jsrdn API (not the stale published DAI M3U).
+    # Catalog URLs are opaque; FASTProxy resolves a fresh HLS URL at tune-in
+    # (DISTRO_RESOLVE). Requires compose profile proxy + proxy_base_url.
+    # Live lineup is small; default off until you opt in.
+    enabled: false
     label: DistroTV
+    # Distro geo code (QQ worldwide-ish, US, CA, …). Maps to ProviderSettings.region.
+    region: QQ
     synthesize_channel_numbers: 6000
-    min_channels: 50
+    min_channels: 1
     refresh_interval: 6h
-    # URLs default in the adapter; override only if upstream moves:
-    # m3u_url: https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.m3u
-    # epg_url: https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.xml.gz
+    # Optional jsrdn overrides:
+    # channels_url: https://tv.jsrdn.com/tv_v5/getfeed.php?type=live
+    # epg_url: https://tv.jsrdn.com/epg/query.php
+
 
   localnow:
     enabled: true

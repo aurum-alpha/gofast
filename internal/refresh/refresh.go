@@ -382,7 +382,7 @@ func (p *providerRefresher) setLineup(lineup provider.Lineup) {
 func (p *providerRefresher) applyURLDialectHints(chs []model.Channel) []model.Channel {
 	at := time.Now().UTC()
 	for i := range chs {
-		if chs[i].Classification == model.ClassDRM {
+		if chs[i].Classification == model.ClassDRM || chs[i].Classification == model.ClassDistroResolve {
 			continue
 		}
 		class, ok := classifier.FromURL(chs[i].StreamURL)

@@ -39,7 +39,8 @@ var catalog = map[model.ProviderID]entry{
 	model.ProviderDistroTV: {
 		defaults: distrotv.DefaultSettings,
 		reader:   func(s model.ProviderSettings, c *httpx.Client) provider.Reader { return distrotv.New(s, c) },
-		fields:   []string{"m3u_url", "epg_url", "user_agent", "headers"},
+		// region = Distro geo code (QQ, US, …); channels_url/epg_url override jsrdn endpoints.
+		fields: []string{"region", "channels_url", "epg_url", "user_agent", "headers"},
 	},
 	model.ProviderLG: {
 		defaults: lg.DefaultSettings,

@@ -10,6 +10,7 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/clientaccess"
 	"github.com/j27-aurum/gofast/internal/model"
+	"github.com/j27-aurum/gofast/internal/provider/distrotv"
 )
 
 // Handler serves /stream, /s/{sid}/{n}.m3u8, and /seg/{token}.
@@ -17,6 +18,8 @@ type Handler struct {
 	Origin   Origin
 	Store    *Store
 	Reporter *Reporter
+	// Distro resolves DistroTV jsrdn opaque catalog URLs at tune-in.
+	Distro *distrotv.Resolver
 	// PublicBase is the absolute client-facing origin for rewritten playlist
 	// URIs (no trailing slash). When set (FASTPROXY_PUBLIC_BASE_URL), it wins
 	// over request-derived Host / X-Forwarded-*. Empty keeps local/dev behavior.
@@ -35,6 +38,7 @@ func NewHandler(origin Origin, store *Store, reporter *Reporter) *Handler {
 		Origin:    origin,
 		Store:     store,
 		Reporter:  reporter,
+		Distro:    distrotv.NewResolver(nil, "", ""),
 		playlists: newPlaylistClient(30 * time.Second),
 		segments:  newSegmentClient(),
 		mint:      newMintClient(),
@@ -57,7 +61,6 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".m3u8")
 	clientIP := clientaccess.ClientIP(r)
 	ua := truncateUA(r.UserAgent())
-	publicBase := h.resolvePublicBase(r)
 
 	origin, err := h.Origin.Lookup(r.Context(), provider, id)
 	if err != nil {
@@ -71,10 +74,14 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 	// Dialect branch — see package doc.go and docs/TERMINOLOGY.md.
 	// ProxyAmagiRewrite: beacon rewrite + /seg.
 	// ProxySessionMint: DAI mint then 302 to stream_manifest (no /seg).
+	// ProxyDistroResolve: jsrdn feed resolve then 302 or rewrite.
 	// ProxyNone: 302 to catalog upstream (NATIVE / XUMO under proxy_all).
 	switch origin.Classification.ProxyKind() {
 	case model.ProxySessionMint:
 		h.serveSessionMint(w, r, provider, id, origin, clientIP, ua, start)
+		return
+	case model.ProxyDistroResolve:
+		h.serveDistroResolve(w, r, provider, id, origin, clientIP, ua, start)
 		return
 	case model.ProxyNone:
 		logEvent(slog.LevelInfo, EventStream302,
@@ -90,6 +97,13 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.servePlaylistRewrite(w, r, provider, id, origin, clientIP, ua, start)
+}
+
+// servePlaylistRewrite fetches an upstream master/media playlist and rewrites
+// URIs through /s and /seg (Amagi SSAI and Distro hosts that need headers).
+func (h *Handler) servePlaylistRewrite(w http.ResponseWriter, r *http.Request, provider model.ProviderID, id string, origin ChannelOrigin, clientIP, ua string, start time.Time) {
+	publicBase := h.resolvePublicBase(r)
 	body, finalURL, status, err := h.playlists.get(r.Context(), origin.StreamURL, origin.RequestHeaders)
 	if err != nil {
 		reason := classifyUpstreamErr(err, status)
@@ -190,6 +204,9 @@ func (h *Handler) serveSessionMint(w http.ResponseWriter, r *http.Request, provi
 		reason := classifyUpstreamErr(err, status)
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {
 			reason = ReasonSessionMintAuth
+		} else if status == http.StatusNotFound {
+			// Dead/disabled DAI asset — not a missing HMAC (auth is 401).
+			reason = ReasonSessionMintBadURL
 		}
 		logEvent(slog.LevelWarn, EventSessionMintFail,
 			"provider", provider, "channel", id, "reason", reason,

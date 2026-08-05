@@ -60,7 +60,7 @@ func (c *Client) Classify(ctx context.Context, streamURL string) model.Classific
 // to the XUMO_SSAI hint so transient fetch errors never flip the label.
 func (c *Client) classify(ctx context.Context, streamURL string, headers map[string]string) model.Classification {
 	hint, hinted := classifyByURL(streamURL)
-	if hinted && hint == model.ClassSession {
+	if hinted && (hint == model.ClassSession || hint == model.ClassDistroResolve) {
 		return hint
 	}
 	if c == nil {
@@ -95,7 +95,7 @@ func (c *Client) ClassifyChannels(ctx context.Context, channels []model.Channel)
 	sem := make(chan struct{}, c.workers)
 	var wg sync.WaitGroup
 	for i := range out {
-		if out[i].Classification == model.ClassDRM {
+		if out[i].Classification == model.ClassDRM || out[i].Classification == model.ClassDistroResolve {
 			logClassified(&out[i], "pre-marked")
 			continue
 		}
@@ -135,6 +135,9 @@ func logClassified(ch *model.Channel, via string) {
 // answer is a hint, not a verdict — Amagi playout URLs carry ads.* too, and only
 // the playlist probe can tell them apart (see classify).
 func classifyByURL(streamURL string) (model.Classification, bool) {
+	if strings.HasPrefix(strings.TrimSpace(streamURL), "distro://channel/") {
+		return model.ClassDistroResolve, true
+	}
 	u, err := url.Parse(streamURL)
 	if err != nil || u.Host == "" {
 		return "", false

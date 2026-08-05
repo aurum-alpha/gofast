@@ -20,7 +20,7 @@ func TestProviderDefaultsAndConstructors(t *testing.T) {
 		minimum  int
 		reader   func(model.ProviderSettings) provider.Reader
 	}{
-		{distrotv.DefaultSettings(), model.ProviderDistroTV, 6000, 50, func(settings model.ProviderSettings) provider.Reader {
+		{distrotv.DefaultSettings(), model.ProviderDistroTV, 6000, 1, func(settings model.ProviderSettings) provider.Reader {
 			return distrotv.New(settings, nil)
 		}},
 		{localnow.DefaultSettings(), model.ProviderLocalNow, 7000, 10, func(settings model.ProviderSettings) provider.Reader {

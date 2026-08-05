@@ -43,6 +43,8 @@ HEAD with 404/405 while GET works).
   `/linear/hls/…`). Static published masters often 404 without a fresh session;
   **FASTProxy** POSTs DAI stream-create then HTTP 302s to `stream_manifest`
   (not the Amagi rewrite path)
+- `DISTRO_RESOLVE`: DistroTV jsrdn opaque catalog URLs; **FASTProxy** refreshes
+  the live feed at tune-in, substitutes macros, then 302s or rewrites
 - `XUMO_SSAI`: CloudFront/Xumo SSAI needing `ads.*` query params for origin
   interpolation; emit upstream URL as-is (keep query); **not** Amagi rewrite
   and **not** required to go through FASTProxy. Future: AWS MediaTailor and
@@ -57,6 +59,8 @@ HEAD with 404/405 while GET works).
 - `SESSION` → same as Amagi: emit proxy `/stream/...` when `proxy_base_url`
   is set; else drop (“needs FASTProxy”). Proxy mints then 302s — do **not**
   use Amagi rewrite for SESSION
+- `DISTRO_RESOLVE` → same emission as SESSION (proxy `/stream/...`); proxy
+  resolves jsrdn then 302/rewrite — do **not** use Google DAI mint
 - `XUMO_SSAI` → emit upstream URL like NATIVE (do **not** route through Amagi
   rewrite). No selective passthrough dialect — play direct with
   `ads.*` retained; under `proxy_all` the proxy 302 keeps the full query on
@@ -81,7 +85,7 @@ now-playing/last-failure telemetry in the UI; (b) drift insulation — upstream
 URL-format changes become proxy-internal fixes rather than M3U regeneration
 events. Documented tradeoff: in this mode the proxy is availability-critical
 for ALL channels (an outage breaks playback start even for healthy native
-streams). Default remains selective proxying (`AMAGI_SSAI` + `SESSION`).
+streams). Default remains selective proxying (`AMAGI_SSAI` + `SESSION` + `DISTRO_RESOLVE`).
 
 ## What FASTGen serves
 
@@ -163,13 +167,14 @@ labeling, numbering, and validation layered on top:
   and `.../xumo_epg.xml.gz`. Streams are often CloudFront SSAI URLs (`XUMO_SSAI`
   when `ads.*` query keys are present). No
   upstream tvg-chno (synthesize).
-- **DistroTV** (~170 ch): M3U + EPG from
-  `https://raw.githubusercontent.com/vraomoturi/DistroTV/master/distrotv.m3u`
-  and `.../distrotv.xml.gz` (~72h depth). Streams via Google DAI (`SESSION`).
-  Published masters frequently 404 without mint-on-tune-in; enable with
-  gen+`--profile proxy` and `proxy_base_url` so FASTProxy can mint at tune-in.
-  Gen-only drops SESSION as “needs FASTProxy”. Upstream tvg-ids CONTAIN SPACES
-  (`dtv_EPGACE TV`) -- see id normalization. No tvg-chno (synthesize).
+- **DistroTV** (small live lineup): Distro’s jsrdn feed
+  `https://tv.jsrdn.com/tv_v5/getfeed.php?type=live` (+ optional `&geo=`) and
+  EPG `https://tv.jsrdn.com/epg/query.php`. Catalog `StreamURL`s are opaque
+  (`distro://channel/{geo}_{id}`); dialect **`DISTRO_RESOLVE`**. FASTProxy
+  refreshes the feed at tune-in, substitutes ad macros, then 302s or rewrites
+  (Amagi / Origin-locked hosts). The old vraomoturi published DAI M3U is
+  abandoned (event IDs 404). Default **disabled**; enable with gen +
+  `--profile proxy` and `proxy_base_url`. No tvg-chno (synthesize from 6000).
 - **LocalNow** (local news/weather by market -- the only local content in the
   set): M3U `https://www.apsattv.com/localnow.m3u` + EPG
   `https://raw.githubusercontent.com/BuddyChewChew/localnow-playlist-generator/refs/heads/main/epg.xml`.
@@ -379,7 +384,7 @@ When caching is enabled:
   | Provider | Expected guide horizon | Default refresh |
   |----------|------------------------|-----------------|
   | LG | ~12–14h (upstream limit) | 3h |
-  | DistroTV | ~72h | 6h |
+  | DistroTV | ~24h (jsrdn) | 6h |
   | Pluto / Samsung / Roku / Xumo / Tubi / LocalNow | ~48h (Tubi measured ~46h) | 6h |
 
   When clamping changes the schedule, slog warns and Provider Detail /
@@ -555,7 +560,7 @@ excluded).
 | **Via proxy** | Included in the playlist, but `emitted_url` goes through FASTProxy (Amagi rewrite, SESSION mint, or `proxy_all`). |
 | **Duplicate** | Dropped by Dedupes (`channel_emit.dedupe` / FilterReason `duplicate`). Still in the provider catalog; not in M3U. Distinct from manual emit-disable. |
 | **Absent** | No longer in the provider’s **catalog** after refresh (upstream dropped/renamed the id). Ghost row from channelattr presence; not on the live feed; not exportable. Open detail for presence history. |
-| **Needs proxy** | Would need FASTProxy to play (typically Amagi SSAI / SESSION) but `proxy_base_url` is unset, so it is blocked from export. |
+| **Needs proxy** | Would need FASTProxy to play (typically Amagi SSAI / SESSION / Distro) but `proxy_base_url` is unset, so it is blocked from export. |
 | **DRM blocked** | Widevine / license-gated; hard-dropped from export. |
 | **Unsupported class** | Classification the emitter does not know how to handle; hard-dropped. |
 | **Disabled group** | Group taxonomy disabled this channel’s group; soft-dropped from export. |
@@ -568,7 +573,7 @@ excluded).
 
 **Not the same as Health:** Healthy / Degraded / Down / Untested answer “does it play right now?” and use a separate filter. A channel can be **In lineup** and **Down**.
 
-**Not the same as Class:** NATIVE / Amagi SSAI / SESSION / Xumo SSAI / DRM answer “what dialect is this?” Class DRM often coincides with Status **DRM blocked**, but Class is the dialect badge; Status is the export/catalog outcome.
+**Not the same as Class:** NATIVE / Amagi SSAI / SESSION / Distro resolve / Xumo SSAI / DRM answer “what dialect is this?” Class DRM often coincides with Status **DRM blocked**, but Class is the dialect badge; Status is the export/catalog outcome.
 
 Per-channel detail (`/channels/{provider}/{normalizedId}`): export status and
 all filter reasons, DRM `license_url` evidence, upstream vs emitted URL, raw
@@ -627,7 +632,7 @@ under ten seconds.
 
 ## Stream health validation (required; distinct from classification)
 
-Classification (NATIVE / AMAGI_SSAI / SESSION / XUMO_SSAI / DRM) answers "what
+Classification (NATIVE / AMAGI_SSAI / SESSION / DISTRO_RESOLVE / XUMO_SSAI / DRM) answers "what
 kind of stream is this" and decides export. Health answers "does it actually
 play right now" and is a per-channel time-series. Keep them separate: health
 annotates by default and gates export only by explicit opt-in.
@@ -653,8 +658,9 @@ ad impressions against free services. Therefore:
   media; it is not part of the health ladder.
 - Health L1 (segment): daily baseline for `NATIVE` / `XUMO_SSAI`, and for
   `AMAGI_SSAI` when an emitted proxy URL is set (probe through FASTProxy — not
-  the upstream beacon catalog URL). Never schedule Health L1 on `SESSION` (mint
-  would be a fake tune). Manual/Test-now may use EmittedURL when set.
+  the upstream beacon catalog URL). Never schedule Health L1 on `SESSION` or
+  `DISTRO_RESOLVE` (mint/resolve would be a fake tune). Manual/Test-now may use
+  EmittedURL when set.
 - Health L1 **retry lane:** channels left `degraded` / `down` after a check get
   a per-channel `next_retry_at` with exponential backoff
   (`15m → 30m → 1h → 2h → 6h`), then park until the next baseline fleet sweep.

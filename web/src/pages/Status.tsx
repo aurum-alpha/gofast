@@ -248,6 +248,7 @@ export function StatusPage() {
       NATIVE: 0,
       AMAGI_SSAI: 0,
       SESSION: 0,
+      DISTRO_RESOLVE: 0,
       XUMO_SSAI: 0,
       DRM: 0,
       other: 0,
@@ -432,6 +433,11 @@ export function StatusPage() {
               title="Usually need FASTProxy for playback"
             />
             <Metric label="SESSION" value={rollups.dialect.SESSION.toLocaleString()} />
+            <Metric
+              label="Distro resolve"
+              value={rollups.dialect.DISTRO_RESOLVE.toLocaleString()}
+              title="DistroTV jsrdn tune-in resolve (needs FASTProxy)"
+            />
             <Metric
               label="Xumo SSAI"
               value={rollups.dialect.XUMO_SSAI.toLocaleString()}
