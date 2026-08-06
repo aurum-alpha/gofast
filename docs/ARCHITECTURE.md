@@ -50,7 +50,8 @@ flowchart LR
 - `AMAGI_SSAI` → `{proxy_base_url}/stream/{provider}/{id}.m3u8` if configured; else drop (UI shows “needs FASTProxy”)
 - `SESSION` → same proxy `/stream/...` URL when configured; else drop. FASTProxy mints (DAI POST) then 302s to `stream_manifest` — not Amagi rewrite
 - `DISTRO_RESOLVE` → same proxy `/stream/...` when configured; else drop. FASTProxy refreshes Distro jsrdn then 302s or rewrites
-- Under `proxy_all`: all exported channels get `/stream/...`; proxy branches by `ProxyKind` (rewrite / mint / Distro resolve / plain 302)
+- `STIRR_RESOLVE` → same proxy `/stream/...` when configured; else drop. FASTProxy POSTs STIRR `/playable` then 302s or rewrites
+- Under `proxy_all`: all exported channels get `/stream/...`; proxy branches by `ProxyKind` (rewrite / mint / Distro or STIRR resolve / plain 302)
 
 ## UI feathering
 

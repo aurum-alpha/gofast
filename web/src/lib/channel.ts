@@ -62,6 +62,7 @@ export type Channel = {
 }
 
 export const FILTER_REASON_DRM = 'DRM'
+export const FILTER_REASON_DEAD_SSAI = 'dead SSAI (upstream config gone)'
 export const FILTER_REASON_NEEDS_PROXY =
   'needs FASTProxy (proxy_base_url not configured)'
 export const FILTER_REASON_UNHEALTHY = 'unhealthy (exclude_unhealthy)'
@@ -79,6 +80,7 @@ export type LineupStatusKind =
   | 'proxied'
   | 'needs-proxy'
   | 'drm'
+  | 'dead-ssai'
   | 'unsupported'
   | 'duplicate'
   | 'absent'
@@ -138,6 +140,7 @@ export function effectiveFilterReasons(
 /** Map one wire FilterReason string to a status kind. */
 export function filterReasonKind(reason: string): LineupStatusKind {
   if (reason === FILTER_REASON_DRM) return 'drm'
+  if (reason === FILTER_REASON_DEAD_SSAI) return 'dead-ssai'
   if (reason === FILTER_REASON_NEEDS_PROXY) return 'needs-proxy'
   if (reason === FILTER_REASON_UNHEALTHY) return 'unhealthy'
   if (reason === FILTER_REASON_EMIT_DISABLED) return 'emit-disabled'
@@ -166,6 +169,12 @@ const BADGE_BY_KIND: Record<
     label: 'DRM blocked',
     className: 'badge-drm',
     titleFor: (r) => r || FILTER_REASON_DRM,
+  },
+  'dead-ssai': {
+    kind: 'dead-ssai',
+    label: 'Dead SSAI',
+    className: 'badge-drm',
+    titleFor: (r) => r || FILTER_REASON_DEAD_SSAI,
   },
   unsupported: {
     kind: 'unsupported',
@@ -332,6 +341,7 @@ export const CLASS_FILTERS = [
   'AMAGI_SSAI',
   'SESSION',
   'DISTRO_RESOLVE',
+  'STIRR_RESOLVE',
   'XUMO_SSAI',
   'DRM',
 ] as const
@@ -344,6 +354,7 @@ export const STATUS_FILTERS: { value: LineupStatusKind; label: string }[] = [
   { value: 'absent', label: 'Absent' },
   { value: 'needs-proxy', label: 'Needs proxy' },
   { value: 'drm', label: 'DRM blocked' },
+  { value: 'dead-ssai', label: 'Dead SSAI' },
   { value: 'unsupported', label: 'Unsupported class' },
   { value: 'disabled-group', label: 'Disabled group' },
   { value: 'unhealthy', label: 'Unhealthy' },
@@ -371,6 +382,8 @@ export function classBadge(classification?: string): { label: string; kind: stri
       return { label: 'SESSION', kind: 'beacon' }
     case 'DISTRO_RESOLVE':
       return { label: 'Distro resolve', kind: 'beacon' }
+    case 'STIRR_RESOLVE':
+      return { label: 'STIRR resolve', kind: 'beacon' }
     case 'XUMO_SSAI':
       return { label: 'Xumo SSAI', kind: 'beacon' }
     case 'DRM':
@@ -380,18 +393,25 @@ export function classBadge(classification?: string): { label: string; kind: stri
   }
 }
 
-/** Matches gen l1ShouldSchedule: Amagi only with emitted proxy URL; SESSION/Distro never. */
+/** Matches gen l1ShouldSchedule: proxy dialects only with EmittedURL; SESSION never. */
 export function channelOnScheduledL1(ch: Pick<Channel, 'classification' | 'emitted_url' | 'stream_url'>): boolean {
   const cls = canonicalClassification(ch.classification)
-  if (cls === 'SESSION' || cls === 'DISTRO_RESOLVE' || cls === 'DRM' || !cls) return false
-  if (cls === 'AMAGI_SSAI') return Boolean(ch.emitted_url)
+  if (cls === 'SESSION' || cls === 'DRM' || !cls) return false
+  if (cls === 'AMAGI_SSAI' || cls === 'DISTRO_RESOLVE' || cls === 'STIRR_RESOLVE') {
+    return Boolean(ch.emitted_url)
+  }
   return Boolean(ch.emitted_url || ch.stream_url)
 }
 
 export function l1SkipReason(ch: Pick<Channel, 'classification' | 'emitted_url'>): string {
   const cls = canonicalClassification(ch.classification)
   if (cls === 'SESSION') return 'not scheduled (SESSION mint — Manual / playback only)'
-  if (cls === 'DISTRO_RESOLVE') return 'not scheduled (Distro resolve — Manual / playback only)'
+  if (cls === 'DISTRO_RESOLVE' && !ch.emitted_url) {
+    return 'not scheduled (Distro needs proxy EmittedURL)'
+  }
+  if (cls === 'STIRR_RESOLVE' && !ch.emitted_url) {
+    return 'not scheduled (STIRR needs proxy EmittedURL)'
+  }
   if (cls === 'AMAGI_SSAI' && !ch.emitted_url) {
     return 'not scheduled (Amagi needs proxy EmittedURL)'
   }

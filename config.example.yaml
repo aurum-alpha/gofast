@@ -504,6 +504,19 @@ providers:
     # channels_url: https://tv.jsrdn.com/tv_v5/getfeed.php?type=live
     # epg_url: https://tv.jsrdn.com/epg/query.php
 
+  stirr:
+    # STIRR free AVOD FAST (stirr.com API). Catalog URLs are opaque
+    # (stirr://channel/{videoid}); FASTProxy POSTs /playable at tune-in
+    # (STIRR_RESOLVE). Requires compose profile proxy + proxy_base_url.
+    # Default off until you opt in.
+    enabled: false
+    label: STIRR
+    synthesize_channel_numbers: 11000
+    min_channels: 50
+    refresh_interval: 6h
+    # Optional overrides:
+    # channels_url: https://stirr.com/api/videos/list/?categories=all_categories&content_type=4&no_limit=true
+    # epg_url: https://stirr.com/api/epg
 
   localnow:
     enabled: true

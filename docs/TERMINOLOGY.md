@@ -10,8 +10,8 @@ branches on dialect, see `internal/proxy` package docs (`go doc ./internal/proxy
 | People say… | Actually means… |
 |-------------|-----------------|
 | “SSAI channel” / “beacon channel” | **Not** one playback path. SSAI is a business concept; GoFAST dialects (`AMAGI_SSAI`, `SESSION`, `XUMO_SSAI`) need different handling. |
-| “Needs the proxy” | **`AMAGI_SSAI`** (rewrite), **`SESSION`** (DAI mint), and **`DISTRO_RESOLVE`** (DistroTV jsrdn) require FASTProxy under selective mode. **`XUMO_SSAI` usually does not.** |
-| “SESSION = Amagi” | **No.** SESSION is Google DAI mint-on-tune-in. Amagi is extensionless beacon segment URIs. DistroTV uses **`DISTRO_RESOLVE`**, not SESSION mint. |
+| “Needs the proxy” | **`AMAGI_SSAI`** (rewrite), **`SESSION`** (DAI mint), **`DISTRO_RESOLVE`** (DistroTV jsrdn), and **`STIRR_RESOLVE`** (STIRR `/playable`) require FASTProxy under selective mode. **`XUMO_SSAI` usually does not.** |
+| “SESSION = Amagi” | **No.** SESSION is Google DAI mint-on-tune-in. Amagi is extensionless beacon segment URIs. DistroTV uses **`DISTRO_RESOLVE`**; STIRR uses **`STIRR_RESOLVE`** — neither is SESSION mint. |
 | “Tubi/Plex adapter” | **FASTGen** provider fetchers (lineup + EPG). Not FASTProxy dialect work. Plex ships via mjh; Tubi and TCL ship as published-pair. |
 
 ---
@@ -50,7 +50,7 @@ FASTProxy must intervene. See dialect / classification.
 ### Dialect / classification
 
 GoFAST **playback-path bucket** set at refresh by `internal/classifier`. Wire
-values: `NATIVE` | `AMAGI_SSAI` | `SESSION` | `DISTRO_RESOLVE` | `XUMO_SSAI` | `DRM`.
+values: `NATIVE` | `AMAGI_SSAI` | `SESSION` | `DISTRO_RESOLVE` | `STIRR_RESOLVE` | `XUMO_SSAI` | `DRM`.
 Legacy `BEACON` canonicalizes to `AMAGI_SSAI`. Classification answers “what kind of
 stream is this?” — not “is it healthy?” (health is separate).
 
@@ -67,6 +67,8 @@ Amagi-style SSAI: media playlist lines are often **extensionless tracking URLs**
 Scheduled Health L1 (baseline and retry lane) includes Amagi **only when** an
 emitted proxy URL is set (probes go through FASTProxy). Without proxy, Amagi
 stays off the L1 timers so we never hit upstream beacons on a schedule.
+The same gate applies to **`DISTRO_RESOLVE`** / **`STIRR_RESOLVE`**: L1/L2
+probe `EmittedURL` (`/stream/…`), never opaque `distro://` / `stirr://`.
 
 ### Beacon
 
@@ -105,7 +107,17 @@ returns **404** (not 401) — DistroTV no longer uses this path.
 DistroTV dialect: catalog `StreamURL` is an opaque `distro://channel/{geo}_{id}`
 token. At tune-in FASTProxy fetches Distro’s jsrdn live feed, substitutes ad
 macros, and **302**s to a fresh HLS URL (or **rewrites** Amagi / Origin-locked
-hosts). Not Google DAI mint.
+hosts). Not Google DAI mint. Health L1/L2 schedule when `EmittedURL` is set
+(probe via proxy resolve path).
+
+### `STIRR_RESOLVE`
+
+STIRR dialect: catalog `StreamURL` is an opaque `stirr://channel/{videoid}`
+token. At tune-in FASTProxy `POST`s stirr.com `/api/v2/videos/{id}/playable`,
+fills `[vx_nonce]` on the returned master URL, and **302**s (or **rewrites**
+Amagi / Origin-locked hosts). Mostly Aniview SSAI after resolve — not Amagi
+beacon rewrite and not Google DAI mint. Health L1/L2 schedule when
+`EmittedURL` is set (probe via proxy resolve path).
 
 ### `stream_manifest`
 
@@ -143,15 +155,15 @@ Control plane for the lineup.
 ### FASTProxy
 
 Optional binary (`fastproxy`): dialect translation at tune-in (Amagi rewrite,
-SESSION mint, Distro resolve). Headless — no `/data`, no product UI; reports into gen.
+SESSION mint, Distro/STIRR resolve). Headless — no `/data`, no product UI; reports into gen.
 
 ### Selective proxy vs `proxy_all`
 
 **Selective (default):** gen embeds `{proxy_base_url}/stream/...` only for
-dialects that `RequireProxy()` (Amagi + SESSION + Distro resolve).
+dialects that `RequireProxy()` (Amagi + SESSION + Distro/STIRR resolve).
 
 **`proxy_all`:** every exported channel gets that stable `/stream` URL. Proxy
-still **rewrites** Amagi, **mints** SESSION, **resolves** Distro, and **302s**
+still **rewrites** Amagi, **mints** SESSION, **resolves** Distro/STIRR, and **302s**
 NATIVE/XUMO to upstream. Same M3U URL shape; behavior is decided inside the
 proxy by classification.
 

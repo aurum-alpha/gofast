@@ -22,6 +22,8 @@ const (
 	ProviderRoku ProviderID = "roku"
 	// ProviderSamsung is the Samsung TV Plus US provider.
 	ProviderSamsung ProviderID = "samsung"
+	// ProviderSTIRR is the STIRR free AVOD FAST provider.
+	ProviderSTIRR ProviderID = "stirr"
 	// ProviderTCL is the TCL TV+ published-pair provider.
 	ProviderTCL ProviderID = "tcl"
 	// ProviderTubi is the Tubi published-pair provider.

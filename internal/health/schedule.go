@@ -465,13 +465,14 @@ func (s *Scheduler) runL1Retry(ctx context.Context) {
 }
 
 // l1ShouldSchedule reports whether a channel is a scheduled Health L1 candidate.
-// Amagi SSAI is included only when EmittedURL is set (proxy path); never probe
-// upstream beacon URLs on the schedule. SESSION remains off ScheduleSegmentHealth.
+// Proxy dialects (Amagi / Distro / STIRR) are included only when EmittedURL is
+// set so probes hit FASTProxy /stream/… — never opaque stirr:// / distro:// or
+// upstream beacons. SESSION stays off ScheduleSegmentHealth (DAI mint).
 func l1ShouldSchedule(ch model.Channel) bool {
 	if ch.Excluded || !ch.Classification.ScheduleSegmentHealth() || ProbeURL(ch) == "" {
 		return false
 	}
-	if ch.Classification.RequiresAmagiProxy() && ch.EmittedURL == "" {
+	if ch.Classification.RequiresProxy() && ch.EmittedURL == "" {
 		return false
 	}
 	return true

@@ -26,7 +26,7 @@ func (h *Handler) serveDistroResolve(w http.ResponseWriter, r *http.Request, pro
 		h.emit(Event{
 			Kind: EventDistroResolveFail, Provider: string(provider), ChannelID: id,
 			Reason: ReasonDistroResolve, Message: "resolver not configured",
-			DurationMS: time.Since(start).Milliseconds(),
+			Status: http.StatusBadGateway, DurationMS: time.Since(start).Milliseconds(),
 		})
 		http.Error(w, "distro resolve unavailable", http.StatusBadGateway)
 		return
@@ -44,7 +44,7 @@ func (h *Handler) serveDistroResolve(w http.ResponseWriter, r *http.Request, pro
 		h.emit(Event{
 			Kind: EventDistroResolveFail, Provider: string(provider), ChannelID: id,
 			Reason: ReasonDistroResolve, Message: err.Error(),
-			DurationMS: time.Since(start).Milliseconds(),
+			Status: http.StatusBadGateway, DurationMS: time.Since(start).Milliseconds(),
 		})
 		http.Error(w, "distro resolve failed", http.StatusBadGateway)
 		return

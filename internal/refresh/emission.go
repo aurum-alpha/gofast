@@ -61,7 +61,9 @@ func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]mod
 
 		// Mint EmittedURL whenever a playback path exists, even if other reasons
 		// exclude the channel from the playlist (duplicate, regex, …).
+		deadSSAI := model.HasFilterReason(channel.FilterReasons, model.FilterReasonDeadSSAI)
 		noPlayback := class == model.ClassDRM ||
+			deadSSAI ||
 			(class != "" && !class.Known()) ||
 			channel.NormalizedID == "" ||
 			strings.TrimSpace(channel.StreamURL) == "" ||

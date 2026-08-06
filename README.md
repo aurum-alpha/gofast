@@ -74,9 +74,10 @@ Providers are **Go packages compiled into fastgen** — not plugins. YAML only o
 | `tubi` | Tubi | Published pair ([BuddyChewChew/app-m3u-generator](https://github.com/BuddyChewChew/app-m3u-generator)) | `…/playlists/tubi_all.m3u` + `…/tubi_epg.xml` |
 | `tcl` | TCL channels | Published pair ([BuddyChewChew/tcl-playlist-generator](https://github.com/BuddyChewChew/tcl-playlist-generator)) | `…/tcl.m3u8` + `…/tcl_epg.xml` |
 | `distrotv` | DistroTV | Distro jsrdn live feed + EPG | `tv.jsrdn.com` getfeed/epg — opaque catalog URLs; **DISTRO_RESOLVE** at tune-in (needs fastproxy). Default off; lineup is small |
+| `stirr` | STIRR | **stirr.com API** (list + EPG + POST playable) | Catalog opaque `stirr://channel/{id}`; **STIRR_RESOLVE** at tune-in (needs fastproxy). Default off; ~155 channels incl. local news |
 | `localnow` | LocalNow | M3U from **apsattv.com**; EPG from BuddyChewChew | `https://www.apsattv.com/localnow.m3u` + GitHub `…/localnow-playlist-generator/…/epg.xml` |
 
-**Fetch strategies in code:** LG’s own API; shared MJH JSON+XMLTV (`internal/provider/mjh`); shared published M3U/XMLTV pairs (`internal/provider/published`); DistroTV jsrdn feed (`internal/provider/distrotv`). Community scrapes can break when upstream generators change — GoFAST keeps last-known-good when a refresh fails. Full dialect/gotcha notes: [docs/SPEC.md](docs/SPEC.md).
+**Fetch strategies in code:** LG’s own API; shared MJH JSON+XMLTV (`internal/provider/mjh`); shared published M3U/XMLTV pairs (`internal/provider/published`); DistroTV jsrdn feed (`internal/provider/distrotv`); STIRR stirr.com API (`internal/provider/stirr`). Community scrapes can break when upstream generators change — GoFAST keeps last-known-good when a refresh fails. Full dialect/gotcha notes: [docs/SPEC.md](docs/SPEC.md).
 
 ### Stream dialects that match how playback actually works
 
@@ -87,9 +88,10 @@ Providers are **Go packages compiled into fastgen** — not plugins. YAML only o
 | **AMAGI_SSAI** | Needs **fastproxy** rewrite (extensionless beacons → `/seg/….ts`) |
 | **SESSION** | Needs **fastproxy** DAI mint, then 302 to a fresh manifest |
 | **DISTRO_RESOLVE** | Needs **fastproxy** DistroTV jsrdn resolve at tune-in, then 302 or rewrite |
+| **STIRR_RESOLVE** | Needs **fastproxy** STIRR POST `/playable` at tune-in, then 302 or rewrite |
 | **DRM** | Dropped — no proxy can help |
 
-Optional **`proxy_all`**: every tune starts at the proxy (better observability; proxy becomes critical for all channels). Default is selective: proxy only Amagi + SESSION + Distro resolve.
+Optional **`proxy_all`**: every tune starts at the proxy (better observability; proxy becomes critical for all channels). Default is selective: proxy only Amagi + SESSION + Distro/STIRR resolve.
 
 ### Operator UI (embedded)
 

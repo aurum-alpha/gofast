@@ -11,6 +11,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/clientaccess"
 	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/provider/distrotv"
+	"github.com/j27-aurum/gofast/internal/provider/stirr"
 )
 
 // Handler serves /stream, /s/{sid}/{n}.m3u8, and /seg/{token}.
@@ -20,6 +21,8 @@ type Handler struct {
 	Reporter *Reporter
 	// Distro resolves DistroTV jsrdn opaque catalog URLs at tune-in.
 	Distro *distrotv.Resolver
+	// Stirr resolves STIRR opaque catalog URLs via POST /playable at tune-in.
+	Stirr *stirr.Resolver
 	// PublicBase is the absolute client-facing origin for rewritten playlist
 	// URIs (no trailing slash). When set (FASTPROXY_PUBLIC_BASE_URL), it wins
 	// over request-derived Host / X-Forwarded-*. Empty keeps local/dev behavior.
@@ -39,6 +42,7 @@ func NewHandler(origin Origin, store *Store, reporter *Reporter) *Handler {
 		Store:     store,
 		Reporter:  reporter,
 		Distro:    distrotv.NewResolver(nil, "", ""),
+		Stirr:     stirr.NewResolver(nil, "", ""),
 		playlists: newPlaylistClient(30 * time.Second),
 		segments:  newSegmentClient(),
 		mint:      newMintClient(),
@@ -75,6 +79,7 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 	// ProxyAmagiRewrite: beacon rewrite + /seg.
 	// ProxySessionMint: DAI mint then 302 to stream_manifest (no /seg).
 	// ProxyDistroResolve: jsrdn feed resolve then 302 or rewrite.
+	// ProxyStirrResolve: STIRR POST /playable then 302 or rewrite.
 	// ProxyNone: 302 to catalog upstream (NATIVE / XUMO under proxy_all).
 	switch origin.Classification.ProxyKind() {
 	case model.ProxySessionMint:
@@ -82,6 +87,9 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 		return
 	case model.ProxyDistroResolve:
 		h.serveDistroResolve(w, r, provider, id, origin, clientIP, ua, start)
+		return
+	case model.ProxyStirrResolve:
+		h.serveStirrResolve(w, r, provider, id, origin, clientIP, ua, start)
 		return
 	case model.ProxyNone:
 		// Browser audition (UI hls.js) needs a same-origin rewritten playlist —

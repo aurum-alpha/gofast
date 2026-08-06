@@ -145,7 +145,7 @@ func TestNewExampleConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []model.ProviderID{"lg", "pluto", "samsung", "roku", "plex", "xumo", "tubi", "tcl", "distrotv", "localnow"}
+	want := []model.ProviderID{"lg", "pluto", "samsung", "roku", "plex", "xumo", "tubi", "tcl", "distrotv", "stirr", "localnow"}
 	if len(cfg.Providers) != len(want) {
 		t.Fatalf("example providers: got %d want %d", len(cfg.Providers), len(want))
 	}
@@ -171,12 +171,15 @@ func TestNewExampleConfig(t *testing.T) {
 	if cfg.Providers[model.ProviderDistroTV].IsEnabled() {
 		t.Fatal("example distrotv should default disabled")
 	}
+	if cfg.Providers[model.ProviderSTIRR].IsEnabled() {
+		t.Fatal("example stirr should default disabled")
+	}
 	if !cfg.Providers["lg"].ExclusionRegexes[0].MatchString("dinospluto-lgus") {
 		t.Fatal("example lg exclusion did not compile")
 	}
 
 	list := model.ListProviders(cfg.Providers)
-	if len(list.Providers) != 10 || list.Providers[0].ID != "distrotv" {
+	if len(list.Providers) != 11 || list.Providers[0].ID != "distrotv" {
 		t.Fatalf("sorted list: %+v", list.Providers)
 	}
 }

@@ -14,6 +14,8 @@
 //   - SESSION (Google DAI) — published catalog masters often 404. FASTProxy
 //     POSTs DAI stream-create (mint-on-tune-in), then HTTP 302s to the live
 //     stream_manifest. No Amagi-style /seg rewrite in v1.
+//   - STIRR_RESOLVE — STIRR opaque catalog URLs. FASTProxy POSTs /playable,
+//     fills [vx_nonce], then 302s or rewrites.
 //   - DISTRO_RESOLVE — DistroTV opaque catalog URLs. FASTProxy refreshes
 //     Distro’s jsrdn live feed, substitutes macros, then 302s or rewrites.
 //
@@ -37,6 +39,7 @@
 //	AMAGI_SSAI     — yes → beacon rewrite + /seg
 //	SESSION        — yes → DAI mint → 302 to stream_manifest
 //	DISTRO_RESOLVE — yes → jsrdn resolve → 302 or rewrite
+//	STIRR_RESOLVE  — yes → POST /playable → 302 or rewrite
 //
 // # Control plane
 //
@@ -52,9 +55,10 @@
 // # Request flow
 //
 // Gen emits stable URLs of the form {proxy_base_url}/stream/{provider}/{id}.m3u8
-// for dialects that RequireProxy (Amagi + SESSION + Distro) and for all channels
-// when proxy_all is on. On /stream the proxy resolves origin, then branches on
-// model.ProxyKind (see serveStream). Short-TTL in-memory state keeps Amagi
-// rewrite sessions coherent and caches SESSION mint results briefly. HEAD is
-// never used — SSAI endpoints commonly reject it while GET (and mint POST) work.
+// for dialects that RequireProxy (Amagi + SESSION + Distro/STIRR) and for all
+// channels when proxy_all is on. On /stream the proxy resolves origin, then
+// branches on model.ProxyKind (see serveStream). Short-TTL in-memory state keeps
+// Amagi rewrite sessions coherent and caches SESSION mint / STIRR resolve
+// results briefly. HEAD is never used — SSAI endpoints commonly reject it while
+// GET (and mint/playable POST) work.
 package proxy

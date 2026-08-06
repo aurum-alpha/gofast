@@ -64,6 +64,29 @@ func TestL1ShouldSchedule(t *testing.T) {
 	if l1ShouldSchedule(session) {
 		t.Fatal("SESSION must not schedule L1")
 	}
+	stirrProxy := model.Channel{
+		Classification: model.ClassStirrResolve,
+		StreamURL:      "stirr://channel/5407",
+		EmittedURL:     "https://proxy.example/stream/stirr/5407.m3u8",
+	}
+	if !l1ShouldSchedule(stirrProxy) {
+		t.Fatal("STIRR with EmittedURL should schedule (probe via proxy)")
+	}
+	stirrOpaque := model.Channel{
+		Classification: model.ClassStirrResolve,
+		StreamURL:      "stirr://channel/5407",
+	}
+	if l1ShouldSchedule(stirrOpaque) {
+		t.Fatal("STIRR without EmittedURL must not schedule")
+	}
+	distroProxy := model.Channel{
+		Classification: model.ClassDistroResolve,
+		StreamURL:      "distro://jsrdn/feed/abc",
+		EmittedURL:     "https://proxy.example/stream/distrotv/abc.m3u8",
+	}
+	if !l1ShouldSchedule(distroProxy) {
+		t.Fatal("Distro with EmittedURL should schedule")
+	}
 	excluded := native
 	excluded.Excluded = true
 	if l1ShouldSchedule(excluded) {

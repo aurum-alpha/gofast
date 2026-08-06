@@ -45,6 +45,9 @@ HEAD with 404/405 while GET works).
   (not the Amagi rewrite path)
 - `DISTRO_RESOLVE`: DistroTV jsrdn opaque catalog URLs; **FASTProxy** refreshes
   the live feed at tune-in, substitutes macros, then 302s or rewrites
+- `STIRR_RESOLVE`: STIRR opaque catalog URLs (`stirr://channel/{id}`);
+  **FASTProxy** POSTs `/api/v2/videos/{id}/playable`, fills `[vx_nonce]`, then
+  302s or rewrites. Mostly Aniview SSAI after resolve (not Amagi).
 - `XUMO_SSAI`: CloudFront/Xumo SSAI needing `ads.*` query params for origin
   interpolation; emit upstream URL as-is (keep query); **not** Amagi rewrite
   and **not** required to go through FASTProxy. Future: AWS MediaTailor and
@@ -61,6 +64,8 @@ HEAD with 404/405 while GET works).
   use Amagi rewrite for SESSION
 - `DISTRO_RESOLVE` → same emission as SESSION (proxy `/stream/...`); proxy
   resolves jsrdn then 302/rewrite — do **not** use Google DAI mint
+- `STIRR_RESOLVE` → same emission as DISTRO_RESOLVE (proxy `/stream/...`);
+  proxy POSTs playable then 302/rewrite
 - `XUMO_SSAI` → emit upstream URL like NATIVE (do **not** route through Amagi
   rewrite). No selective passthrough dialect — play direct with
   `ads.*` retained; under `proxy_all` the proxy 302 keeps the full query on
@@ -85,7 +90,8 @@ now-playing/last-failure telemetry in the UI; (b) drift insulation — upstream
 URL-format changes become proxy-internal fixes rather than M3U regeneration
 events. Documented tradeoff: in this mode the proxy is availability-critical
 for ALL channels (an outage breaks playback start even for healthy native
-streams). Default remains selective proxying (`AMAGI_SSAI` + `SESSION` + `DISTRO_RESOLVE`).
+streams). Default remains selective proxying (`AMAGI_SSAI` + `SESSION` +
+`DISTRO_RESOLVE` + `STIRR_RESOLVE`).
 
 ## What FASTGen serves
 
@@ -209,6 +215,18 @@ labeling, numbering, and validation layered on top:
   (Amagi / Origin-locked hosts). The old vraomoturi published DAI M3U is
   abandoned (event IDs 404). Default **disabled**; enable with gen +
   `--profile proxy` and `proxy_base_url`. No tvg-chno (synthesize from 6000).
+- **STIRR** (~155 ch): stirr.com API list
+  (`/api/videos/list/?…&content_type=4&no_limit=true`) + bulk `/api/epg`
+  (plus soft-fetched per-row Wurl `epg_url` when missing from bulk). Catalog
+  `StreamURL`s are opaque (`stirr://channel/{videoid}`); dialect
+  **`STIRR_RESOLVE`**. FASTProxy POSTs `/api/v2/videos/{id}/playable`, fills
+  `[vx_nonce]`, returns the **master** HLS URL (mostly Aniview SSAI), then
+  302s or rewrites. Refresh soft-audits Aniview masters: HTTP 422 `error=CON`
+  (deleted SSAI config) gets hard filter **`dead SSAI (upstream config gone)`**
+  and is dropped from M3U/XMLTV (still visible in Channels UI). Tune-in
+  `stirr_resolve_fail` also feeds playback health. Default **disabled**; needs
+  gen + `--profile proxy` and `proxy_base_url`. Synthesize from 11000 when
+  upstream `channel_number` is missing.
 - **LocalNow** (local news/weather by market -- the only local content in the
   set): M3U `https://www.apsattv.com/localnow.m3u` + EPG
   `https://raw.githubusercontent.com/BuddyChewChew/localnow-playlist-generator/refs/heads/main/epg.xml`.
@@ -607,7 +625,7 @@ excluded).
 
 **Not the same as Health:** Healthy / Degraded / Down / Untested answer “does it play right now?” and use a separate filter. A channel can be **In lineup** and **Down**.
 
-**Not the same as Class:** NATIVE / Amagi SSAI / SESSION / Distro resolve / Xumo SSAI / DRM answer “what dialect is this?” Class DRM often coincides with Status **DRM blocked**, but Class is the dialect badge; Status is the export/catalog outcome.
+**Not the same as Class:** NATIVE / Amagi SSAI / SESSION / Distro resolve / STIRR resolve / Xumo SSAI / DRM answer “what dialect is this?” Class DRM often coincides with Status **DRM blocked**, but Class is the dialect badge; Status is the export/catalog outcome.
 
 Per-channel detail (`/channels/{provider}/{normalizedId}`): export status and
 all filter reasons, DRM `license_url` evidence, upstream vs emitted URL, raw
@@ -666,7 +684,7 @@ under ten seconds.
 
 ## Stream health validation (required; distinct from classification)
 
-Classification (NATIVE / AMAGI_SSAI / SESSION / DISTRO_RESOLVE / XUMO_SSAI / DRM) answers "what
+Classification (NATIVE / AMAGI_SSAI / SESSION / DISTRO_RESOLVE / STIRR_RESOLVE / XUMO_SSAI / DRM) answers "what
 kind of stream is this" and decides export. Health answers "does it actually
 play right now" and is a per-channel time-series. Keep them separate: health
 annotates by default and gates export only by explicit opt-in.
@@ -691,19 +709,19 @@ ad impressions against free services. Therefore:
 - The classifier runs every refresh. It inspects stream dialect and fetches no
   media; it is not part of the health ladder.
 - Health L1 (segment): daily baseline for `NATIVE` / `XUMO_SSAI`, and for
-  `AMAGI_SSAI` when an emitted proxy URL is set (probe through FASTProxy — not
-  the upstream beacon catalog URL). Never schedule Health L1 on `SESSION` or
-  `DISTRO_RESOLVE` (mint/resolve would be a fake tune). Manual/Test-now may use
-  EmittedURL when set.
+  proxy dialects (`AMAGI_SSAI`, `DISTRO_RESOLVE`, `STIRR_RESOLVE`) when an
+  emitted proxy URL is set (probe through FASTProxy `/stream/…` — not opaque
+  catalog URLs or upstream beacons). Never schedule Health L1 on `SESSION`
+  (DAI mint = paid fake tune). Manual/Test-now may use EmittedURL when set.
 - Health L1 **retry lane:** channels left `degraded` / `down` after a check get
   a per-channel `next_retry_at` with exponential backoff
   (`15m → 30m → 1h → 2h → 6h`), then park until the next baseline fleet sweep.
-  Same eligibility gates as baseline (SESSION never; Amagi only with
+  Same eligibility gates as baseline (SESSION never; proxy dialects only with
   EmittedURL). Healthy channels are not re-probed early.
 - Health L2 (ffprobe): OFF by default; opt-in config for users who accept the
   tradeoff. Bounded worker pool, per-probe timeout, jitter over a configurable
   window (default 60m), randomized order — never a clockwork fingerprint.
-  Skip `AMAGI_SSAI` when `EmittedURL` is empty.
+  Skip any `RequiresProxy` dialect when `EmittedURL` is empty.
 - Migration: the former health L2 segment name is now Health L1; the former
   health L3 ffprobe name is now Health L2. Old YAML aliases are accepted for
   one release.

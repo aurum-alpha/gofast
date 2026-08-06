@@ -60,7 +60,7 @@ func (c *Client) Classify(ctx context.Context, streamURL string) model.Classific
 // to the XUMO_SSAI hint so transient fetch errors never flip the label.
 func (c *Client) classify(ctx context.Context, streamURL string, headers map[string]string) model.Classification {
 	hint, hinted := classifyByURL(streamURL)
-	if hinted && (hint == model.ClassSession || hint == model.ClassDistroResolve) {
+	if hinted && (hint == model.ClassSession || hint == model.ClassDistroResolve || hint == model.ClassStirrResolve) {
 		return hint
 	}
 	if c == nil {
@@ -95,7 +95,9 @@ func (c *Client) ClassifyChannels(ctx context.Context, channels []model.Channel)
 	sem := make(chan struct{}, c.workers)
 	var wg sync.WaitGroup
 	for i := range out {
-		if out[i].Classification == model.ClassDRM || out[i].Classification == model.ClassDistroResolve {
+		if out[i].Classification == model.ClassDRM ||
+			out[i].Classification == model.ClassDistroResolve ||
+			out[i].Classification == model.ClassStirrResolve {
 			logClassified(&out[i], "pre-marked")
 			continue
 		}
@@ -137,6 +139,9 @@ func logClassified(ch *model.Channel, via string) {
 func classifyByURL(streamURL string) (model.Classification, bool) {
 	if strings.HasPrefix(strings.TrimSpace(streamURL), "distro://channel/") {
 		return model.ClassDistroResolve, true
+	}
+	if strings.HasPrefix(strings.TrimSpace(streamURL), "stirr://channel/") {
+		return model.ClassStirrResolve, true
 	}
 	u, err := url.Parse(streamURL)
 	if err != nil || u.Host == "" {

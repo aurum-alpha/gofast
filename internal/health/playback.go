@@ -30,7 +30,7 @@ func HealthCheckFromProxyEvent(kind, reason, message string, status int, duratio
 	case "playlist_ok":
 		base.Result = model.HealthCheckSuccess
 		return base, true
-	case "playlist_fail", "origin_miss":
+	case "playlist_fail", "origin_miss", "stirr_resolve_fail", "distro_resolve_fail":
 		base.Result = model.HealthCheckFailure
 		base.FailureClass = reason
 		if base.FailureClass == "" {

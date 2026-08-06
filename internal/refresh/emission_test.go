@@ -147,6 +147,24 @@ func TestApplyEmissionPolicy(t *testing.T) {
 	}
 }
 
+func TestApplyEmissionPolicyDeadSSAINoEmittedURL(t *testing.T) {
+	got, _ := applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderSTIRR,
+		NormalizedID:   "7291",
+		StreamURL:      "stirr://channel/7291",
+		Classification: model.ClassStirrResolve,
+		Excluded:       true,
+		FilterReason:   model.FilterReasonDeadSSAI,
+		FilterReasons:  []model.FilterReason{model.FilterReasonDeadSSAI},
+	}}, EmissionPolicy{ProxyBaseURL: "https://proxy.test"})
+	if !got[0].Excluded || got[0].FilterReason != model.FilterReasonDeadSSAI {
+		t.Fatalf("expected dead SSAI exclusion: %+v", got[0])
+	}
+	if got[0].EmittedURL != "" {
+		t.Fatalf("dead SSAI should not mint EmittedURL, got %q", got[0].EmittedURL)
+	}
+}
+
 func TestApplyEmissionPolicyPreservesEarlierExclusion(t *testing.T) {
 	got, stats := applyEmissionPolicy([]model.Channel{{
 		Provider:       model.ProviderLG,

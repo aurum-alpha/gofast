@@ -11,6 +11,7 @@ type FilterReason string
 
 const (
 	FilterReasonDRM                       FilterReason = "DRM"
+	FilterReasonDeadSSAI                  FilterReason = "dead SSAI (upstream config gone)"
 	FilterReasonNeedsFASTProxy            FilterReason = "needs FASTProxy (proxy_base_url not configured)"
 	FilterReasonUnhealthy                 FilterReason = "unhealthy (exclude_unhealthy)"
 	FilterReasonEmitDisabled              FilterReason = "emit disabled"
@@ -30,6 +31,7 @@ type FilterReasonKind string
 
 const (
 	FilterKindDRM           FilterReasonKind = "drm"
+	FilterKindDeadSSAI      FilterReasonKind = "dead-ssai"
 	FilterKindNeedsProxy    FilterReasonKind = "needs-proxy"
 	FilterKindUnhealthy     FilterReasonKind = "unhealthy"
 	FilterKindEmitDisabled  FilterReasonKind = "emit-disabled"
@@ -64,6 +66,7 @@ func (r FilterReason) IsSoft() bool {
 func (r FilterReason) IsHard() bool {
 	switch r {
 	case FilterReasonDRM,
+		FilterReasonDeadSSAI,
 		FilterReasonNeedsFASTProxy,
 		FilterReasonMissingIdentity,
 		FilterReasonMissingStream,
@@ -80,6 +83,8 @@ func (r FilterReason) Kind() FilterReasonKind {
 	switch {
 	case r == FilterReasonDRM:
 		return FilterKindDRM
+	case r == FilterReasonDeadSSAI:
+		return FilterKindDeadSSAI
 	case r == FilterReasonNeedsFASTProxy:
 		return FilterKindNeedsProxy
 	case r == FilterReasonUnhealthy:
@@ -127,6 +132,7 @@ func ExclusionMatched(re *regexp.Regexp) FilterReason {
 // primaryFilterReasonOrder is hard-first then soft preference for FilterReason.
 var primaryFilterReasonOrder = []FilterReason{
 	FilterReasonDRM,
+	FilterReasonDeadSSAI,
 	FilterReasonUnsupportedClassification,
 	FilterReasonNeedsFASTProxy,
 	FilterReasonMissingIdentity,

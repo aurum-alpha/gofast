@@ -47,4 +47,16 @@ func TestHealthCheckFromProxyEvent(t *testing.T) {
 			t.Fatal("expected ignore")
 		}
 	})
+	t.Run("stirr_resolve_fail", func(t *testing.T) {
+		c, ok := HealthCheckFromProxyEvent("stirr_resolve_fail", "stirr_dead_ssai", "CON", 502, 40, at)
+		if !ok || c.Result != model.HealthCheckFailure || c.FailureClass != "stirr_dead_ssai" || c.HTTPStatus != 502 {
+			t.Fatalf("got %+v ok=%v", c, ok)
+		}
+	})
+	t.Run("distro_resolve_fail", func(t *testing.T) {
+		c, ok := HealthCheckFromProxyEvent("distro_resolve_fail", "distro_resolve_fail", "not in feed", 502, 8, at)
+		if !ok || c.Result != model.HealthCheckFailure {
+			t.Fatalf("got %+v ok=%v", c, ok)
+		}
+	})
 }

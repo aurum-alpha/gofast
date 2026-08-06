@@ -47,4 +47,7 @@ func TestFilterReasonKinds(t *testing.T) {
 	if !FilterReasonNeedsFASTProxy.IsHard() || FilterReasonDuplicate.IsHard() {
 		t.Fatal("soft/hard mismatch")
 	}
+	if FilterReasonDeadSSAI.Kind() != FilterKindDeadSSAI || !FilterReasonDeadSSAI.IsHard() {
+		t.Fatal("dead SSAI should be hard dead-ssai kind")
+	}
 }
