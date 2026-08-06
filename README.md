@@ -15,6 +15,8 @@ FAST (Free Ad-Supported Streaming TV) catalogs are everywhere — LG Channels, P
 
 Gen works standalone. Add the proxy when you want Amagi / SESSION playback (or full `proxy_all` observability).
 
+Related project: **[FastChannels](https://github.com/kineticman/FastChannels)** — another open-source FAST aggregator (Python) aimed at Channels DVR and general IPTV. See [GoFAST vs FastChannels](#gofast-vs-fastchannels) at the bottom for how they differ and who each is for.
+
 ---
 
 ## Why it exists
@@ -301,3 +303,24 @@ go run ./cmd/fastgen
 ## Status
 
 Ten baked-in providers (LG API, i.mjh.nz/jmp2.uk, and published M3U/XMLTV pairs) — see [Built-in providers](#built-in-providers-where-data-comes-from).
+
+## GoFAST vs FastChannels
+
+[FastChannels](https://github.com/kineticman/FastChannels) (`kineticman/FastChannels`) is a mature Python FAST aggregator with a rich admin UI, many scrapers, and first-class **Channels DVR** support (Gracenote IDs, named feeds, one-click add). GoFAST is a Go stack built around **Jellyfin Live TV** and the stream dialects ffmpeg actually chokes on.
+
+They solve overlapping problems (multi-source FAST → M3U + XMLTV) with different priorities. Pick one; running both is optional, not required.
+
+| | **GoFAST** (this repo) | **[FastChannels](https://github.com/kineticman/FastChannels)** |
+|--|------------------------|---------------------------------------------------------------|
+| **Who it’s for** | Homelab operators whose primary client is **Jellyfin** (or Emby) Live TV and who need Amagi / Google DAI / Distro resolve paths to *play*, not just list | Operators who want **maximum source breadth**, Channels DVR / TiviMate / general IPTV, Gracenote-ready feeds, and a large admin surface |
+| **Stack** | Go (`fastgen` + optional `fastproxy`), Compose/Portainer | Python, single container, SQLite under `/data` |
+| **Playback path** | Classifies dialects; **rewrites** Amagi beacons to `/seg/….ts` for ffmpeg; SESSION mint + Distro resolve; NATIVE/Xumo stay direct when possible | Proxy resolves at tune-in (macros, JWT, etc.) then **302** to the CDN URL |
+| **Providers** | Curated set compiled into the binary (LG, Pluto, Samsung, Roku, Plex, Xumo, Tubi, TCL, DistroTV, LocalNow) | Very wide scraper catalog (STIRR, Vizio, HDHomeRun, credentialed Frndly/Fubo/…, custom URLs, and more) |
+| **Guide extras** | XMLTV for Jellyfin Now/Next; programme category taxonomy | Strong **Gracenote** / Channels DVR feed variants |
+| **Ops model** | Last-known-good generations, health probes, live Config UI, selective proxy | Stream audits, duplicate resolve, named Feeds, Channels DVR one-click |
+
+**Choose GoFAST** if Jellyfin is the goal and you’ve hit ffmpeg/`jellyfin#17400`-style Amagi failures or need mint-on-tune SESSION handling in-process.
+
+**Choose FastChannels** if you want the broadest lineup, Channels DVR/Gracenote workflows, or scrapers GoFAST does not ship.
+
+Both are MIT-friendly community projects; neither replaces the other.

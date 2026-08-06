@@ -82,18 +82,18 @@ export default function App() {
         </NavLink>
         <nav className="nav" aria-label="Primary">
           <NavLink to="/status">Status</NavLink>
-          <NavLink to="/cache">Cache</NavLink>
-          <NavLink to="/access">Access</NavLink>
-          <NavLink to="/proxy">Proxy</NavLink>
+          <NavLink to="/guide">Guide</NavLink>
           <NavLink to="/providers">Providers</NavLink>
           <NavLink to="/" end>
             Channels
           </NavLink>
-          <NavLink to="/hosts">Hosts</NavLink>
-          <NavLink to="/guide">Guide</NavLink>
           <NavLink to="/groups">Groups</NavLink>
           <NavLink to="/categories">Categories</NavLink>
-          <NavLink to="/dedupes">Dedupes</NavLink>
+          <NavLink to="/hosts">Hosts</NavLink>
+          <NavLink to="/dedupes">Dedupe</NavLink>
+          <NavLink to="/access">Access</NavLink>
+          <NavLink to="/cache">Cache</NavLink>
+          <NavLink to="/proxy">Proxy</NavLink>
           <NavLink to="/config">Config</NavLink>
         </nav>
       </header>
