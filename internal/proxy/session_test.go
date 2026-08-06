@@ -33,3 +33,17 @@ func TestStoreTTL(t *testing.T) {
 		t.Fatal("seg should expire")
 	}
 }
+
+func TestMintSegReusesUpstreamURL(t *testing.T) {
+	t.Parallel()
+	s := NewStore()
+	a := s.MintSeg("https://cdn.example/seg1.ts", ".ts", nil, model.ProviderPluto, "ch")
+	b := s.MintSeg("https://cdn.example/seg1.ts", ".ts", map[string]string{"X": "1"}, model.ProviderPluto, "ch")
+	if a != b {
+		t.Fatalf("expected stable token, got %q vs %q", a, b)
+	}
+	c := s.MintSeg("https://cdn.example/seg2.ts", ".ts", nil, model.ProviderPluto, "ch")
+	if c == a {
+		t.Fatal("different upstream URLs must not share a token")
+	}
+}

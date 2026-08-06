@@ -34,6 +34,50 @@ export function previewURLForSource(urls: PreviewURLs, source: PreviewSource): s
   return source === 'emitted' ? urls.emitted : urls.raw
 }
 
+function withBrowserQuery(url: string): string {
+  try {
+    const u = new URL(url)
+    if (!u.searchParams.has('browser')) {
+      u.searchParams.set('browser', '1')
+    }
+    return u.toString()
+  } catch {
+    return url.includes('?') ? `${url}&browser=1` : `${url}?browser=1`
+  }
+}
+
+/**
+ * URL the browser player should load. When FASTProxy is configured, cross-origin
+ * upstream HLS is auditioned via `/stream/...?browser=1` so hls.js stays
+ * same-origin (many CDNs omit CORS for localhost; Chromium embeds also mis-report
+ * native HLS support).
+ */
+export function browserPreviewURL(
+  ch: Pick<Channel, 'provider' | 'normalized_id' | 'id' | 'stream_url' | 'emitted_url'>,
+  source: PreviewSource,
+  proxyBaseURL: string | undefined,
+): string | undefined {
+  const direct = previewURLForSource(previewURLs(ch), source)
+  if (!direct) return undefined
+  const base = proxyBaseURL?.trim().replace(/\/$/, '')
+  if (!base) return direct
+
+  const id = (ch.normalized_id || ch.id).trim()
+  if (!id || !ch.provider) return direct
+
+  try {
+    const directURL = new URL(direct)
+    const proxyHost = new URL(base).host
+    if (directURL.host === proxyHost) {
+      return withBrowserQuery(direct)
+    }
+  } catch {
+    return direct
+  }
+
+  return `${base}/stream/${encodeURIComponent(ch.provider)}/${encodeURIComponent(id)}.m3u8?browser=1`
+}
+
 /**
  * Static reason not to start the player. Empty string means the chosen URL
  * may be attempted (browser CORS/codec may still fail at runtime).

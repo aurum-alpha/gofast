@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type HlsType from 'hls.js'
 import type { Channel } from '../lib/channel'
+import { fetchConfig } from '../lib/config'
 import {
+  browserPreviewURL,
   defaultPreviewSource,
   previewBlockReason,
   previewNeedsProxyWarning,
-  previewURLForSource,
   previewURLs,
   showPreviewSourceToggle,
   type PreviewSource,
@@ -23,10 +24,27 @@ export function ChannelPlayer({ channel }: Props) {
   const urls = previewURLs(channel)
   const canToggle = showPreviewSourceToggle(urls)
   const [source, setSource] = useState<PreviewSource>(() => defaultPreviewSource(urls))
+  const [proxyBaseURL, setProxyBaseURL] = useState<string | undefined>()
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState('')
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const hlsRef = useRef<HlsType | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchConfig()
+      .then((cfg) => {
+        if (cancelled) return
+        const v = cfg.fields.proxy_base_url?.value
+        setProxyBaseURL(typeof v === 'string' && v.trim() ? v.trim() : undefined)
+      })
+      .catch(() => {
+        if (!cancelled) setProxyBaseURL(undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function destroyHls() {
     if (hlsRef.current) {
@@ -91,7 +109,7 @@ export function ChannelPlayer({ channel }: Props) {
       setPlaying(false)
       return
     }
-    const url = previewURLForSource(urls, source)
+    const url = browserPreviewURL(channel, source, proxyBaseURL)
     if (!url) {
       setError('No stream URL.')
       return
@@ -102,6 +120,62 @@ export function ChannelPlayer({ channel }: Props) {
     destroyHls()
     setError('')
     setPlaying(true)
+
+    const { default: Hls } = await import('hls.js')
+    // Prefer MSE/hls.js whenever available. Some Chromium embeds (incl. Cursor)
+    // report canPlayType('application/vnd.apple.mpegurl') as "maybe" but cannot
+    // demux HLS — that yields MEDIA_ERR_SRC_NOT_SUPPORTED / "no supported source".
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        // Prefer the lowest rung first; ABR can still climb. Stable /seg tokens
+        // (same upstream URL → same token) keep sliding playlists coherent.
+        startLevel: 0,
+        xhrSetup: (xhr) => {
+          xhr.withCredentials = false
+        },
+      })
+      hlsRef.current = hls
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return
+        // Soft-recover media/level parse blips before hard-stopping the preview.
+        if (
+          data.details === Hls.ErrorDetails.LEVEL_PARSING_ERROR ||
+          data.type === Hls.ErrorTypes.MEDIA_ERROR
+        ) {
+          try {
+            hls.recoverMediaError()
+            return
+          } catch {
+            // fall through to hard stop
+          }
+        }
+        const detail =
+          data.response?.code != null
+            ? `${data.type} / ${data.details} (HTTP ${data.response.code})`
+            : `${data.type} / ${data.details}`
+        let message = detail
+        if (
+          data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+          data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT
+        ) {
+          message = proxyBaseURL
+            ? `${detail}. Manifest fetch failed via FASTProxy — check proxy logs / origin.`
+            : `${detail}. Often CORS — set proxy_base_url so preview can audition via FASTProxy, or open the URL in VLC.`
+        }
+        setError(message)
+        destroyHls()
+        setPlaying(false)
+      })
+      hls.loadSource(url)
+      hls.attachMedia(video)
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        void video.play().catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : String(err))
+        })
+      })
+      return
+    }
 
     if (supportsNativeHLS(video)) {
       video.src = url
@@ -114,49 +188,13 @@ export function ChannelPlayer({ channel }: Props) {
       return
     }
 
-    const { default: Hls } = await import('hls.js')
-    if (!Hls.isSupported()) {
-      setError('HLS is not supported in this browser.')
-      setPlaying(false)
-      return
-    }
-
-    const hls = new Hls({
-      enableWorker: true,
-      xhrSetup: (xhr) => {
-        xhr.withCredentials = false
-      },
-    })
-    hlsRef.current = hls
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (!data.fatal) return
-      const detail =
-        data.response?.code != null
-          ? `${data.type} / ${data.details} (HTTP ${data.response.code})`
-          : `${data.type} / ${data.details}`
-      let message = detail
-      if (
-        data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
-        data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT
-      ) {
-        message = `${detail}. Often CORS or network — try Emitted (proxy) if available, or open the URL in VLC.`
-      }
-      setError(message)
-      destroyHls()
-      setPlaying(false)
-    })
-    hls.loadSource(url)
-    hls.attachMedia(video)
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      void video.play().catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err))
-      })
-    })
+    setError('HLS is not supported in this browser.')
+    setPlaying(false)
   }
 
   const block = previewBlockReason(channel, source)
   const warn = previewNeedsProxyWarning(channel, source)
-  const activeURL = previewURLForSource(urls, source)
+  const activeURL = browserPreviewURL(channel, source, proxyBaseURL)
 
   return (
     <section className="detail-section channel-preview">
@@ -164,7 +202,8 @@ export function ChannelPlayer({ channel }: Props) {
       <p className="meta">
         Audition HLS in the browser using the emitted playback URL or the raw
         upstream URL. Browser CORS and codecs differ from Jellyfin/VLC — prefer
-        Emitted when the channel is via FASTProxy.
+        Emitted when the channel is via FASTProxy. Cross-origin NATIVE streams
+        are routed through FASTProxy (<code>?browser=1</code>) when configured.
       </p>
 
       <div className="preview-toolbar">

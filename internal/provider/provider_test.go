@@ -43,8 +43,8 @@ func TestFeedStats(t *testing.T) {
 	start := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	feed.Set(Lineup{
 		Channels: []model.Channel{
-			{NormalizedID: "news", StreamURL: "https://news", Group: "News", Classification: model.ClassNative},
-			{NormalizedID: "drm", StreamURL: "https://drm", Group: "Movies", Classification: model.ClassDRM, Excluded: true, FilterReason: "DRM"},
+			{NormalizedID: "news", StreamURL: "https://news", Group: "News", Region: "US", Classification: model.ClassNative},
+			{NormalizedID: "drm", StreamURL: "https://drm", Group: "Movies", Region: "ca", Classification: model.ClassDRM, Excluded: true, FilterReason: "DRM"},
 			{NormalizedID: "other", StreamURL: "https://other"},
 		},
 		Programmes: []model.Programme{
@@ -70,6 +70,9 @@ func TestFeedStats(t *testing.T) {
 	}
 	if stats.ByGroup["(none)"] != 1 || stats.FilterReasons["DRM"] != 1 {
 		t.Fatalf("rollups: groups=%+v reasons=%+v", stats.ByGroup, stats.FilterReasons)
+	}
+	if stats.ByRegion["US"] != 1 || stats.ByRegion["CA"] != 1 || stats.ByRegion["(none)"] != 1 {
+		t.Fatalf("regions: %+v", stats.ByRegion)
 	}
 	if !stats.GuideStart.Equal(start) || !stats.GuideEnd.Equal(start.Add(time.Hour)) || stats.LastError != "failed" {
 		t.Fatalf("times/status: %+v", stats)

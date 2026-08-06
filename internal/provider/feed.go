@@ -33,6 +33,7 @@ type Stats struct {
 	ExportedProgrammes int            `json:"exported_programmes"`
 	ByClassification   map[string]int `json:"by_classification"`
 	ByGroup            map[string]int `json:"by_group"`
+	ByRegion           map[string]int `json:"by_region"`
 	FilterReasons      map[string]int `json:"filter_reasons"`
 	GuideStart         time.Time      `json:"guide_start"`
 	GuideEnd           time.Time      `json:"guide_end"`
@@ -49,6 +50,7 @@ func EmptyStats() Stats {
 	return Stats{
 		ByClassification: map[string]int{},
 		ByGroup:          map[string]int{},
+		ByRegion:         map[string]int{},
 		FilterReasons:    map[string]int{},
 	}
 }
@@ -209,6 +211,7 @@ func (f *Feed) Stats() Stats {
 		TotalProgrammes:  len(f.lineup.Programmes),
 		ByClassification: make(map[string]int),
 		ByGroup:          make(map[string]int),
+		ByRegion:         make(map[string]int),
 		FilterReasons:    make(map[string]int),
 	}
 
@@ -224,6 +227,11 @@ func (f *Feed) Stats() Stats {
 			group = "(none)"
 		}
 		stats.ByGroup[group]++
+		region := model.NormalizeRegionCode(channel.Region)
+		if region == "" {
+			region = "(none)"
+		}
+		stats.ByRegion[region]++
 		if channel.Excluded {
 			stats.ExcludedChannels++
 			for _, r := range channel.EffectiveFilterReasons() {

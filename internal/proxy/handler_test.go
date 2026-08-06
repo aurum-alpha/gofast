@@ -118,6 +118,45 @@ func TestHandlerNative302(t *testing.T) {
 	}
 }
 
+func TestHandlerNativeBrowserRewrite(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		_, _ = io.WriteString(w, `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXTINF:6.0,
+segment0.ts
+`)
+	}))
+	t.Cleanup(upstream.Close)
+
+	origin := NewStaticOrigin()
+	origin.Set(model.ProviderPluto, "CA_news", ChannelOrigin{
+		StreamURL:      upstream.URL + "/master.m3u8",
+		Classification: model.ClassNative,
+	})
+	h := NewHandler(origin, NewStore(), nil)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/stream/pluto/CA_news.m3u8?browser=1", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("ACAO=%q", got)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "/seg/") {
+		t.Fatalf("expected rewritten seg URI, body=%s", body)
+	}
+	if strings.Contains(body, "segment0.ts") {
+		t.Fatalf("upstream segment should be rewritten: %s", body)
+	}
+}
+
 // J27-75: configured PublicBase wins over plain-HTTP inbound (TLS edge without
 // X-Forwarded-Proto) so rewritten segment URIs stay on the public HTTPS origin.
 func TestHandlerPublicBaseOverridesRequestScheme(t *testing.T) {

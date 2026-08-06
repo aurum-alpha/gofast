@@ -26,6 +26,7 @@ type ProviderStats = {
   exported_programmes: number
   by_classification?: Record<string, number> | null
   by_group?: Record<string, number> | null
+  by_region?: Record<string, number> | null
   filter_reasons?: Record<string, number> | null
   guide_start: string
   guide_end: string
@@ -396,6 +397,7 @@ export function ProviderDetailPage() {
 
       <div className="breakdown-grid">
         <Breakdown title="Classifications" values={stats.by_classification} classifications />
+        <Breakdown title="Regions" values={stats.by_region} />
         <Breakdown title="Groups" values={stats.by_group} />
         <Breakdown title="Filter reasons" values={stats.filter_reasons} />
       </div>

@@ -49,6 +49,7 @@ type Store struct {
 	mu        sync.Mutex
 	sessions  map[string]*Session
 	segs      map[string]*SegToken
+	segByURL  map[string]string // upstream URL → token (stable across playlist refreshes)
 	mintCache map[string]*mintCacheEntry
 }
 
@@ -57,6 +58,7 @@ func NewStore() *Store {
 	return &Store{
 		sessions:  make(map[string]*Session),
 		segs:      make(map[string]*SegToken),
+		segByURL:  make(map[string]string),
 		mintCache: make(map[string]*mintCacheEntry),
 	}
 }
@@ -96,7 +98,9 @@ func (s *Store) GetSession(id string) (*Session, bool) {
 	return sess, true
 }
 
-// MintSeg creates a segment token with a media-like suffix for ffmpeg allowlists.
+// MintSeg returns a segment token with a media-like suffix for ffmpeg allowlists.
+// The same upstream URL reuses the same token so sliding-window playlist refreshes
+// keep stable URIs (hls.js otherwise fatals on media-sequence mismatch).
 func (s *Store) MintSeg(upstreamURL, ext string, headers map[string]string, provider model.ProviderID, channelID string) string {
 	if ext == "" {
 		ext = ".ts"
@@ -107,6 +111,16 @@ func (s *Store) MintSeg(upstreamURL, ext string, headers map[string]string, prov
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.expireLocked(time.Now())
+	if tok, ok := s.segByURL[upstreamURL]; ok {
+		if seg, ok := s.segs[tok]; ok {
+			seg.RequestHeaders = copyHeaders(headers)
+			seg.Provider = provider
+			seg.ChannelID = channelID
+			seg.ExpiresAt = time.Now().Add(segTTL)
+			return tok
+		}
+		delete(s.segByURL, upstreamURL)
+	}
 	token := randomID(16) + ext
 	s.segs[token] = &SegToken{
 		Token:          token,
@@ -116,6 +130,7 @@ func (s *Store) MintSeg(upstreamURL, ext string, headers map[string]string, prov
 		ChannelID:      channelID,
 		ExpiresAt:      time.Now().Add(segTTL),
 	}
+	s.segByURL[upstreamURL] = token
 	return token
 }
 
@@ -172,6 +187,9 @@ func (s *Store) expireLocked(now time.Time) {
 	for tok, seg := range s.segs {
 		if now.After(seg.ExpiresAt) {
 			delete(s.segs, tok)
+			if s.segByURL[seg.UpstreamURL] == tok {
+				delete(s.segByURL, seg.UpstreamURL)
+			}
 		}
 	}
 	for key, e := range s.mintCache {

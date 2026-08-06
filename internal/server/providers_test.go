@@ -176,7 +176,7 @@ func TestProviderDetailDisabledProvider(t *testing.T) {
 	if detail.Settings.Enabled == nil || *detail.Settings.Enabled || detail.Stats.TotalChannels != 0 {
 		t.Fatalf("disabled detail: %+v", detail)
 	}
-	if detail.Stats.ByClassification == nil || detail.Stats.ByGroup == nil || detail.Stats.FilterReasons == nil {
+	if detail.Stats.ByClassification == nil || detail.Stats.ByGroup == nil || detail.Stats.ByRegion == nil || detail.Stats.FilterReasons == nil {
 		t.Fatalf("disabled detail rollups must be empty maps, got %+v", detail.Stats)
 	}
 }

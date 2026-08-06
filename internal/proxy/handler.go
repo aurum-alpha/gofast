@@ -84,6 +84,13 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request) {
 		h.serveDistroResolve(w, r, provider, id, origin, clientIP, ua, start)
 		return
 	case model.ProxyNone:
+		// Browser audition (UI hls.js) needs a same-origin rewritten playlist —
+		// a 302 to jmp2/Pluto (etc.) fails CORS from localhost. Jellyfin/ffmpeg
+		// keep the cheap 302 path (no ?browser=1).
+		if r.URL.Query().Get("browser") == "1" {
+			h.servePlaylistRewrite(w, r, provider, id, origin, clientIP, ua, start)
+			return
+		}
 		logEvent(slog.LevelInfo, EventStream302,
 			"provider", provider, "channel", id, "client_ip", clientIP,
 			"ua", ua, "upstream", urlHostPath(origin.StreamURL),
