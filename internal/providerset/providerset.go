@@ -39,7 +39,7 @@ var catalog = map[model.ProviderID]entry{
 	model.ProviderDistroTV: {
 		defaults: distrotv.DefaultSettings,
 		reader:   func(s model.ProviderSettings, c *httpx.Client) provider.Reader { return distrotv.New(s, c) },
-		// region = Distro geo code (QQ, US, …); channels_url/epg_url override jsrdn endpoints.
+		// region = Distro geo from system-wide regions (injected); channels_url/epg_url override jsrdn endpoints.
 		fields: []string{"region", "channels_url", "epg_url", "user_agent", "headers"},
 	},
 	model.ProviderLG: {
@@ -135,15 +135,33 @@ func Readers(settings map[model.ProviderID]model.ProviderSettings, client *httpx
 	return readers
 }
 
+// SupportsRegion reports whether the adapter for id consumes system-wide regions.
+func SupportsRegion(id model.ProviderID) bool {
+	for _, f := range FieldSupport(id) {
+		if f == "region" {
+			return true
+		}
+	}
+	return false
+}
+
 // Settings overlays each known provider's package defaults with its optional
 // YAML block and resolves enablement: no block means disabled, a present block
 // defaults enabled unless it sets enabled: false. Unknown overlay ids are
 // warned and ignored (implementations are code, not YAML).
-func Settings(overlays map[model.ProviderID]model.ProviderSettings) map[model.ProviderID]model.ProviderSettings {
+//
+// systemRegions is the stack-wide Config.regions CSV; region-capable adapters
+// get it injected into ProviderSettings.Region (normalized; default "US").
+func Settings(overlays map[model.ProviderID]model.ProviderSettings, systemRegions string) map[model.ProviderID]model.ProviderSettings {
+	regions := model.NormalizeRegionsCSV(systemRegions)
 	out := make(map[model.ProviderID]model.ProviderSettings, len(catalog))
 	for id, e := range catalog {
 		overlay, configured := overlays[id]
-		out[id] = e.defaults().MergeConfigured(overlay, configured)
+		s := e.defaults().MergeConfigured(overlay, configured)
+		if SupportsRegion(id) {
+			s.Region = regions
+		}
+		out[id] = s
 	}
 	for id := range overlays {
 		if _, known := catalog[id]; !known {

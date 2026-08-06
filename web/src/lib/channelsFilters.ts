@@ -15,6 +15,7 @@ import {
 export type ChannelsFilters = {
   provider: string
   group: string
+  region: string
   class: string
   status: string
   health: string
@@ -26,6 +27,7 @@ export type ChannelsSortKey =
   | 'prov'
   | 'name'
   | 'provider'
+  | 'region'
   | 'group'
   | 'class'
   | 'health'
@@ -41,6 +43,7 @@ export type ChannelsSort = {
 export const DEFAULT_CHANNELS_FILTERS: ChannelsFilters = {
   provider: 'all',
   group: 'all',
+  region: 'all',
   class: 'all',
   status: 'all',
   health: 'all',
@@ -63,13 +66,14 @@ const SORT_KEY_SET = new Set<string>([
   'prov',
   'name',
   'provider',
+  'region',
   'group',
   'class',
   'health',
   'status',
 ])
 
-const FILTER_KEYS = ['provider', 'group', 'class', 'status', 'health', 'q'] as const
+const FILTER_KEYS = ['provider', 'group', 'region', 'class', 'status', 'health', 'q'] as const
 const LIST_KEYS = [...FILTER_KEYS, 'sort', 'dir'] as const
 
 const HEALTH_RANK: Record<string, number> = {
@@ -87,6 +91,7 @@ export function channelsFiltersActive(f: ChannelsFilters): boolean {
   return (
     f.provider !== 'all' ||
     f.group !== 'all' ||
+    f.region !== 'all' ||
     f.class !== 'all' ||
     f.status !== 'all' ||
     f.health !== 'all' ||
@@ -113,6 +118,7 @@ export function searchHasChannelsListState(params: URLSearchParams): boolean {
 export function channelsFiltersFromSearch(params: URLSearchParams): ChannelsFilters {
   const provider = params.get('provider') || 'all'
   const group = params.get('group') || 'all'
+  const region = params.get('region') || 'all'
   const classRaw = params.get('class') || 'all'
   const statusRaw = params.get('status') || 'all'
   const healthRaw = params.get('health') || 'all'
@@ -132,6 +138,7 @@ export function channelsFiltersFromSearch(params: URLSearchParams): ChannelsFilt
   return {
     provider: provider || 'all',
     group: group || 'all',
+    region: region || 'all',
     class: classFilter,
     status: statusFilter,
     health: healthFilter,
@@ -152,6 +159,7 @@ export function channelsFiltersToSearch(f: ChannelsFilters): URLSearchParams {
   const params = new URLSearchParams()
   if (f.provider !== 'all' && f.provider) params.set('provider', f.provider)
   if (f.group !== 'all' && f.group) params.set('group', f.group)
+  if (f.region !== 'all' && f.region) params.set('region', f.region)
   if (f.class !== 'all' && f.class) params.set('class', f.class)
   if (f.status !== 'all' && f.status) params.set('status', f.status)
   if (f.health !== 'all' && f.health) params.set('health', f.health)
@@ -292,6 +300,9 @@ export function compareChannels(a: Channel, b: Channel, sort: ChannelsSort): num
       break
     case 'provider':
       cmp = a.provider.localeCompare(b.provider)
+      break
+    case 'region':
+      cmp = (a.region || '').localeCompare(b.region || '')
       break
     case 'group':
       cmp = (a.group || '').localeCompare(b.group || '')

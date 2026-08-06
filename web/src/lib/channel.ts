@@ -39,6 +39,7 @@ export type Channel = {
   normalized_id: string
   name: string
   group: string
+  region?: string
   number: number
   offset_number: number
   stream_url: string

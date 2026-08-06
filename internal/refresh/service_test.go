@@ -48,7 +48,7 @@ func TestServiceReloadEnableDisableProvider(t *testing.T) {
 	}
 
 	cfg := store.Current()
-	settings := providerset.Settings(cfg.Providers)
+	settings := providerset.Settings(cfg.Providers, cfg.EffectiveRegions())
 	readers := providerset.Readers(settings, nil)
 	reg := provider.NewRegistry(readers, settings)
 	cc := cache.New(filepath.Join(dir, "cache"))
@@ -140,7 +140,7 @@ func TestServiceReloadWarmsLogosOnBaseURLChange(t *testing.T) {
 	overlay := map[model.ProviderID]model.ProviderSettings{
 		model.ProviderLG: {Enabled: &enabled, MinChannels: 1, Label: "LG"},
 	}
-	settings := providerset.Settings(overlay)[model.ProviderLG]
+	settings := providerset.Settings(overlay, "")[model.ProviderLG]
 	reg := provider.NewRegistry(
 		map[model.ProviderID]provider.Reader{model.ProviderLG: logoReader{logoURL: logoSrv.URL + "/a.png"}},
 		map[model.ProviderID]model.ProviderSettings{model.ProviderLG: settings},

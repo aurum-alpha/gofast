@@ -162,6 +162,121 @@ func TestPlexTaggedRegionsShape(t *testing.T) {
 	}
 }
 
+func TestMultiRegionMergePrefixesIDs(t *testing.T) {
+	channelsJSON := []byte(`{
+  "headers": {"user-agent": "okhttp/4.9.0"},
+  "slug": "plu-{id}.m3u8",
+  "regions": {
+    "us": {
+      "headers": {"x-region": "us"},
+      "channels": {
+        "shared": {"chno": 1, "name": "Shared US", "group": "News"},
+        "us-only": {"chno": 2, "name": "US Only", "group": "News"}
+      }
+    },
+    "ca": {
+      "headers": {"x-region": "ca"},
+      "channels": {
+        "shared": {"chno": 1, "name": "Shared CA", "group": "News"},
+        "ca-only": {"chno": 3, "name": "CA Only", "group": "News"}
+      }
+    }
+  }
+}`)
+	usGuide := []byte(`<?xml version="1.0"?><tv>
+  <programme channel="shared" start="20260721010000 +0000" stop="20260721020000 +0000"><title>US Shared</title></programme>
+  <programme channel="us-only" start="20260721010000 +0000" stop="20260721020000 +0000"><title>US Only Show</title></programme>
+</tv>`)
+	caGuide := []byte(`<?xml version="1.0"?><tv>
+  <programme channel="shared" start="20260721010000 +0000" stop="20260721020000 +0000"><title>CA Shared</title></programme>
+  <programme channel="ca-only" start="20260721010000 +0000" stop="20260721020000 +0000"><title>CA Only Show</title></programme>
+</tv>`)
+
+	client := New(Source{
+		ID:          model.ProviderPluto,
+		Directory:   "PlutoTV",
+		DefaultSlug: "plu-{id}.m3u8",
+	}, model.ProviderSettings{ID: model.ProviderPluto, Region: "us,ca,qq"}, nil)
+
+	raw := provider.Raw{RawChannels: gzipBytes(t, channelsJSON)}
+	raw[guideRawKey("us")] = gzipBytes(t, usGuide)
+	raw[guideRawKey("ca")] = gzipBytes(t, caGuide)
+	channels, programmes, err := client.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(channels) != 4 {
+		t.Fatalf("channels=%d want 4: %+v", len(channels), channels)
+	}
+	ids := map[string]string{}
+	for _, ch := range channels {
+		ids[ch.ID] = ch.StreamURL
+		if !strings.HasPrefix(ch.ID, "US_") && !strings.HasPrefix(ch.ID, "CA_") {
+			t.Fatalf("expected prefixed id, got %q", ch.ID)
+		}
+		if ch.UpstreamID == "" {
+			t.Fatalf("missing UpstreamID on %s", ch.ID)
+		}
+		if !strings.Contains(ch.StreamURL, "plu-shared.m3u8") &&
+			!strings.Contains(ch.StreamURL, "plu-us-only.m3u8") &&
+			!strings.Contains(ch.StreamURL, "plu-ca-only.m3u8") {
+			t.Fatalf("slug should use upstream id: %s → %s", ch.ID, ch.StreamURL)
+		}
+	}
+	if ids["US_shared"] == "" || ids["CA_shared"] == "" {
+		t.Fatalf("missing shared regional ids: %+v", ids)
+	}
+	for _, ch := range channels {
+		if ch.Region != "US" && ch.Region != "CA" {
+			t.Fatalf("channel region=%q id=%s", ch.Region, ch.ID)
+		}
+	}
+	if len(programmes) != 4 {
+		t.Fatalf("programmes=%d: %+v", len(programmes), programmes)
+	}
+	for _, p := range programmes {
+		if !strings.HasPrefix(p.ChannelID, "US_") && !strings.HasPrefix(p.ChannelID, "CA_") {
+			t.Fatalf("programme channel id not remapped: %+v", p)
+		}
+	}
+}
+
+func TestSingleRegionKeepsBareIDs(t *testing.T) {
+	client := New(Source{
+		ID:          model.ProviderPluto,
+		Directory:   "PlutoTV",
+		DefaultSlug: "plu-{id}.m3u8",
+	}, model.ProviderSettings{ID: model.ProviderPluto, Region: "us"}, nil)
+	channels, _, err := client.Parse(fixtureRaw(t, "pluto"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if channels[0].ID != "pluto-news" {
+		t.Fatalf("single-region id changed: %q", channels[0].ID)
+	}
+	if channels[0].Region != "US" {
+		t.Fatalf("single-region Region=%q", channels[0].Region)
+	}
+	if channels[0].UpstreamID != "pluto-news" {
+		t.Fatalf("single-region UpstreamID=%q", channels[0].UpstreamID)
+	}
+}
+
+func TestUnknownRegionSkipped(t *testing.T) {
+	client := New(Source{
+		ID:          model.ProviderPluto,
+		Directory:   "PlutoTV",
+		DefaultSlug: "plu-{id}.m3u8",
+	}, model.ProviderSettings{ID: model.ProviderPluto, Region: "us,zz"}, nil)
+	channels, _, err := client.Parse(fixtureRaw(t, "pluto"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(channels) != 1 || channels[0].ID != "pluto-news" {
+		t.Fatalf("should use only us: %+v", channels)
+	}
+}
+
 func TestMissingSlugFails(t *testing.T) {
 	client := New(Source{ID: "test", Directory: "Test"}, model.ProviderSettings{ID: "test", Region: "us"}, nil)
 	_, _, err := client.Parse(fixtureRaw(t, "pluto"))

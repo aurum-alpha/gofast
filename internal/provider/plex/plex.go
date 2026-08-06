@@ -25,7 +25,7 @@ func DefaultSettings() model.ProviderSettings {
 	settings := model.DefaultSettings()
 	settings.ID = model.ProviderPlex
 	settings.Label = "Plex"
-	settings.Region = "us"
+	settings.Region = model.DefaultRegions
 	settings.ChannelNumberOffset = 8000
 	settings.MinChannels = 50
 	settings.RefreshInterval = 6 * time.Hour

@@ -187,7 +187,7 @@ func (s *Service) Reload(ctx context.Context, cfg *config.Config) error {
 
 	// Provider reconcile: start newly enabled, stop newly disabled, reload
 	// settings changes on running providers.
-	desired := providerset.Settings(cfg.Providers)
+	desired := providerset.Settings(cfg.Providers, cfg.EffectiveRegions())
 	var perProvider []model.ProviderID
 	for _, id := range providerset.Known() {
 		des := desired[id]

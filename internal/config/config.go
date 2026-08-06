@@ -39,18 +39,46 @@ type Config struct {
 	// ProxyInternalURL is an optional gen-side origin for health probes when
 	// ProxyBaseURL is only reachable by clients (e.g. localhost). Empty = probe
 	// the public base. Does not affect M3U emit.
-	ProxyInternalURL string                                      `yaml:"proxy_internal_url"`
-	ProxyAll         *bool                                       `yaml:"proxy_all"`
-	CacheLogos       *bool                                       `yaml:"cache_logos"`
-	ArtworkTLS       map[string]ArtworkTLS                       `yaml:"artwork_tls"`
-	Timeouts         Timeouts                                    `yaml:"timeouts"`
-	Logging          Logging                                     `yaml:"logging"`
-	Health           Health                                      `yaml:"health"`
-	OpsReport        OpsReport                                   `yaml:"ops_report"`
-	Groups           groups.Doc                                  `yaml:"groups"`
-	Categories       categories.Doc                              `yaml:"categories"`
-	Dedupe           dedupe.Doc                                  `yaml:"dedupe"`
-	Providers        map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
+	ProxyInternalURL string `yaml:"proxy_internal_url"`
+	ProxyAll         *bool  `yaml:"proxy_all"`
+	CacheLogos       *bool  `yaml:"cache_logos"`
+	// Regions is the system-wide geography list (comma-separated or YAML
+	// sequence). Region-capable providers scrape/merge what they understand;
+	// others ignore it. Default when empty: model.DefaultRegions ("US").
+	Regions    RegionsField                                `yaml:"regions"`
+	ArtworkTLS map[string]ArtworkTLS                       `yaml:"artwork_tls"`
+	Timeouts   Timeouts                                    `yaml:"timeouts"`
+	Logging    Logging                                     `yaml:"logging"`
+	Health     Health                                      `yaml:"health"`
+	OpsReport  OpsReport                                   `yaml:"ops_report"`
+	Groups     groups.Doc                                  `yaml:"groups"`
+	Categories categories.Doc                              `yaml:"categories"`
+	Dedupe     dedupe.Doc                                  `yaml:"dedupe"`
+	Providers  map[model.ProviderID]model.ProviderSettings `yaml:"providers"`
+}
+
+// RegionsField is Config.regions: a CSV string that also accepts a YAML list.
+type RegionsField string
+
+// UnmarshalYAML accepts a scalar ("us,ca") or sequence ([us, ca]).
+func (r *RegionsField) UnmarshalYAML(value *yaml.Node) error {
+	s, err := model.UnmarshalRegionsYAML(value)
+	if err != nil {
+		return err
+	}
+	*r = RegionsField(s)
+	return nil
+}
+
+// String returns the raw CSV (may be empty before normalization).
+func (r RegionsField) String() string { return string(r) }
+
+// EffectiveRegions returns the normalized system-wide regions CSV (never empty).
+func (c *Config) EffectiveRegions() string {
+	if c == nil {
+		return model.DefaultRegions
+	}
+	return model.NormalizeRegionsCSV(string(c.Regions))
 }
 
 // Health holds channel-health FSM and probe knobs (attr store is separate).
@@ -262,6 +290,7 @@ func defaults() *Config {
 		Listen:     DefaultListen,
 		BaseURL:    "",
 		DataDir:    DefaultDataDir,
+		Regions:    RegionsField(model.DefaultRegions),
 		ProxyAll:   &proxyAll,
 		CacheLogos: &cacheLogos,
 		Timeouts: Timeouts{
@@ -330,6 +359,9 @@ func envOverlay() (*Config, error) {
 			return nil, fmt.Errorf("config: FASTGEN_CACHE_LOGOS: %w", err)
 		}
 		o.CacheLogos = &parsed
+	}
+	if v := os.Getenv("FASTGEN_REGIONS"); v != "" {
+		o.Regions = RegionsField(v)
 	}
 	if v := os.Getenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -463,6 +495,7 @@ func EnvShadow() map[string]string {
 	shadow("proxy_internal_url", "FASTGEN_PROXY_INTERNAL_URL")
 	shadow("proxy_all", "FASTGEN_PROXY_ALL")
 	shadow("cache_logos", "FASTGEN_CACHE_LOGOS")
+	shadow("regions", "FASTGEN_REGIONS")
 	shadow("health.consecutive_failures", "FASTGEN_HEALTH_CONSECUTIVE_FAILURES")
 	shadow("health.exclude_unhealthy", "FASTGEN_HEALTH_EXCLUDE_UNHEALTHY")
 	shadow("health.l1_interval", "FASTGEN_HEALTH_L1_INTERVAL")
@@ -503,6 +536,7 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"proxy_internal_url", c.ProxyInternalURL,
 		"proxy_all", c.ProxyAllEnabled(),
 		"cache_logos", c.CacheLogosEnabled(),
+		"regions", c.EffectiveRegions(),
 		"data_dir", c.DataDir,
 		"health_consecutive_failures", c.HealthConsecutiveFailures(),
 		"health_exclude_unhealthy", c.HealthExcludeUnhealthy(),
@@ -561,6 +595,9 @@ func (c *Config) merge(o *Config) {
 	if o.CacheLogos != nil {
 		value := *o.CacheLogos
 		c.CacheLogos = &value
+	}
+	if o.Regions != "" {
+		c.Regions = o.Regions
 	}
 	if o.ArtworkTLS != nil {
 		c.ArtworkTLS = maps.Clone(o.ArtworkTLS)

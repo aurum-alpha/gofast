@@ -48,8 +48,9 @@ type ProviderSettings struct {
 	// SlugTemplate overrides mjh slug construction (e.g. Pluto "plu-{id}.m3u8").
 	SlugTemplate string `yaml:"slug_template" json:"slug_template,omitempty"`
 
-	// Region selects mjh regioned feeds (e.g. "us") or DistroTV geo (e.g. "QQ").
-	// Empty for regionless MJH (Roku).
+	// Region is the effective region list injected from system-wide Config.regions
+	// for adapters that honor geography (comma-separated). Per-provider YAML
+	// region is ignored; leave empty in overlays. Empty for regionless MJH (Roku).
 	Region string `yaml:"region" json:"region,omitempty"`
 
 	// Optional URL overrides (empty = provider built-in defaults).
@@ -160,9 +161,7 @@ func (p ProviderSettings) Merge(o ProviderSettings) ProviderSettings {
 	if o.SlugTemplate != "" {
 		p.SlugTemplate = o.SlugTemplate
 	}
-	if o.Region != "" {
-		p.Region = o.Region
-	}
+	// Region is system-wide only; never take providers.*.region from overlays.
 	if o.ChannelsURL != "" {
 		p.ChannelsURL = o.ChannelsURL
 	}

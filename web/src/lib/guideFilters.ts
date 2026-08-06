@@ -7,6 +7,7 @@ export type TimePreset = 'pm6' | 'pm12' | 'today' | 'next24' | 'all'
 export type GuideFilters = {
   provider: string
   group: string
+  region: string
   class: string
   hideExcluded: boolean
   time: TimePreset
@@ -17,6 +18,7 @@ export type GuideFilters = {
 export const DEFAULT_GUIDE_FILTERS: GuideFilters = {
   provider: 'all',
   group: 'all',
+  region: 'all',
   class: 'all',
   hideExcluded: true,
   time: 'pm12',
@@ -31,6 +33,7 @@ const TIME_SET = new Set<TimePreset>(['pm6', 'pm12', 'today', 'next24', 'all'])
 const FILTER_KEYS = [
   'provider',
   'group',
+  'region',
   'class',
   'showExcluded',
   'time',
@@ -42,6 +45,7 @@ export function guideFiltersActive(f: GuideFilters): boolean {
   return (
     f.provider !== 'all' ||
     f.group !== 'all' ||
+    f.region !== 'all' ||
     f.class !== 'all' ||
     !f.hideExcluded ||
     f.time !== DEFAULT_GUIDE_FILTERS.time ||
@@ -57,6 +61,7 @@ export function searchHasGuideFilters(params: URLSearchParams): boolean {
 export function guideFiltersFromSearch(params: URLSearchParams): GuideFilters {
   const provider = params.get('provider') || 'all'
   const group = params.get('group') || 'all'
+  const region = params.get('region') || 'all'
   const classRaw = params.get('class') || 'all'
   const timeRaw = params.get('time') || DEFAULT_GUIDE_FILTERS.time
   const channelQ = params.get('cq') || ''
@@ -78,6 +83,7 @@ export function guideFiltersFromSearch(params: URLSearchParams): GuideFilters {
   return {
     provider: provider || 'all',
     group: group || 'all',
+    region: region || 'all',
     class: classFilter,
     hideExcluded,
     time,
@@ -91,6 +97,7 @@ export function guideFiltersToSearch(f: GuideFilters): URLSearchParams {
   const params = new URLSearchParams()
   if (f.provider !== 'all' && f.provider) params.set('provider', f.provider)
   if (f.group !== 'all' && f.group) params.set('group', f.group)
+  if (f.region !== 'all' && f.region) params.set('region', f.region)
   if (f.class !== 'all' && f.class) params.set('class', f.class)
   if (!f.hideExcluded) params.set('showExcluded', '1')
   if (f.time !== DEFAULT_GUIDE_FILTERS.time) params.set('time', f.time)

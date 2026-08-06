@@ -71,8 +71,11 @@ providers:
 	}
 
 	pluto := cfg.Providers["pluto"]
-	if pluto.SlugTemplate != "plu-{id}.m3u8" || pluto.Region != "us" {
+	if pluto.SlugTemplate != "plu-{id}.m3u8" {
 		t.Fatalf("pluto: %+v", pluto)
+	}
+	if pluto.Region != "" {
+		t.Fatalf("providers.*.region should be stripped; got %q", pluto.Region)
 	}
 	if pluto.RefreshInterval != 3*time.Hour || pluto.MinChannels != 50 {
 		t.Fatalf("pluto refresh/min: %+v", pluto)
@@ -152,7 +155,6 @@ func TestNewExampleConfig(t *testing.T) {
 		}
 	}
 	for _, id := range []model.ProviderID{
-		model.ProviderDistroTV,
 		model.ProviderLocalNow,
 		model.ProviderPlex,
 		model.ProviderPluto,
@@ -165,6 +167,9 @@ func TestNewExampleConfig(t *testing.T) {
 		if !cfg.Providers[id].IsEnabled() {
 			t.Fatalf("example %q should be enabled", id)
 		}
+	}
+	if cfg.Providers[model.ProviderDistroTV].IsEnabled() {
+		t.Fatal("example distrotv should default disabled")
 	}
 	if !cfg.Providers["lg"].ExclusionRegexes[0].MatchString("dinospluto-lgus") {
 		t.Fatal("example lg exclusion did not compile")

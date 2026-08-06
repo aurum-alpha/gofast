@@ -73,7 +73,7 @@ func main() {
 	// its YAML settings. No provider runs without its own YAML block — the
 	// generated default config enables nothing. Unknown YAML ids have no
 	// implementation (warned inside providerset.Settings).
-	settings := providerset.Settings(cfg.Providers)
+	settings := providerset.Settings(cfg.Providers, cfg.EffectiveRegions())
 	readers := providerset.Readers(settings, client)
 	reg := provider.NewRegistry(readers, settings)
 	reg.LogLoaded()

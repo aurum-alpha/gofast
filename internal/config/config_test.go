@@ -26,6 +26,7 @@ func clearDeployEnv(t *testing.T) {
 	t.Setenv("FASTGEN_PROXY_INTERNAL_URL", "")
 	t.Setenv("FASTGEN_PROXY_ALL", "")
 	t.Setenv("FASTGEN_CACHE_LOGOS", "")
+	t.Setenv("FASTGEN_REGIONS", "")
 	t.Setenv("FASTGEN_HEALTH_CONSECUTIVE_FAILURES", "")
 	t.Setenv("FASTGEN_HEALTH_EXCLUDE_UNHEALTHY", "")
 	t.Setenv("FASTGEN_HEALTH_L1_INTERVAL", "")

@@ -6,6 +6,7 @@ export type ChannelMeta = {
   normalized_id: string
   name: string
   group: string
+  region?: string
   number: number
   offset_number: number
   logo_url?: string
@@ -20,6 +21,7 @@ export type GuideRow = {
   logo: string
   provider: string
   group: string
+  region: string
   rawId: string
   normalizedId: string
   classification: string
@@ -81,6 +83,7 @@ export function rowsFromProviderGuide(
       logo: xc.logo || m?.logo_url || '',
       provider: m?.provider ?? provider,
       group: m?.group ?? '',
+      region: m?.region ?? '',
       rawId: m?.id ?? '',
       normalizedId:
         m?.normalized_id ??

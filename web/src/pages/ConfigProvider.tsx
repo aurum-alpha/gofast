@@ -87,8 +87,8 @@ function parseOptionalInt(raw: string): number | null {
 }
 
 // Optional adapter fields keyed by field_support names, with control metadata.
+// Region is system-wide (Config → Regions); not edited per provider.
 const OPTIONAL_FIELDS: Array<{ key: keyof Draft & string; label: string; hint?: string }> = [
-  { key: 'region', label: 'Region', hint: 'Regioned feeds (e.g. us)' },
   { key: 'slug_template', label: 'Slug template', hint: 'Stream slug override (e.g. plu-{id}.m3u8)' },
   { key: 'channels_url', label: 'Channels URL' },
   { key: 'epg_url', label: 'EPG URL' },

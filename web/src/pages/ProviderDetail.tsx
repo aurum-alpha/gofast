@@ -388,7 +388,7 @@ export function ProviderDetailPage() {
             </dd>
           </div>
           <div><dt>Minimum channels</dt><dd>{settings.min_channels}</dd></div>
-          <div><dt>Region</dt><dd>{settings.region || '—'}</dd></div>
+          <div><dt>System regions</dt><dd>{settings.region || '—'}</dd></div>
           <div><dt>Slug template</dt><dd>{settings.slug_template || '—'}</dd></div>
           <div><dt>Exclusions</dt><dd>{settings.exclusions?.length ?? 0}</dd></div>
         </dl>

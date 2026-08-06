@@ -156,6 +156,33 @@ level with a per-channel `regions: ["us", …]` array. The `regions.us` block
 has headers/name only (no nested `channels` map). Filter top-level channels by
 tag membership for the configured region; EPG is still `{region}.xml.gz`.
 
+### System-wide `regions` (provider input)
+
+Top-level config `regions` (YAML string or sequence; env `FASTGEN_REGIONS`) is the
+**only** geography knob. Default `US`. Region codes are normalized internally to
+**ISO 3166-1 alpha-2 uppercase** (`us`/`Us` → `US`; Distro fantasy `qq` → `QQ`)
+so filters never show mixed case. It controls what region-capable adapters
+**scrape and carry** — not emit/filter rules (exclusions, health, cross-provider
+dedupe, etc.).
+
+| Adapter | Consumes `regions`? |
+|---------|---------------------|
+| Pluto, Samsung, Plex (MJH) | Yes — merge each code present in upstream metadata; skip unknowns |
+| DistroTV | Yes — merge feeds per geo; add `QQ` explicitly if needed |
+| Roku, LG, Tubi, Xumo, TCL, LocalNow | No — ignore |
+
+When more than one **usable** MJH region is configured, catalog channel ids become
+`{REGION}_{upstreamId}` (uppercase region) so lineups do not collide; stream
+slugs still use the upstream id. A single usable region keeps bare upstream ids
+(stable vs prior releases).
+
+**Regional twins:** at refresh, same provider + same upstream id + different
+region collapses to one channel (preferred = earliest entry in `regions`).
+Cross-provider title Dedupes still apply afterward. Configurable / Dedupes-UI
+control for this is a follow-up.
+
+`providers.*.region` is ignored (warned at load).
+
 ### Published-pair adapters (maintained upstream M3U + EPG consumed directly)
 
 Third fetch strategy: some providers are best consumed via a community-

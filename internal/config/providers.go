@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/j27-aurum/gofast/internal/model"
 )
@@ -15,6 +16,11 @@ func compileProviders(providers map[model.ProviderID]model.ProviderSettings) (ma
 	}
 	out := make(map[model.ProviderID]model.ProviderSettings, len(providers))
 	for id, p := range providers {
+		if p.Region != "" {
+			slog.Warn("providers.*.region is ignored; use top-level regions",
+				"provider", id, "ignored_region", p.Region)
+			p.Region = ""
+		}
 		if err := p.CompileExclusions(); err != nil {
 			return nil, fmt.Errorf("providers.%s: %w", id, err)
 		}

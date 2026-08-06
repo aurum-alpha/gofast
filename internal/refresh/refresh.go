@@ -601,8 +601,25 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 	s := p.feed.Settings()
 	for i := range chs {
 		chs[i].Provider = id
+		chs[i].Region = model.NormalizeRegionCode(chs[i].Region)
 		chs[i].Normalize()
 		chs[i].ApplyChannelNumberOffset(s.ChannelNumberOffset)
+	}
+	beforeIDs := make(map[string]struct{}, len(chs))
+	for _, ch := range chs {
+		beforeIDs[ch.ID] = struct{}{}
+	}
+	// Exact within-provider regional twins (same UpstreamID, different Region).
+	chs = model.CollapseRegionalTwins(chs, model.ParseRegionList(s.Region))
+	collapsed := make(map[string]struct{})
+	afterIDs := make(map[string]struct{}, len(chs))
+	for _, ch := range chs {
+		afterIDs[ch.ID] = struct{}{}
+	}
+	for catalogID := range beforeIDs {
+		if _, ok := afterIDs[catalogID]; !ok {
+			collapsed[catalogID] = struct{}{}
+		}
 	}
 	if err := model.ValidateNormalizedIDs(chs); err != nil {
 		return nil, nil, nil, fmt.Errorf("provider %s: %w", id, err)
@@ -617,15 +634,20 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 	for _, ch := range chs {
 		normByRaw[ch.ID] = ch.NormalizedID
 	}
-	for i := range progs {
-		raw := progs[i].ChannelID
-		if n, ok := normByRaw[raw]; ok {
-			progs[i].ChannelID = n
-		} else {
-			progs[i].ChannelID = model.NormalizeID(raw)
+	filtered := make([]model.Programme, 0, len(progs))
+	for _, prog := range progs {
+		raw := prog.ChannelID
+		if _, drop := collapsed[raw]; drop {
+			continue
 		}
+		if n, ok := normByRaw[raw]; ok {
+			prog.ChannelID = n
+		} else {
+			prog.ChannelID = model.NormalizeID(raw)
+		}
+		filtered = append(filtered, prog)
 	}
-	return chs, progs, assignments, nil
+	return chs, filtered, assignments, nil
 }
 
 // prepare applies export rules, runs quality gates, and renders one immutable

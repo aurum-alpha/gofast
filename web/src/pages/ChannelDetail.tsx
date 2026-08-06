@@ -540,6 +540,12 @@ export function ChannelDetailPage() {
             <Link to={`/providers/${encodeURIComponent(channel.provider)}`}>
               <code>{channel.provider}</code>
             </Link>
+            {channel.region ? (
+              <>
+                {' '}
+                · region <code>{channel.region}</code>
+              </>
+            ) : null}
           </p>
           {channel.description ? (
             <p className="channel-description">{channel.description}</p>
@@ -729,6 +735,17 @@ export function ChannelDetailPage() {
                   <CellValue>
                     <span className="field-hint">Normalized id (tvg-id / XMLTV)</span>
                     <Code value={channel.normalized_id} />
+                  </CellValue>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Region</th>
+                <td colSpan={2}>
+                  <CellValue>
+                    <span className="field-hint">
+                      Scrape geography (empty if provider ignores system regions)
+                    </span>
+                    <Code value={channel.region || undefined} />
                   </CellValue>
                 </td>
               </tr>

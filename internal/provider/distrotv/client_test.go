@@ -66,6 +66,34 @@ func TestOpaqueRoundTrip(t *testing.T) {
 	}
 }
 
+func TestClientParseMultiGeo(t *testing.T) {
+	settings := DefaultSettings()
+	settings.Region = "US,QQ"
+	c := New(settings, nil)
+	raw := provider.Raw{}
+	raw[feedRawKey("US")] = []byte(`{"shows":{"1":{"type":"live","title":"US Ch","genre":"News","seasons":[{"episodes":[{"id":"1","content":{"url":"https://cdn.example/us.m3u8"}}]}]}}}`)
+	raw[feedRawKey("QQ")] = []byte(`{"shows":{"1":{"type":"live","title":"QQ Ch","genre":"News","seasons":[{"episodes":[{"id":"2","content":{"url":"https://cdn.example/qq.m3u8"}}]}]}}}`)
+	chs, _, err := c.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chs) != 2 {
+		t.Fatalf("len=%d %+v", len(chs), chs)
+	}
+	ids := map[string]bool{}
+	for _, ch := range chs {
+		ids[ch.ID] = true
+	}
+	if !ids["US_1"] || !ids["QQ_2"] {
+		t.Fatalf("ids=%v", ids)
+	}
+	for _, ch := range chs {
+		if ch.Region != "US" && ch.Region != "QQ" {
+			t.Fatalf("region=%q id=%s", ch.Region, ch.ID)
+		}
+	}
+}
+
 func TestClientParse(t *testing.T) {
 	c := New(DefaultSettings(), nil)
 	raw := provider.Raw{

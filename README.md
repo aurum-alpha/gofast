@@ -48,6 +48,8 @@ GoFAST is built for that operator: Docker Compose / Portainer, persistent cache,
 
 Providers are **Go packages compiled into fastgen** — not plugins. YAML only overlays settings (enable, offsets, URL overrides). Defaults below are what the binary fetches unless you override `channels_url` / `epg_url` / `m3u_url`.
 
+**Regions:** top-level `regions` / `FASTGEN_REGIONS` (default `US`, ISO alpha-2 uppercase) is a scrape input for Pluto, Samsung, Plex, and DistroTV. Other providers ignore it. Same upstream channel across regions is auto-collapsed at refresh (preferred = first listed region). See [docs/SPEC.md](docs/SPEC.md#system-wide-regions-provider-input).
+
 | Id | Brand | Upstream source | Default fetch |
 |----|-------|-----------------|---------------|
 | `lg` | LG Channels | **LG Channels API** (official schedulelist) | `https://api.lgchannels.com/api/v1.0/schedulelist` — channels + programmes in one payload |

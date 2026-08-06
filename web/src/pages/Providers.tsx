@@ -37,7 +37,7 @@ type ProvidersResponse = {
 function notesFor(p: ProviderRow): string {
   const parts: string[] = []
   if (p.region) {
-    parts.push(`region ${p.region}`)
+    parts.push(`regions ${p.region}`)
   }
   if (p.slug_template) {
     parts.push(p.slug_template)

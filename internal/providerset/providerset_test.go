@@ -22,7 +22,7 @@ var allIDs = []model.ProviderID{
 }
 
 func TestSettingsRequireProviderBlock(t *testing.T) {
-	settings := Settings(nil)
+	settings := Settings(nil, "")
 	readers := Readers(settings, nil)
 	if len(settings) != len(allIDs) {
 		t.Fatalf("known settings: %+v", settings)
@@ -59,7 +59,7 @@ func TestSettingsHonorPresenceAndExplicitFalse(t *testing.T) {
 		model.ProviderSamsung:  {Enabled: &disabled},
 		model.ProviderXumo:     {Enabled: &disabled},
 	}
-	settings := Settings(overlays)
+	settings := Settings(overlays, "")
 	readers := Readers(settings, nil)
 	for _, id := range []model.ProviderID{
 		model.ProviderDistroTV,
@@ -93,9 +93,31 @@ func TestSettingsHonorExplicitZeroChannelNumberOffset(t *testing.T) {
 	}
 	settings := Settings(map[model.ProviderID]model.ProviderSettings{
 		model.ProviderLG: overlay,
-	})
+	}, "")
 	if got := settings[model.ProviderLG].ChannelNumberOffset; got != 0 {
 		t.Fatalf("effective LG offset: got %d want 0 (default is 1000)", got)
+	}
+}
+
+func TestSettingsInjectsSystemRegions(t *testing.T) {
+	overlays := map[model.ProviderID]model.ProviderSettings{
+		model.ProviderPluto:    {},
+		model.ProviderDistroTV: {},
+		model.ProviderLG:       {},
+	}
+	settings := Settings(overlays, "ca,QQ")
+	if got := settings[model.ProviderPluto].Region; got != "CA,QQ" {
+		t.Fatalf("pluto region=%q", got)
+	}
+	if got := settings[model.ProviderDistroTV].Region; got != "CA,QQ" {
+		t.Fatalf("distro region=%q", got)
+	}
+	if got := settings[model.ProviderLG].Region; got != "" {
+		t.Fatalf("lg should ignore system regions, got %q", got)
+	}
+	settings = Settings(overlays, "")
+	if got := settings[model.ProviderPluto].Region; got != model.DefaultRegions {
+		t.Fatalf("default regions=%q", got)
 	}
 }
 

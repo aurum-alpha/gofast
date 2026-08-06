@@ -38,6 +38,12 @@ const GENERAL_FIELDS: FieldSpec[] = [
     hint: 'Public origin clients use for logos and absolute links',
   },
   {
+    path: 'regions',
+    label: 'Regions',
+    kind: 'text',
+    hint: 'Comma-separated geography codes (e.g. us,ca or us,QQ). Pluto/Samsung/Plex/DistroTV scrape what they understand; other providers ignore this',
+  },
+  {
     path: 'proxy_base_url',
     label: 'Proxy base URL',
     kind: 'text',

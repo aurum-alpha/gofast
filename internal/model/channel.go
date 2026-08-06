@@ -14,9 +14,16 @@ type Channel struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description,omitempty"`
 	Group       string     `json:"group"`
-	Number      int        `json:"number"`                // provider's upstream channel number
-	StreamURL   string     `json:"stream_url"`            // provider's upstream URL
-	EmittedURL  string     `json:"emitted_url,omitempty"` // selected direct/proxy playback URL
+	// Region is the geography this channel was scraped from (ISO 3166-1 alpha-2
+	// uppercase, or Distro QQ). Empty when the provider is regionless / ignores
+	// system regions.
+	Region string `json:"region,omitempty"`
+	// UpstreamID is the provider-native channel key without a region prefix
+	// (MJH metadata id, Distro raw show id). Used to collapse regional twins.
+	UpstreamID string `json:"upstream_id,omitempty"`
+	Number     int    `json:"number"`                // provider's upstream channel number
+	StreamURL  string `json:"stream_url"`            // provider's upstream URL
+	EmittedURL string `json:"emitted_url,omitempty"` // selected direct/proxy playback URL
 	// EmittedName is the operator-customized display name for M3U/XMLTV. Empty
 	// means export uses Name. Upstream Name is never mutated.
 	EmittedName string `json:"emitted_name,omitempty"`

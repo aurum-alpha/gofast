@@ -104,6 +104,7 @@ export function ChannelsPage() {
   const sort = useMemo(() => channelsSortFromSearch(searchParams), [searchParams])
   const providerFilter = filters.provider
   const groupFilter = filters.group
+  const regionFilter = filters.region
   const classFilter = filters.class
   const statusFilter = filters.status
   const healthFilter = filters.health
@@ -174,6 +175,13 @@ export function ChannelsPage() {
     })
   }, [data])
 
+  const regions = useMemo(() => {
+    if (!data) return [] as string[]
+    return [...new Set(data.channels.map((c) => c.region).filter(Boolean) as string[])].sort(
+      (a, b) => a.localeCompare(b),
+    )
+  }, [data])
+
   const rows = useMemo(() => {
     if (!data) return [] as Channel[]
     const needle = q.trim().toLowerCase()
@@ -184,6 +192,9 @@ export function ChannelsPage() {
         }
         if (groupFilter !== 'all' && groupKey(ch.group) !== groupFilter) {
           return false
+        }
+        if (regionFilter !== 'all') {
+          if ((ch.region || '') !== regionFilter) return false
         }
         if (classFilter !== 'all') {
           if (canonicalClassification(ch.classification) !== classFilter) return false
@@ -203,6 +214,7 @@ export function ChannelsPage() {
           ch.id.toLowerCase().includes(needle) ||
           ch.normalized_id.toLowerCase().includes(needle) ||
           ch.group.toLowerCase().includes(needle) ||
+          (ch.region || '').toLowerCase().includes(needle) ||
           String(ch.number).includes(needle) ||
           String(ch.offset_number).includes(needle)
         )
@@ -213,6 +225,7 @@ export function ChannelsPage() {
     data,
     providerFilter,
     groupFilter,
+    regionFilter,
     classFilter,
     statusFilter,
     healthFilter,
@@ -274,6 +287,20 @@ export function ChannelsPage() {
                 {groups.map((g) => (
                   <option key={g} value={g}>
                     {groupLabel(g)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Region{' '}
+              <select
+                value={regionFilter}
+                onChange={(e) => patchFilters({ region: e.target.value })}
+              >
+                <option value="all">all</option>
+                {regions.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
                   </option>
                 ))}
               </select>
@@ -366,6 +393,7 @@ export function ChannelsPage() {
                     sort={sort}
                     onSort={patchSort}
                   />
+                  <SortTh label="Region" col="region" sort={sort} onSort={patchSort} />
                   <SortTh label="Group" col="group" sort={sort} onSort={patchSort} />
                   <SortTh label="Class" col="class" sort={sort} onSort={patchSort} />
                   <SortTh label="Health" col="health" sort={sort} onSort={patchSort} />
@@ -375,7 +403,7 @@ export function ChannelsPage() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr className="empty">
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       No channels yet — wait for a successful provider refresh
                       (e.g. LG), or clear filters.
                     </td>
@@ -431,6 +459,7 @@ export function ChannelsPage() {
                         <td>
                           <code>{ch.provider}</code>
                         </td>
+                        <td>{ch.region || '—'}</td>
                         <td>{ch.group || '—'}</td>
                         <td>
                           <span className={`badge badge-${cls.kind}`}>{cls.label}</span>

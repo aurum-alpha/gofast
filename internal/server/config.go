@@ -202,6 +202,7 @@ func configFields(cfg *config.Config, fileKeys map[string]bool, writable bool) m
 	add("proxy_internal_url", cfg.ProxyInternalURL)
 	add("proxy_all", cfg.ProxyAllEnabled())
 	add("cache_logos", cfg.CacheLogosEnabled())
+	add("regions", cfg.EffectiveRegions())
 	add("timeouts.http_client", cfg.Timeouts.HTTPClient.String())
 	add("logging.level", cfg.Logging.Level)
 	add("health.consecutive_failures", cfg.HealthConsecutiveFailures())
@@ -247,7 +248,7 @@ func configFields(cfg *config.Config, fileKeys map[string]bool, writable bool) m
 // configProviders returns the shipped-provider catalog with effective settings
 // and per-adapter field support, sorted by id.
 func configProviders(cfg *config.Config) []ConfigProvider {
-	effective := providerset.Settings(cfg.Providers)
+	effective := providerset.Settings(cfg.Providers, cfg.EffectiveRegions())
 	out := make([]ConfigProvider, 0, len(effective))
 	for _, id := range providerset.Known() {
 		s := effective[id]

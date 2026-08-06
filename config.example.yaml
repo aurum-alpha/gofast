@@ -32,6 +32,16 @@ listen: ":8180"
 # survives restarts and a fresh boot can restore without fetching upstream.
 data_dir: /data
 
+# System-wide geography list for region-capable providers (Pluto, Samsung, Plex,
+# DistroTV). Comma-separated or YAML sequence. Each consumer scrapes/merges codes
+# it understands and skips the rest (input control only — emit filters unchanged).
+# Default: US. Env: FASTGEN_REGIONS. Codes are normalized to ISO 3166-1 alpha-2
+# uppercase (us→US). Add QQ explicitly for Distro’s fantasy geo.
+# providers.*.region is ignored.
+regions: US
+# regions: US,CA
+# regions: [US, CA, QQ]
+
 # Public FASTProxy origin as reached by Jellyfin/ffmpeg, not an internal-only
 # container address. AMAGI_SSAI (Amagi rewrite) and SESSION (DAI mint) are
 # filtered when this is unset. XUMO_SSAI emits upstream (keep ads.* — not Amagi
@@ -410,7 +420,6 @@ providers:
   pluto:
     enabled: true
     label: Pluto
-    region: us
     channel_number_offset: 2000
     min_channels: 50
     refresh_interval: 6h
@@ -420,7 +429,6 @@ providers:
   samsung:
     enabled: true
     label: Samsung
-    region: us
     channel_number_offset: 3000
     min_channels: 50
     refresh_interval: 6h
@@ -438,7 +446,6 @@ providers:
   plex:
     enabled: true
     label: Plex
-    region: us
     channel_number_offset: 8000
     min_channels: 50
     refresh_interval: 6h
@@ -487,10 +494,9 @@ providers:
     # Catalog URLs are opaque; FASTProxy resolves a fresh HLS URL at tune-in
     # (DISTRO_RESOLVE). Requires compose profile proxy + proxy_base_url.
     # Live lineup is small; default off until you opt in.
+    # Geo comes from top-level regions (e.g. us → US; add QQ for Distro fantasy geo).
     enabled: false
     label: DistroTV
-    # Distro geo code (QQ worldwide-ish, US, CA, …). Maps to ProviderSettings.region.
-    region: QQ
     synthesize_channel_numbers: 6000
     min_channels: 1
     refresh_interval: 6h

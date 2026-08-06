@@ -19,11 +19,11 @@ func TestProviderDefaultsAndConstructors(t *testing.T) {
 		slug   string
 		reader func() provider.Reader
 	}{
-		{model.ProviderPluto, 2000, "us", "plu-{id}.m3u8", func() provider.Reader {
+		{model.ProviderPluto, 2000, "US", "plu-{id}.m3u8", func() provider.Reader {
 			settings := pluto.DefaultSettings()
 			return pluto.New(settings, nil)
 		}},
-		{model.ProviderSamsung, 3000, "us", "", func() provider.Reader {
+		{model.ProviderSamsung, 3000, "US", "", func() provider.Reader {
 			settings := samsung.DefaultSettings()
 			return samsung.New(settings, nil)
 		}},
@@ -31,7 +31,7 @@ func TestProviderDefaultsAndConstructors(t *testing.T) {
 			settings := roku.DefaultSettings()
 			return roku.New(settings, nil)
 		}},
-		{model.ProviderPlex, 8000, "us", "plex-{id}.m3u8", func() provider.Reader {
+		{model.ProviderPlex, 8000, "US", "plex-{id}.m3u8", func() provider.Reader {
 			settings := plex.DefaultSettings()
 			return plex.New(settings, nil)
 		}},

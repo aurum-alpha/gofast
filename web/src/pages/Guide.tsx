@@ -148,6 +148,7 @@ export function GuidePage() {
   const filters = useMemo(() => guideFiltersFromSearch(searchParams), [searchParams])
   const providerFilter = filters.provider
   const groupFilter = filters.group
+  const regionFilter = filters.region
   const classFilter = filters.class
   const hideExcluded = filters.hideExcluded
   const timePreset = filters.time
@@ -258,6 +259,17 @@ export function GuidePage() {
     return [...new Set(src.map((c) => c.group).filter(Boolean))].sort()
   }, [channels, allRows])
 
+  const regions = useMemo(() => {
+    const src = channels ?? allRows.map((r) => ({ region: r.region }))
+    return [
+      ...new Set(
+        src
+          .map((c) => ('region' in c ? c.region : '') || '')
+          .filter(Boolean),
+      ),
+    ].sort()
+  }, [channels, allRows])
+
   const dataExtent = useMemo(() => {
     let min = Infinity
     let max = -Infinity
@@ -287,6 +299,7 @@ export function GuidePage() {
         if (providerFilter !== 'all' && r.provider !== providerFilter) return false
         if (hideExcluded && r.excluded) return false
         if (groupFilter !== 'all' && r.group !== groupFilter) return false
+        if (regionFilter !== 'all' && (r.region || '') !== regionFilter) return false
         if (classFilter !== 'all' && canonicalClassification(r.classification) !== classFilter)
           return false
         if (channelNeedle) {
@@ -295,6 +308,7 @@ export function GuidePage() {
             r.rawId.toLowerCase().includes(channelNeedle) ||
             r.normalizedId.toLowerCase().includes(channelNeedle) ||
             r.group.toLowerCase().includes(channelNeedle) ||
+            (r.region || '').toLowerCase().includes(channelNeedle) ||
             String(r.number).includes(channelNeedle)
           if (!hit) return false
         }
@@ -317,6 +331,7 @@ export function GuidePage() {
     providerFilter,
     hideExcluded,
     groupFilter,
+    regionFilter,
     classFilter,
     channelQ,
     programmeQ,
@@ -503,6 +518,20 @@ export function GuidePage() {
                 {groups.map((g) => (
                   <option key={g} value={g}>
                     {g}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Region{' '}
+              <select
+                value={regionFilter}
+                onChange={(e) => patchFilters({ region: e.target.value })}
+              >
+                <option value="all">all</option>
+                {regions.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
                   </option>
                 ))}
               </select>

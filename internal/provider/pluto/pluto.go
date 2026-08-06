@@ -20,7 +20,7 @@ func DefaultSettings() model.ProviderSettings {
 	settings := model.DefaultSettings()
 	settings.ID = model.ProviderPluto
 	settings.Label = "PlutoTV"
-	settings.Region = "us"
+	settings.Region = model.DefaultRegions
 	settings.ChannelNumberOffset = 2000
 	settings.MinChannels = 50
 	settings.RefreshInterval = 6 * time.Hour
