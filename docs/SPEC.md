@@ -171,6 +171,13 @@ dedupe, etc.).
 | DistroTV | Yes — merge feeds per geo; add `QQ` explicitly if needed |
 | Roku, LG, Tubi, Xumo, TCL, LocalNow | No — ignore |
 
+**#47 spike (2026-08-05):** remaining candidates were probed for real multi-geo
+feeds. **None** are viable today — keep them ignoring `regions` until upstream
+changes. Summary: LG `x-device-country` only works for `US` (non-US → API 500);
+Tubi/Xumo/TCL/LocalNow are single US published-pair artifacts (no `*_ca` files);
+Roku mjh is still regionless (`channels`+`headers` only, guide `all.xml.gz`).
+Full notes on GitHub [#47](https://github.com/j27-aurum/gofast/issues/47).
+
 When more than one **usable** MJH region is configured, catalog channel ids become
 `{REGION}_{upstreamId}` (uppercase region) so lineups do not collide; stream
 slugs still use the upstream id. A single usable region keeps bare upstream ids

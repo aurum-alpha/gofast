@@ -52,6 +52,17 @@ Providers are **Go packages compiled into fastgen** — not plugins. YAML only o
 
 **Regions:** top-level `regions` / `FASTGEN_REGIONS` (default `US`, ISO alpha-2 uppercase) is a scrape input for Pluto, Samsung, Plex, and DistroTV. Other providers ignore it. Same upstream channel across regions is auto-collapsed at refresh (preferred = first listed region). See [docs/SPEC.md](docs/SPEC.md#system-wide-regions-provider-input).
 
+**Regions spike (2026-08-05, [#47](https://github.com/j27-aurum/gofast/issues/47)):** remaining providers were probed for real multi-geo feeds. **None** are viable today — they keep ignoring `regions` until upstream changes.
+
+| Provider | Verdict | Why |
+|----------|---------|-----|
+| LG | NO | `x-device-country: US` works; non-US codes (e.g. CA) return API 500 |
+| Tubi | NO | Single US published pair; no per-country playlists |
+| Xumo | NO | Single US published pair; generator hardcodes `GEO_ID=us` |
+| TCL | NO | Single US published pair; generator hardcodes `COUNTRY_CODE=US` |
+| LocalNow | NO | Single national playlist; intra-US cities ≠ ISO regions |
+| Roku | NO | Still regionless on i.mjh.nz (`all.xml.gz`, no `regions` map) |
+
 | Id | Brand | Upstream source | Default fetch |
 |----|-------|-----------------|---------------|
 | `lg` | LG Channels | **LG Channels API** (official schedulelist) | `https://api.lgchannels.com/api/v1.0/schedulelist` — channels + programmes in one payload |
