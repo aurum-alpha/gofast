@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
+type DemuxStableSession = {
+  provider?: string
+  channel_id?: string
+  started_at?: string
+  bytes_out?: number
+  bytes_per_sec?: number
+  pid?: number
+  state?: string
+}
+
 type ProxySnapshot = {
   at?: string
   proxy_id?: string
@@ -14,6 +24,12 @@ type ProxySnapshot = {
   seg_fail?: number
   seg_bytes?: number
   events_dropped?: number
+  demux_stable_active?: number
+  demux_stable_max?: number
+  demux_stable_bytes_total?: number
+  demux_stable_starts?: number
+  demux_stable_fails?: number
+  demux_stable_sessions?: DemuxStableSession[]
 }
 
 type ProxyEvent = {
@@ -47,6 +63,9 @@ const KIND_OPTIONS = [
   'seg_fail',
   'stream_open',
   'stream_302',
+  'demux_stable_open',
+  'demux_stable_close',
+  'demux_stable_fail',
 ] as const
 
 function formatWhen(value?: string): string {
@@ -318,11 +337,63 @@ export function ProxyPage() {
             />
             <Metric label="Bytes" value={formatBytes(snap?.seg_bytes)} />
             <Metric
+              label="Demux-stable active"
+              value={`${snap?.demux_stable_active ?? 0}/${snap?.demux_stable_max ?? '—'}`}
+              title="Class B ffmpeg encode slots in use"
+            />
+            <Metric
+              label="Demux-stable starts"
+              value={snap?.demux_stable_starts ?? 0}
+            />
+            <Metric
+              label="Demux-stable fail"
+              value={snap?.demux_stable_fails ?? 0}
+              warn={(snap?.demux_stable_fails ?? 0) > 0}
+            />
+            <Metric
+              label="Demux-stable bytes"
+              value={formatBytes(snap?.demux_stable_bytes_total)}
+            />
+            <Metric
               label="Dropped"
               value={snap?.events_dropped ?? 0}
               warn={(snap?.events_dropped ?? 0) > 0}
             />
           </div>
+
+          {(snap?.demux_stable_sessions?.length ?? 0) > 0 ? (
+            <section className="panel" style={{ marginTop: '1rem' }}>
+              <h2>Active demux-stable encodes</h2>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Provider</th>
+                    <th>Channel</th>
+                    <th>State</th>
+                    <th>Bytes</th>
+                    <th>Rate</th>
+                    <th>PID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snap!.demux_stable_sessions!.map((s) => (
+                    <tr key={`${s.provider}/${s.channel_id}/${s.pid}`}>
+                      <td>{s.provider || '—'}</td>
+                      <td>{s.channel_id || '—'}</td>
+                      <td>{s.state || '—'}</td>
+                      <td>{formatBytes(s.bytes_out)}</td>
+                      <td>
+                        {s.bytes_per_sec != null && s.bytes_per_sec > 0
+                          ? `${formatBytes(Math.round(s.bytes_per_sec))}/s`
+                          : '—'}
+                      </td>
+                      <td>{s.pid ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ) : null}
 
           <div className="filters access-filters">
             <label>

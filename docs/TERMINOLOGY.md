@@ -13,6 +13,10 @@ branches on dialect, see `internal/proxy` package docs (`go doc ./internal/proxy
 | “Needs the proxy” | **`AMAGI_SSAI`** (rewrite), **`SESSION`** (DAI mint), **`DISTRO_RESOLVE`** (DistroTV jsrdn), and **`STIRR_RESOLVE`** (STIRR `/playable`) require FASTProxy under selective mode. **`XUMO_SSAI` usually does not.** |
 | “SESSION = Amagi” | **No.** SESSION is Google DAI mint-on-tune-in. Amagi is extensionless beacon segment URIs. DistroTV uses **`DISTRO_RESOLVE`**; STIRR uses **`STIRR_RESOLVE`** — neither is SESSION mint. |
 | “Tubi/Plex adapter” | **FASTGen** provider fetchers (lineup + EPG). Not FASTProxy dialect work. Plex ships via mjh; Tubi and TCL ship as published-pair. |
+| “IPTV” / “paid IPTV” | In Threadfin / m3u-editor / tuliprox land this usually means a **reseller M3U or Xtream panel**, not FAST. GoFAST is **FAST** (free ad-supported catalogs), not that market. |
+| “`.strm` for Live TV” | **No.** `.strm` is a **library / VOD** pointer file. Jellyfin Live TV uses **M3U (+ XMLTV)** or an HDHomeRun-style tuner — not `.strm`. |
+| “Pluto DVR bug only” | Symptom of **Class B** (demux-unstable ES). Not the same as Amagi **Class A** (illegal segment URIs). See Class A / Class B below. |
+| “Amagi rewrite = DVR-safe” | **No.** `/stream/` Class A only renames URIs. Mid-roll resolution changes still break Jellyfin `-c copy`. DVR needs **Class B** `/stable/`. |
 
 ---
 
@@ -36,6 +40,36 @@ different job from gen’s lineup file.
 
 XML electronic program guide format. Not a stream dialect. Gen emits
 `epg.xml` / `{provider}.xml` so Jellyfin can show Now/Next.
+
+### `.strm` (Jellyfin / Kodi)
+
+A tiny **text file whose only content is a URL** (sometimes plus a couple of
+metadata lines). Jellyfin/Kodi treat it like a local library item: open the
+file → play the URL. Tools such as **m3u-editor** / **tuliprox** can export
+VOD/series as trees of `.strm` files so movies/shows appear in the **Movies /
+TV** library without copying video onto disk.
+
+**Not** how Jellyfin Live TV works. Live TV wants an M3U tuner (or HDHomeRun
+emulation) plus XMLTV. Do not confuse “sync `.strm` for series” with “add a
+Live TV source.”
+
+### Xtream / Xtream Codes API
+
+A **de facto standard HTTP API** used by many IPTV reseller panels (historical
+product name “Xtream Codes”; the panel software evolved, the API shape stuck).
+Instead of only giving you a giant M3U URL, the provider gives roughly:
+
+- Panel / server URL (host)
+- Username
+- Password
+
+Clients then call endpoints like “list live categories,” “list streams,” “EPG,”
+“VOD,” “series,” and get short-lived play URLs. Players (TiviMate, IPTV Smarters,
+and proxies like tuliprox / m3u-editor) speak this API natively. Many panels also
+expose a generated **M3U** that wraps the same account (`…/get.php?username=…`).
+
+**GoFAST does not implement Xtream.** Our providers are FAST APIs / published
+M3U+XMLTV pairs / MJH mirrors — not reseller panels.
 
 ---
 
@@ -154,18 +188,55 @@ Control plane for the lineup.
 
 ### FASTProxy
 
-Optional binary (`fastproxy`): dialect translation at tune-in (Amagi rewrite,
-SESSION mint, Distro/STIRR resolve). Headless — no `/data`, no product UI; reports into gen.
+Optional binary (`fastproxy`): make FAST streams **consumable by ffmpeg/Jellyfin**
+(Live TV and DVR). Two URL entry points:
+
+- `{proxy}/stream/{provider}/{id}.m3u8` — Class A / dialect (Amagi rewrite,
+  SESSION mint, Distro/STIRR resolve, or NATIVE 302 under `proxy_all`)
+- `{proxy}/stable/{provider}/{id}.ts` — Class B demux-stable MPEG-TS pipe
+  (ffmpeg re-encode; may Class A–ingest via loopback when dialect needs it)
+
+Headless — no `/data`, no product UI; reports into gen (including
+`demux_stable_*` snapshot fields).
+
+### Class A / Class B (Jellyfin compatibility)
+
+Orthogonal shapes — not provider names:
+
+| Class | Jellyfin needs | Failure | Path |
+|-------|----------------|---------|------|
+| **A — reference legality** | Segment URIs ffmpeg will fetch | Live TV often won’t start | `/stream/` rewrite |
+| **B — ES constancy** | One video stream identity for the whole tune | DVR `-c copy` drops video after param change | `/stable/` encode pipe |
+
+**A ⇏ B.** Rewriting names does not stabilize coded resolution.  
+**B ⇏ A.** Legal `.ts` URLs can still change dimensions mid-session.  
+**Recording** requires Class B on the M3U URL Jellyfin uses. When both A and B
+apply, gen emits `/stable/` (not a fourth URL); proxy does A ingest then B out.
+
+Emission matrix (proxy configured): A-only → `/stream/`; B or A+B → `/stable/`;
+neither → upstream. Class B without proxy stays soft upstream (#56 Pluto
+fixture; #57 general detection).
+
+### Demux-stable (stream)
+
+Class B presentation: ffmpeg’s demuxer keeps a **single video (and audio)
+stream identity** for the whole tune-in / recording. Implemented as
+`GET /stable/…` → fixed-geometry MPEG-TS (`video/mp2t`).
+
+**Demux-unstable** examples: SSAI stitchers that splice ads at a different coded
+resolution than programme content (proven on Pluto). Constant-parameter ladders
+(e.g. many Roku channels) stay on the cheap path — no blanket re-encode.
+
+GoFAST only applies this to **in-tree FAST providers**, not reseller IPTV.
 
 ### Selective proxy vs `proxy_all`
 
-**Selective (default):** gen embeds `{proxy_base_url}/stream/...` only for
-dialects that `RequireProxy()` (Amagi + SESSION + Distro/STIRR resolve).
+**Selective (default):** gen embeds `{proxy_base_url}/stream/...` for dialects
+that `RequireProxy()` (Amagi + SESSION + Distro/STIRR), and
+`{proxy_base_url}/stable/...ts` for Class B channels (Pluto fixture until #57).
 
-**`proxy_all`:** every exported channel gets that stable `/stream` URL. Proxy
-still **rewrites** Amagi, **mints** SESSION, **resolves** Distro/STIRR, and **302s**
-NATIVE/XUMO to upstream. Same M3U URL shape; behavior is decided inside the
-proxy by classification.
+**`proxy_all`:** non–Class-B channels get `/stream` (rewrite / mint / resolve /
+302). Class B still wins → `/stable/` when flagged.
 
 ### `proxy_base_url` vs `proxy_internal_url` vs proxy envs
 
@@ -201,3 +272,69 @@ Why Amagi beacons break Jellyfin without rewrite. Jellyfin 10.11.x / jellyfin-ff
 SSAI endpoints often reject **HEAD** while **GET** works. GoFAST health probes
 and FASTProxy never use HEAD against stream endpoints. SESSION mint uses
 **POST** (stream create), not HEAD.
+
+---
+
+## Adjacent IPTV ecosystem (not GoFAST)
+
+Terms you will hit when reading Threadfin / m3u-editor / tuliprox docs. These
+products solve a **different** problem (broker someone else’s M3U/Xtream into
+Plex/Jellyfin). GoFAST fetches **FAST** catalogs and fixes **stream dialects**.
+
+### Paid IPTV M3U
+
+A **subscription playlist** sold as credentials: usually an **M3U URL** and/or
+**Xtream** host+user+pass that unlocks thousands of live (and often VOD)
+channels. The file looks like any other M3U (`#EXTINF` + stream URL per
+channel); the difference is **who hosts the streams** and **how you got access**.
+
+| Kind | What it is | Examples / how you get it |
+|------|------------|---------------------------|
+| **FAST / free AVOD** (GoFAST’s world) | Ad-supported apps with public or community-scraped lineups | Pluto, Samsung TV Plus, Roku, LG Channels, Tubi, STIRR — via GoFAST adapters, not a purchased panel |
+| **Legal pay TV apps** | Official apps / devices; rarely hand you a raw M3U | YouTube TV, Hulu + Live, Fubo, cable apps — **no** generic M3U for Jellyfin |
+| **Tuner / antenna** | Local RF → network tuner | HDHomeRun + antenna; Jellyfin talks HDHomeRun natively (no “IPTV M3U”) |
+| **Reseller “IPTV” panels** | Third-party sellers of M3U/Xtream credentials | Sold on forums, Telegram, “IPTV subscription” shops as Xtream host/user/pass or a `get.php` M3U URL |
+
+That last row is what Threadfin / m3u-editor / tuliprox are usually built around:
+you **buy or are given** panel credentials, paste them into the proxy, map
+channels, point Jellyfin/Plex at the proxy’s M3U or HDHomeRun endpoint.
+
+**Legal note:** many reseller panels redistribute copyrighted linear TV without
+rights. GoFAST does not sell, list, or integrate those panels. Prefer FAST
+sources, legal apps, or a tuner you own. If you already have a legitimate
+provider that *officially* gives M3U/Xtream, the same tools can broker it —
+the format is not illegal; the content rights are the issue.
+
+### Threadfin / xTeVe-style DVR buffering
+
+**Not** Jellyfin’s DVR feature by itself. It means: sit a proxy (classic
+**xTeVe**, or its maintained fork **[Threadfin](https://github.com/Threadfin/Threadfin)**)
+between the M3U and the media server, and on tune-in (or continuously) **pull
+the upstream HLS through ffmpeg/VLC**, then hand Jellyfin/Plex a **stable
+re-streamed pipe** (often MPEG-TS or rewritten HLS).
+
+Why people do it:
+
+- Media servers see one continuous stream instead of a flaky multi-variant HLS.
+- Fixes some **SSAI splice** failures (e.g. Pluto mid-roll resolution changes
+  that break ffmpeg `copy` DVR — see GitHub issue #56).
+- Emulates **HDHomeRun** tuners so Plex DVR “just works.”
+
+Cost: CPU/RAM on the proxy host; concurrent “tuners” are limited. GoFAST does
+not become a general IPTV buffer for arbitrary M3Us. **#56** is the FAST-scoped
+equivalent: demux-stable output from FASTProxy for any in-tree provider that
+needs it (Pluto is the first fixture), same compatibility mission as Amagi/DAI
+resolve — not “re-encode Pluto only” and not paid panels.
+
+### Threadfin (product)
+
+Go M3U proxy descended from abandoned **xTeVe**. Merge playlists, map channels,
+optional ffmpeg/VLC buffer, HDHomeRun-style output for Plex/Jellyfin/Emby.
+**Does not** fetch FAST providers; you feed it an M3U (e.g. GoFAST’s
+`playlist.m3u`, or a paid panel M3U).
+
+### m3u-editor / tuliprox (products)
+
+Broader IPTV editors/gateways (see their repos). Same niche as Threadfin —
+ingest M3U/Xtream, edit/filter, proxy or export (including `.strm` / Xtream API
+/ HDHomeRun) — not FAST provider adapters.

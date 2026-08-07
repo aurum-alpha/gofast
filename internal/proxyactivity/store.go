@@ -48,20 +48,37 @@ type Event struct {
 	Attrs      json.RawMessage `json:"attrs,omitempty"`
 }
 
+// DemuxStableSession is one active Class B ffmpeg pipe from a proxy snapshot.
+type DemuxStableSession struct {
+	Provider    string    `json:"provider"`
+	ChannelID   string    `json:"channel_id"`
+	StartedAt   time.Time `json:"started_at"`
+	BytesOut    int64     `json:"bytes_out"`
+	BytesPerSec float64   `json:"bytes_per_sec"`
+	PID         int       `json:"pid,omitempty"`
+	State       string    `json:"state"`
+}
+
 // Snapshot is the latest live view reported by a proxy process.
 type Snapshot struct {
-	At              time.Time `json:"at"`
-	ProxyID         string    `json:"proxy_id"`
-	ActiveSessions  int       `json:"active_sessions"`
-	ActiveSegTokens int       `json:"active_seg_tokens"`
-	StreamOpens     uint64    `json:"stream_opens"`
-	Stream302s      uint64    `json:"stream_302s"`
-	PlaylistOK      uint64    `json:"playlist_ok"`
-	PlaylistFail    uint64    `json:"playlist_fail"`
-	SegOK           uint64    `json:"seg_ok"`
-	SegFail         uint64    `json:"seg_fail"`
-	SegBytes        uint64    `json:"seg_bytes"`
-	EventsDropped   uint64    `json:"events_dropped"`
+	At                    time.Time            `json:"at"`
+	ProxyID               string               `json:"proxy_id"`
+	ActiveSessions        int                  `json:"active_sessions"`
+	ActiveSegTokens       int                  `json:"active_seg_tokens"`
+	StreamOpens           uint64               `json:"stream_opens"`
+	Stream302s            uint64               `json:"stream_302s"`
+	PlaylistOK            uint64               `json:"playlist_ok"`
+	PlaylistFail          uint64               `json:"playlist_fail"`
+	SegOK                 uint64               `json:"seg_ok"`
+	SegFail               uint64               `json:"seg_fail"`
+	SegBytes              uint64               `json:"seg_bytes"`
+	EventsDropped         uint64               `json:"events_dropped"`
+	DemuxStableActive     int                  `json:"demux_stable_active,omitempty"`
+	DemuxStableMax        int                  `json:"demux_stable_max,omitempty"`
+	DemuxStableBytesTotal uint64               `json:"demux_stable_bytes_total,omitempty"`
+	DemuxStableStarts     uint64               `json:"demux_stable_starts,omitempty"`
+	DemuxStableFails      uint64               `json:"demux_stable_fails,omitempty"`
+	DemuxStableSessions   []DemuxStableSession `json:"demux_stable_sessions,omitempty"`
 }
 
 // Status is the API view for the Status / Proxy glass.

@@ -651,28 +651,29 @@ under ten seconds.
 ## FASTProxy requirements
 
 - Separate `cmd/fastproxy` binary and Docker image (not a gen mode flag).
-- Endpoints: `/stream/{provider}/{id}.m3u8` (master), rewritten variant paths,
-  `/seg/{token}` (segment shuttle for Amagi), 302 redirects for NATIVE / XUMO
-  under `proxy_all`, and SESSION mint then 302 to `stream_manifest`.
-- **Amagi (`AMAGI_SSAI`):** relative URL resolution; rewrite variants/segments/
-  `#EXT-X-KEY`; preserve other tags; short-TTL rewrite sessions; never strip ads
-  (beacon GET still fires).
-- **SESSION:** parse DAI event id from catalog URL; `POST …/linear/v1/hls/event/{id}/stream`;
-  302 to `stream_manifest` (fallback `hls_master_playlist`); short-TTL mint
-  cache; no Amagi `/seg` path in v1; emit `session_mint` / `session_mint_fail`
-  telemetry.
+  Image is `debian:bookworm-slim` + **ffmpeg** (Class B encode; not distroless).
+- **Class A / dialect endpoints:** `/stream/{provider}/{id}.m3u8`, rewritten
+  variant paths `/s/{sid}/{n}`, `/seg/{token}` (Amagi shuttle), 302 for NATIVE /
+  XUMO under `proxy_all`, SESSION mint → 302, Distro/STIRR resolve → 302 or rewrite.
+- **Class B endpoint:** `/stable/{provider}/{id}.ts` — demux-stable MPEG-TS pipe
+  (`video/mp2t`). Gen emits this URL when Class B is set and `proxy_base_url` is
+  configured (Pluto fixture in #56; general detection in #57). Class B wins over
+  `/stream/` when both A and B apply; proxy may loopback to `/stream/` for Amagi
+  ingest then encode. Knobs: `FASTPROXY_DEMUX_STABLE_MAX` (default 2),
+  `FASTPROXY_DEMUX_STABLE_SIZE` (default `1280x720`), `FASTPROXY_FFMPEG`.
+- **Amagi (`AMAGI_SSAI`):** Class A only on `/stream/` — not a DVR guarantee.
+  Relative URL resolution; rewrite variants/segments/`#EXT-X-KEY`; short-TTL
+  sessions; never strip ads (beacon GET still fires).
+- **SESSION:** parse DAI event id; `POST …/stream`; 302 to `stream_manifest`;
+  short-TTL mint cache; telemetry `session_mint` / `session_mint_fail`.
 - Never HEAD stream endpoints (SSAI often rejects HEAD).
-- **Headless control-plane hop:** proxy has no `/data` and no product UI.
-  `FASTPROXY_GEN_URL` (internal gen origin) is required: proxy pulls
-  `GET /api/proxy/origin/{provider}/{id}` and asynchronously posts events /
-  snapshots to `POST /api/proxy/events`. Gen persists activity under
-  `{data_dir}/cache/proxy_activity.db` and exposes `GET /api/proxy/status` for
-  the Status Proxy glass. Media path never blocks on ingest.
-- Tests: golden rewrite tests from fixture playlists (beacon-style modeled on
-  Amagi, clean, relative-URL, EXT-X-KEY); integration test proving a
-  beacon-style fixture becomes a playlist whose every non-comment line targets
-  the proxy; SESSION mint httptest (catalog 404 shape → POST → 302).
-- Glossary: [`docs/TERMINOLOGY.md`](TERMINOLOGY.md).
+- **Headless control-plane hop:** `FASTPROXY_GEN_URL` required. Origin pull +
+  async `POST /api/proxy/events` (includes `demux_stable_*` snapshot fields and
+  active encode sessions). Gen glass: Status + Proxy tab. Media path never
+  blocks on ingest.
+- Tests: Amagi rewrite fixtures; SESSION mint httptest; Class B slot exhaustion +
+  stub-ffmpeg pipe; Pluto emission → `/stable/…ts`.
+- Glossary: [`docs/TERMINOLOGY.md`](TERMINOLOGY.md) (Class A / Class B).
 
 ## Additional test cases (from production failures)
 

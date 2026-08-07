@@ -79,6 +79,14 @@ func TestL1ShouldSchedule(t *testing.T) {
 	if l1ShouldSchedule(stirrOpaque) {
 		t.Fatal("STIRR without EmittedURL must not schedule")
 	}
+	plutoStable := model.Channel{
+		Classification: model.ClassNative,
+		StreamURL:      "https://jmp2.uk/plu-x.m3u8",
+		EmittedURL:     "https://proxy.example/stable/pluto/x.ts",
+	}
+	if l1ShouldSchedule(plutoStable) {
+		t.Fatal("Class B /stable/ must not schedule L1 (would start encode)")
+	}
 	distroProxy := model.Channel{
 		Classification: model.ClassDistroResolve,
 		StreamURL:      "distro://jsrdn/feed/abc",

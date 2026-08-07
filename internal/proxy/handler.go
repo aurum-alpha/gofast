@@ -14,7 +14,7 @@ import (
 	"github.com/j27-aurum/gofast/internal/provider/stirr"
 )
 
-// Handler serves /stream, /s/{sid}/{n}.m3u8, and /seg/{token}.
+// Handler serves /stream, /stable, /s/{sid}/{n}.m3u8, and /seg/{token}.
 type Handler struct {
 	Origin   Origin
 	Store    *Store
@@ -27,9 +27,13 @@ type Handler struct {
 	// URIs (no trailing slash). When set (FASTPROXY_PUBLIC_BASE_URL), it wins
 	// over request-derived Host / X-Forwarded-*. Empty keeps local/dev behavior.
 	PublicBase string
-	playlists  *playlistClient
-	segments   *segmentClient
-	mint       *mintClient
+	// LoopbackBase is the origin ffmpeg uses for Class A ingest via /stream
+	// (Amagi rewrite). Empty defaults to http://127.0.0.1:$PORT.
+	LoopbackBase string
+	playlists    *playlistClient
+	segments     *segmentClient
+	mint         *mintClient
+	demux        *demuxStableTracker
 }
 
 // NewHandler wires origin lookup, session store, and optional reporter.
@@ -37,7 +41,7 @@ func NewHandler(origin Origin, store *Store, reporter *Reporter) *Handler {
 	if store == nil {
 		store = NewStore()
 	}
-	return &Handler{
+	h := &Handler{
 		Origin:    origin,
 		Store:     store,
 		Reporter:  reporter,
@@ -46,13 +50,20 @@ func NewHandler(origin Origin, store *Store, reporter *Reporter) *Handler {
 		playlists: newPlaylistClient(30 * time.Second),
 		segments:  newSegmentClient(),
 		mint:      newMintClient(),
+		demux:     newDemuxStableTracker(),
 	}
+	if reporter != nil {
+		reporter.demux = h.demux
+	}
+	return h
 }
 
 // Register mounts proxy routes on mux (after /healthz).
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /stream/{provider}/{id}", withCORS(h.serveStream))
 	mux.HandleFunc("OPTIONS /stream/{provider}/{id}", corsPreflight)
+	mux.HandleFunc("GET /stable/{provider}/{id}", withCORS(h.serveDemuxStable))
+	mux.HandleFunc("OPTIONS /stable/{provider}/{id}", corsPreflight)
 	mux.HandleFunc("GET /s/{sid}/{n}", withCORS(h.serveSessionMedia))
 	mux.HandleFunc("OPTIONS /s/{sid}/{n}", corsPreflight)
 	mux.HandleFunc("GET /seg/{token}", withCORS(h.serveSeg))

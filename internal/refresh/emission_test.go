@@ -147,6 +147,38 @@ func TestApplyEmissionPolicy(t *testing.T) {
 	}
 }
 
+func TestApplyEmissionPolicyPlutoClassBStable(t *testing.T) {
+	got, _ := applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderPluto,
+		NormalizedID:   "cnn",
+		StreamURL:      "https://jmp2.uk/plu-cnn.m3u8",
+		Classification: model.ClassNative,
+	}}, EmissionPolicy{ProxyBaseURL: "https://proxy.test"})
+	if got[0].EmittedURL != "https://proxy.test/stable/pluto/cnn.ts" {
+		t.Fatalf("pluto Class B emit = %q", got[0].EmittedURL)
+	}
+	// Class B wins over proxy_all /stream/
+	got, _ = applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderPluto,
+		NormalizedID:   "cnn",
+		StreamURL:      "https://jmp2.uk/plu-cnn.m3u8",
+		Classification: model.ClassNative,
+	}}, EmissionPolicy{ProxyBaseURL: "https://proxy.test", ProxyAll: true})
+	if got[0].EmittedURL != "https://proxy.test/stable/pluto/cnn.ts" {
+		t.Fatalf("pluto+proxy_all should still be /stable/ = %q", got[0].EmittedURL)
+	}
+	// Soft: no proxy → upstream
+	got, _ = applyEmissionPolicy([]model.Channel{{
+		Provider:       model.ProviderPluto,
+		NormalizedID:   "cnn",
+		StreamURL:      "https://jmp2.uk/plu-cnn.m3u8",
+		Classification: model.ClassNative,
+	}}, EmissionPolicy{})
+	if got[0].EmittedURL != "https://jmp2.uk/plu-cnn.m3u8" {
+		t.Fatalf("pluto without proxy = %q", got[0].EmittedURL)
+	}
+}
+
 func TestApplyEmissionPolicyDeadSSAINoEmittedURL(t *testing.T) {
 	got, _ := applyEmissionPolicy([]model.Channel{{
 		Provider:       model.ProviderSTIRR,

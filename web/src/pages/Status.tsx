@@ -88,6 +88,9 @@ type ProxySnapshot = {
   seg_fail?: number
   seg_bytes?: number
   events_dropped?: number
+  demux_stable_active?: number
+  demux_stable_max?: number
+  demux_stable_fails?: number
 }
 
 type ProxyEvent = {
@@ -521,6 +524,11 @@ export function StatusPage() {
                 label="Seg fail"
                 value={proxyStatus.snapshot?.seg_fail ?? 0}
                 warn={(proxyStatus.snapshot?.seg_fail ?? 0) > 0}
+              />
+              <Metric
+                label="Demux-stable"
+                value={`${proxyStatus.snapshot?.demux_stable_active ?? 0}/${proxyStatus.snapshot?.demux_stable_max ?? '—'}`}
+                title="Class B ffmpeg encode slots"
               />
             </div>
           )}

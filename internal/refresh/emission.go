@@ -71,6 +71,12 @@ func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]mod
 		if noPlayback {
 			continue
 		}
+		// Class B (demux-stable) wins over /stream/ when proxy is configured.
+		// #56 thin fixture: Pluto until #57 general Class B detection.
+		if proxyBase != "" && classBPreferStable(*channel) {
+			channel.EmittedURL = proxyStableURL(proxyBase, channel.Provider, channel.NormalizedID)
+			continue
+		}
 		if canMintProxy {
 			channel.EmittedURL = proxyStreamURL(proxyBase, channel.Provider, channel.NormalizedID)
 			continue
@@ -80,8 +86,20 @@ func applyEmissionPolicy(channels []model.Channel, policy EmissionPolicy) ([]mod
 	return out, stats
 }
 
+func classBPreferStable(ch model.Channel) bool {
+	return ch.Provider == model.ProviderPluto
+}
+
 func proxyStreamURL(baseURL string, provider model.ProviderID, normalizedID string) string {
 	return fmt.Sprintf("%s/stream/%s/%s.m3u8",
+		strings.TrimRight(baseURL, "/"),
+		provider,
+		normalizedID,
+	)
+}
+
+func proxyStableURL(baseURL string, provider model.ProviderID, normalizedID string) string {
+	return fmt.Sprintf("%s/stable/%s/%s.ts",
 		strings.TrimRight(baseURL, "/"),
 		provider,
 		normalizedID,

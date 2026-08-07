@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -468,6 +469,8 @@ func (s *Scheduler) runL1Retry(ctx context.Context) {
 // Proxy dialects (Amagi / Distro / STIRR) are included only when EmittedURL is
 // set so probes hit FASTProxy /stream/… — never opaque stirr:// / distro:// or
 // upstream beacons. SESSION stays off ScheduleSegmentHealth (DAI mint).
+// Class B /stable/…ts URLs are skipped on the timer — a probe would start an
+// ffmpeg encode slot (use Manual / playback telemetry instead).
 func l1ShouldSchedule(ch model.Channel) bool {
 	if ch.Excluded || !ch.Classification.ScheduleSegmentHealth() || ProbeURL(ch) == "" {
 		return false
@@ -475,7 +478,14 @@ func l1ShouldSchedule(ch model.Channel) bool {
 	if ch.Classification.RequiresProxy() && ch.EmittedURL == "" {
 		return false
 	}
+	if isDemuxStableEmittedURL(ch.EmittedURL) {
+		return false
+	}
 	return true
+}
+
+func isDemuxStableEmittedURL(u string) bool {
+	return strings.Contains(u, "/stable/")
 }
 
 // l1RetryCandidate reports whether ch may enter the L1 retry lane at now.
@@ -499,6 +509,9 @@ func (s *Scheduler) runL3(ctx context.Context) {
 				continue
 			}
 			if ch.Classification.RequiresProxy() && ch.EmittedURL == "" {
+				continue
+			}
+			if isDemuxStableEmittedURL(ch.EmittedURL) {
 				continue
 			}
 			st := s.priorHealth(ch)

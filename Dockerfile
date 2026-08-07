@@ -4,9 +4,8 @@
 # Production/GHCR uses Dockerfile.prod (CI binaries only). Keep image pins in sync:
 #   node:22-bookworm
 #   golang:1.26.5-bookworm
-#   debian:bookworm-slim (fastgen — ships ffprobe)
-#   gcr.io/distroless/static-debian12:nonroot (fastproxy)
-#   busybox:1.36.1-musl
+#   debian:bookworm-slim (fastgen + fastproxy — ships ffmpeg)
+#   busybox:1.36.1-musl (legacy note; fastproxy HEALTHCHECK uses wget from apt)
 
 FROM node:22-bookworm AS web
 WORKDIR /src/web
@@ -49,12 +48,15 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8180/healthz"]
 ENTRYPOINT ["/fastgen"]
 
-FROM gcr.io/distroless/static-debian12:nonroot AS fastproxy
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# fastproxy needs ffmpeg for Class B (/stable/) demux-stable encode pipes.
+FROM debian:bookworm-slim AS fastproxy
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
 COPY --from=build /out/fastproxy /fastproxy
-COPY --from=busybox:1.36.1-musl /bin/wget /wget
+USER nonroot:nonroot
 EXPOSE 8181
 ENV PORT=8181
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD ["/wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8181/healthz"]
+  CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8181/healthz"]
 ENTRYPOINT ["/fastproxy"]
