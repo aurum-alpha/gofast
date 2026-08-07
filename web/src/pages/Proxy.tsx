@@ -27,6 +27,7 @@ type ProxySnapshot = {
   demux_stable_active?: number
   demux_stable_max?: number
   demux_stable_bytes_total?: number
+  demux_stable_bytes_per_sec?: number
   demux_stable_starts?: number
   demux_stable_fails?: number
   demux_stable_sessions?: DemuxStableSession[]
@@ -378,6 +379,16 @@ export function ProxyPage() {
             <Metric
               label="Demux-stable bytes"
               value={formatBytes(snap?.demux_stable_bytes_total)}
+            />
+            <Metric
+              label="Demux-stable rate"
+              value={
+                snap?.demux_stable_bytes_per_sec != null &&
+                snap.demux_stable_bytes_per_sec > 0
+                  ? `${formatBytes(Math.round(snap.demux_stable_bytes_per_sec))}/s`
+                  : '—'
+              }
+              title="Aggregate output rate across active Class B encodes"
             />
             <Metric
               label="Dropped"

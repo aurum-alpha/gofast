@@ -36,23 +36,24 @@ type Event struct {
 
 // Snapshot is a periodic live view of proxy process state.
 type Snapshot struct {
-	At                    time.Time            `json:"at"`
-	ActiveSessions        int                  `json:"active_sessions"`
-	ActiveSegTokens       int                  `json:"active_seg_tokens"`
-	StreamOpens           uint64               `json:"stream_opens"`
-	Stream302s            uint64               `json:"stream_302s"`
-	PlaylistOK            uint64               `json:"playlist_ok"`
-	PlaylistFail          uint64               `json:"playlist_fail"`
-	SegOK                 uint64               `json:"seg_ok"`
-	SegFail               uint64               `json:"seg_fail"`
-	SegBytes              uint64               `json:"seg_bytes"`
-	EventsDropped         uint64               `json:"events_dropped"`
-	DemuxStableActive     int                  `json:"demux_stable_active,omitempty"`
-	DemuxStableMax        int                  `json:"demux_stable_max,omitempty"`
-	DemuxStableBytesTotal uint64               `json:"demux_stable_bytes_total,omitempty"`
-	DemuxStableStarts     uint64               `json:"demux_stable_starts,omitempty"`
-	DemuxStableFails      uint64               `json:"demux_stable_fails,omitempty"`
-	DemuxStableSessions   []DemuxStableSession `json:"demux_stable_sessions,omitempty"`
+	At                     time.Time            `json:"at"`
+	ActiveSessions         int                  `json:"active_sessions"`
+	ActiveSegTokens        int                  `json:"active_seg_tokens"`
+	StreamOpens            uint64               `json:"stream_opens"`
+	Stream302s             uint64               `json:"stream_302s"`
+	PlaylistOK             uint64               `json:"playlist_ok"`
+	PlaylistFail           uint64               `json:"playlist_fail"`
+	SegOK                  uint64               `json:"seg_ok"`
+	SegFail                uint64               `json:"seg_fail"`
+	SegBytes               uint64               `json:"seg_bytes"`
+	EventsDropped          uint64               `json:"events_dropped"`
+	DemuxStableActive      int                  `json:"demux_stable_active,omitempty"`
+	DemuxStableMax         int                  `json:"demux_stable_max,omitempty"`
+	DemuxStableBytesTotal  uint64               `json:"demux_stable_bytes_total,omitempty"`
+	DemuxStableBytesPerSec float64              `json:"demux_stable_bytes_per_sec,omitempty"`
+	DemuxStableStarts      uint64               `json:"demux_stable_starts,omitempty"`
+	DemuxStableFails       uint64               `json:"demux_stable_fails,omitempty"`
+	DemuxStableSessions    []DemuxStableSession `json:"demux_stable_sessions,omitempty"`
 }
 
 // ingestEnvelope is POST /api/proxy/events body.
@@ -187,7 +188,7 @@ func (r *Reporter) Run(ctx context.Context) {
 				sess, segs := r.store.Stats()
 				demuxActive := 0
 				if r.demux != nil {
-					demuxActive, _, _ = r.demux.snapshotRows()
+					demuxActive, _, _, _ = r.demux.snapshotRows()
 				}
 				if sess+segs > 0 || demuxActive > 0 || r.opens.Load() > 0 {
 					snap := r.snapshot()
@@ -221,10 +222,11 @@ func (r *Reporter) snapshot() Snapshot {
 		EventsDropped:   r.drop.Load(),
 	}
 	if r.demux != nil {
-		active, max, sessions := r.demux.snapshotRows()
+		active, max, rateBps, sessions := r.demux.snapshotRows()
 		snap.DemuxStableActive = active
 		snap.DemuxStableMax = max
 		snap.DemuxStableBytesTotal = r.demux.bytes.Load()
+		snap.DemuxStableBytesPerSec = rateBps
 		snap.DemuxStableStarts = r.demux.starts.Load()
 		snap.DemuxStableFails = r.demux.fails.Load()
 		snap.DemuxStableSessions = sessions

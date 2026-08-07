@@ -89,7 +89,7 @@ func TestDemuxStableSnapshotRows(t *testing.T) {
 	}
 	slot.bytesOut.Store(1000)
 	slot.state.Store("streaming")
-	active, max, sessions := tr.snapshotRows()
+	active, max, _, sessions := tr.snapshotRows()
 	if active != 1 || max != 4 || len(sessions) != 1 {
 		t.Fatalf("active=%d max=%d sessions=%+v", active, max, sessions)
 	}
@@ -97,7 +97,7 @@ func TestDemuxStableSnapshotRows(t *testing.T) {
 		t.Fatalf("%+v", sessions[0])
 	}
 	tr.release(id)
-	active, _, sessions = tr.snapshotRows()
+	active, _, _, sessions = tr.snapshotRows()
 	if active != 0 || len(sessions) != 0 {
 		t.Fatalf("after release active=%d sessions=%+v", active, sessions)
 	}

@@ -116,19 +116,23 @@ func (t *demuxStableTracker) release(id uint64) {
 	delete(t.active, id)
 }
 
-func (t *demuxStableTracker) snapshotRows() (active, max int, sessions []DemuxStableSession) {
+func (t *demuxStableTracker) snapshotRows() (active, max int, rateBps float64, sessions []DemuxStableSession) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	max = t.max
 	active = len(t.active)
 	now := time.Now().UTC()
-	sessions = make([]DemuxStableSession, 0, len(t.active))
+	sessions = make([]DemuxStableSession, 0, min(len(t.active), maxDemuxSessionRows))
 	for _, s := range t.active {
 		bytes := s.bytesOut.Load()
 		bps := 0.0
 		elapsed := now.Sub(s.startedAt).Seconds()
 		if elapsed > 0.5 {
 			bps = float64(bytes) / elapsed
+		}
+		rateBps += bps
+		if len(sessions) >= maxDemuxSessionRows {
+			continue
 		}
 		st, _ := s.state.Load().(string)
 		sessions = append(sessions, DemuxStableSession{
@@ -140,11 +144,8 @@ func (t *demuxStableTracker) snapshotRows() (active, max int, sessions []DemuxSt
 			PID:         int(s.pid.Load()),
 			State:       st,
 		})
-		if len(sessions) >= maxDemuxSessionRows {
-			break
-		}
 	}
-	return active, max, sessions
+	return active, max, rateBps, sessions
 }
 
 // serveDemuxStable handles GET /stable/{provider}/{id}: Class B MPEG-TS pipe.
