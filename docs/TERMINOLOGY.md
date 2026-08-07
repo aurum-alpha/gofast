@@ -229,6 +229,40 @@ resolution than programme content (proven on Pluto). Constant-parameter ladders
 
 GoFAST only applies this to **in-tree FAST providers**, not reseller IPTV.
 
+### Class B packagings: pipe vs HLS facade
+
+The **normalize work** (one ffmpeg per tune: ingest the upstream playlist,
+re-encode to fixed geometry / constant ES) is the product. **Packaging** is a
+separate choice on top of the same encode:
+
+| | `.ts` pipe (#56, shipped) | HLS facade (#58, planned) |
+|---|---|---|
+| Shape | One endless `video/mp2t` GET | Real sliding-window `.m3u8` + finite normalized `.ts` segments |
+| Consumer | ffmpeg `-f mpegts` (Jellyfin Live TV / DVR) | hls.js browser preview, HLS-only clients |
+| Pacing | Receiver TCP backpressure paces the encoder | None — segments must be **complete before listed**, so the encoder runs at full real-time rate regardless of the client |
+| “Viewer left” signal | **Definitive**: connection close → immediate `client_cancel`, kill ffmpeg, free slot | **Inferred**: clients only make short polls/GETs; silence for X seconds is the only signal (idle-timeout teardown, always late by the timeout width) |
+| Restart | New GET = unambiguous fresh session, join at live | Returning client re-polls the same URL → cold-start ffmpeg, wait out first segment, mind `#EXT-X-MEDIA-SEQUENCE` hygiene |
+
+Key HLS mechanics behind the facade (why it works and what it costs):
+
+- A live media playlist is a **trailing record** of what the encoder has
+  finished. It never lists future segments — “listed ⇒ fully downloadable
+  right now”. Clients can’t play forward because the future has no URL.
+- Clients re-poll the playlist roughly once per target segment duration; each
+  refetch slides the window (`#EXT-X-MEDIA-SEQUENCE` advances). The “infinite
+  stream” is an emergent effect of finite segments plus polling.
+- Segment cadence is **proxy-chosen** (~6 s, keyframes forced on the cut).
+  Matching the upstream provider’s segment boundaries was considered and
+  rejected: after decode→re-encode the input segmentation no longer exists in
+  the output timeline, and Jellyfin never sees the provider playlist, so
+  mirroring it is custom PTS/IDR plumbing for zero benefit.
+- Minimum glass-to-glass delay is ≥ 1 segment duration (a segment must finish
+  before it is listed) — fine for DVR, not a low-latency path.
+
+An `.m3u8` whose single media URI is the infinite pipe is **not** a valid
+middle ground: HLS clients wait for the “segment” to end, which it never does.
+Extension, body, and protocol shape must agree.
+
 ### Selective proxy vs `proxy_all`
 
 **Selective (default):** gen embeds `{proxy_base_url}/stream/...` for dialects

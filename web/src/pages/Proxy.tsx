@@ -194,7 +194,18 @@ export function ProxyPage() {
     let cancelled = false
     let timer: number | undefined
 
+    const schedule = (delay: number) => {
+      // No polling while the tab is hidden; visibilitychange resumes it.
+      if (cancelled || document.hidden) return
+      timer = window.setTimeout(load, delay)
+    }
+
     const load = () => {
+      if (cancelled || document.hidden) return
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+        timer = undefined
+      }
       const q = new URLSearchParams()
       q.set('limit', '1000')
       if (kind) q.set('kind', kind)
@@ -216,17 +227,31 @@ export function ProxyPage() {
           setStatus(st)
           setEvents(ev.events ?? [])
           setError(null)
-          timer = window.setTimeout(load, st.stale ? 5000 : 3000)
+          schedule(2000)
         })
         .catch((err: unknown) => {
           if (cancelled) return
           setError(err instanceof Error ? err.message : String(err))
-          timer = window.setTimeout(load, 5000)
+          schedule(5000)
         })
     }
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (timer !== undefined) {
+          window.clearTimeout(timer)
+          timer = undefined
+        }
+      } else {
+        load()
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibility)
     load()
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', onVisibility)
       if (timer !== undefined) window.clearTimeout(timer)
     }
   }, [kind, provider, failures])
