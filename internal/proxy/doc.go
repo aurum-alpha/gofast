@@ -43,6 +43,10 @@
 // Class B knobs: FASTPROXY_DEMUX_STABLE_MAX (default 2),
 // FASTPROXY_DEMUX_STABLE_SIZE (default 1280x720), FASTPROXY_FFMPEG.
 //
+// Mid-roll soak (#60): watch demux_stable_open → optional demux_stable_stall
+// (no bytes ≥15s) → demux_stable_close with reason client_cancel | ffmpeg_exit,
+// plus exit_code/signal/stderr. Instrumentation only — no auto-restart yet.
+//
 // # Request flow
 //
 //   - /stream/{p}/{id}.m3u8 — Class A / dialect (rewrite, mint, resolve, 302)

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -25,14 +26,21 @@ const (
 	EventDemuxStableOpen  = "demux_stable_open"
 	EventDemuxStableClose = "demux_stable_close"
 	EventDemuxStableFail  = "demux_stable_fail"
+	EventDemuxStableStall = "demux_stable_stall"
 
 	ReasonDemuxStableSlots  = "demux_stable_slots_full"
 	ReasonDemuxStableIngest = "demux_stable_ingest"
 	ReasonDemuxStableFFmpeg = "demux_stable_ffmpeg"
+	ReasonFFmpegExit        = "ffmpeg_exit"
 
 	defaultDemuxStableMax  = 2
 	defaultDemuxStableSize = "1280x720"
 	maxDemuxSessionRows    = 16
+
+	demuxStderrLogLimit   = 800
+	demuxStallCheckEvery  = 5 * time.Second
+	demuxStallQuietFor    = 15 * time.Second
+	demuxStallLogInterval = 30 * time.Second
 )
 
 // DemuxStableSession is one active Class B ffmpeg pipe (for snapshots / UI).
@@ -198,16 +206,23 @@ func (h *Handler) serveDemuxStable(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.demux.release(slotID)
 
+	ffArgs := h.demuxFFmpegArgs(ingestURL, headers)
 	logEvent(slog.LevelInfo, EventDemuxStableOpen,
 		"provider", provider, "channel", id, "client_ip", clientIP, "ua", ua,
-		"ingest", urlHostPath(ingestURL), "size", h.demux.size)
+		"ingest", urlHostPath(ingestURL), "size", h.demux.size,
+		"ffmpeg", h.demux.ffmpeg, "argv", redactFFmpegArgv(ffArgs))
 	h.emit(Event{
 		Kind: EventDemuxStableOpen, Provider: string(provider), ChannelID: id,
-		Attrs: map[string]any{"ingest": urlHostPath(ingestURL), "size": h.demux.size},
+		Attrs: map[string]any{
+			"ingest": urlHostPath(ingestURL),
+			"size":   h.demux.size,
+			"ffmpeg": h.demux.ffmpeg,
+			"argv":   redactFFmpegArgv(ffArgs),
+		},
 	})
 
 	ctx := r.Context()
-	cmd := h.demuxFFmpegCmd(ctx, ingestURL, headers)
+	cmd := h.demuxFFmpegCmd(ctx, ffArgs)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		h.failDemuxStart(w, provider, id, start, err)
@@ -227,17 +242,19 @@ func (h *Handler) serveDemuxStable(w http.ResponseWriter, r *http.Request) {
 	}
 	slot.state.Store("streaming")
 
+	stderrCh := make(chan string, 1)
 	go func() {
 		buf, _ := io.ReadAll(io.LimitReader(stderr, 64<<10))
-		if len(buf) > 0 {
-			msg := strings.TrimSpace(string(buf))
-			if len(msg) > 400 {
-				msg = msg[:400] + "…"
-			}
-			logEvent(slog.LevelDebug, "demux_stable_ffmpeg_stderr",
+		msg := truncateDemuxLog(strings.TrimSpace(string(buf)), demuxStderrLogLimit)
+		if msg != "" {
+			logEvent(slog.LevelWarn, "demux_stable_ffmpeg_stderr",
 				"provider", provider, "channel", id, "stderr", msg)
 		}
+		stderrCh <- msg
 	}()
+
+	stallStop := make(chan struct{})
+	go h.watchDemuxStall(stallStop, slot, provider, id)
 
 	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set("Cache-Control", "no-store")
@@ -247,25 +264,87 @@ func (h *Handler) serveDemuxStable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	n, copyErr := io.Copy(&countingWriter{w: w, slot: slot, total: &h.demux.bytes}, stdout)
+	close(stallStop)
 	_ = cmd.Process.Kill()
 	waitErr := cmd.Wait()
 	slot.state.Store("ending")
 
-	reason := ""
-	if copyErr != nil && ctx.Err() == nil {
-		reason = ReasonDemuxStableFFmpeg
+	stderrMsg := ""
+	select {
+	case stderrMsg = <-stderrCh:
+	case <-time.After(500 * time.Millisecond):
 	}
-	if ctx.Err() != nil {
-		reason = ReasonClientCancel
+
+	reason := demuxCloseReason(ctx.Err() != nil, copyErr, waitErr)
+	exitCode, signal := ffmpegWaitInfo(waitErr)
+	elapsed := time.Since(start)
+	bps := 0.0
+	if elapsed.Seconds() > 0.5 {
+		bps = float64(n) / elapsed.Seconds()
 	}
 	logEvent(slog.LevelInfo, EventDemuxStableClose,
 		"provider", provider, "channel", id, "bytes", n,
-		"duration_ms", time.Since(start).Milliseconds(), "reason", reason,
-		"wait_err", errString(waitErr), "copy_err", errString(copyErr))
+		"duration_ms", elapsed.Milliseconds(), "bytes_per_sec", int64(bps),
+		"reason", reason,
+		"wait_err", errString(waitErr), "copy_err", errString(copyErr),
+		"exit_code", exitCode, "signal", signal, "stderr", stderrMsg)
 	h.emit(Event{
 		Kind: EventDemuxStableClose, Provider: string(provider), ChannelID: id,
-		Reason: reason, Bytes: n, DurationMS: time.Since(start).Milliseconds(),
+		Reason: reason, Message: stderrMsg, Bytes: n, DurationMS: elapsed.Milliseconds(),
+		Attrs: map[string]any{
+			"bytes_per_sec": int64(bps),
+			"exit_code":     exitCode,
+			"signal":        signal,
+			"wait_err":      errString(waitErr),
+			"copy_err":      errString(copyErr),
+		},
 	})
+}
+
+// watchDemuxStall logs observe-only warnings when the encode produces no bytes
+// for demuxStallQuietFor. It never kills ffmpeg (#60 instrumentation).
+func (h *Handler) watchDemuxStall(stop <-chan struct{}, slot *demuxStableSlot, provider model.ProviderID, id string) {
+	ticker := time.NewTicker(demuxStallCheckEvery)
+	defer ticker.Stop()
+	var lastBytes int64
+	lastProgress := time.Now()
+	var lastWarn time.Time
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			st, _ := slot.state.Load().(string)
+			if st != "streaming" {
+				continue
+			}
+			n := slot.bytesOut.Load()
+			if n > lastBytes {
+				lastBytes = n
+				lastProgress = time.Now()
+				continue
+			}
+			quiet := time.Since(lastProgress)
+			if quiet < demuxStallQuietFor {
+				continue
+			}
+			if !lastWarn.IsZero() && time.Since(lastWarn) < demuxStallLogInterval {
+				continue
+			}
+			lastWarn = time.Now()
+			elapsedMS := time.Since(slot.startedAt).Milliseconds()
+			logEvent(slog.LevelWarn, EventDemuxStableStall,
+				"provider", provider, "channel", id,
+				"bytes", n, "quiet_ms", quiet.Milliseconds(),
+				"elapsed_ms", elapsedMS, "pid", slot.pid.Load())
+			h.emit(Event{
+				Kind: EventDemuxStableStall, Provider: string(provider), ChannelID: id,
+				Reason:  EventDemuxStableStall,
+				Message: fmt.Sprintf("no demux-stable bytes for %ds", int(quiet.Seconds())),
+				Bytes:   n, DurationMS: elapsedMS,
+			})
+		}
+	}
 }
 
 func (h *Handler) failDemuxStart(w http.ResponseWriter, provider model.ProviderID, id string, start time.Time, err error) {
@@ -282,7 +361,7 @@ func (h *Handler) failDemuxStart(w http.ResponseWriter, provider model.ProviderI
 	http.Error(w, "demux-stable ffmpeg failed", http.StatusBadGateway)
 }
 
-func (h *Handler) demuxFFmpegCmd(ctx context.Context, ingestURL string, headers map[string]string) *exec.Cmd {
+func (h *Handler) demuxFFmpegArgs(ingestURL string, headers map[string]string) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-fflags", "+genpts+discardcorrupt",
@@ -300,6 +379,10 @@ func (h *Handler) demuxFFmpegCmd(ctx context.Context, ingestURL string, headers 
 		"-c:a", "aac", "-ac", "2", "-ar", "48000", "-b:a", "128k",
 		"-f", "mpegts", "pipe:1",
 	)
+	return args
+}
+
+func (h *Handler) demuxFFmpegCmd(ctx context.Context, args []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, h.demux.ffmpeg, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return cmd
@@ -320,6 +403,77 @@ func ffmpegHeadersArg(headers map[string]string) string {
 		b.WriteString("\r\n")
 	}
 	return b.String()
+}
+
+// redactFFmpegArgv joins argv for logs; -headers values are redacted.
+func redactFFmpegArgv(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	out := make([]string, len(args))
+	copy(out, args)
+	for i := 0; i < len(out); i++ {
+		if out[i] == "-headers" && i+1 < len(out) {
+			out[i+1] = "[redacted]"
+			i++
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+func truncateDemuxLog(s string, limit int) string {
+	if limit <= 0 || len(s) <= limit {
+		return s
+	}
+	return s[:limit] + "…"
+}
+
+// demuxCloseReason classifies why a Class B pipe ended (for soak diagnosis #60).
+func demuxCloseReason(clientCancelled bool, copyErr, waitErr error) string {
+	if clientCancelled {
+		return ReasonClientCancel
+	}
+	_, sig := ffmpegWaitInfo(waitErr)
+	if waitErr != nil {
+		if isKillSignal(sig) {
+			if copyErr != nil {
+				return ReasonFFmpegExit
+			}
+			// We reaped with Kill after stdout EOF — normal end.
+			return ""
+		}
+		return ReasonFFmpegExit
+	}
+	if copyErr != nil {
+		return ReasonFFmpegExit
+	}
+	return ""
+}
+
+func ffmpegWaitInfo(err error) (exitCode int, signal string) {
+	if err == nil {
+		return 0, ""
+	}
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		return -1, ""
+	}
+	if status, ok := ee.Sys().(syscall.WaitStatus); ok {
+		if status.Signaled() {
+			return -1, status.Signal().String()
+		}
+		return status.ExitStatus(), ""
+	}
+	return ee.ExitCode(), ""
+}
+
+func isKillSignal(sig string) bool {
+	switch strings.ToLower(sig) {
+	case "killed", "sigkill":
+		return true
+	default:
+		return false
+	}
 }
 
 // resolveDemuxIngest returns a URL ffmpeg can open (Class A / resolve / mint as needed).
