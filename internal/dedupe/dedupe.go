@@ -78,6 +78,9 @@ type Member struct {
 	NormalizedID string           `json:"normalized_id"`
 	Name         string           `json:"name"`
 	EmittedGroup string           `json:"emitted_group,omitempty"`
+	// Region is the scrape geography (ISO 3166-1 alpha-2), when known.
+	// Same-provider rows often differ by region under multi-region scrape.
+	Region string `json:"region,omitempty"`
 	// Number is the provider's upstream channel number (0 if none).
 	Number int `json:"number"`
 	// OffsetNumber is the emitted/generated number (offset or synthesize).
@@ -208,6 +211,9 @@ func Scan(channels []model.Channel, labels map[model.ProviderID]string, keepAll 
 			if rows[i].ch.Provider != rows[j].ch.Provider {
 				return rows[i].ch.Provider < rows[j].ch.Provider
 			}
+			if rows[i].ch.Region != rows[j].ch.Region {
+				return rows[i].ch.Region < rows[j].ch.Region
+			}
 			if rows[i].ch.Name != rows[j].ch.Name {
 				return rows[i].ch.Name < rows[j].ch.Name
 			}
@@ -232,6 +238,7 @@ func Scan(channels []model.Channel, labels map[model.ProviderID]string, keepAll 
 				NormalizedID:   r.ch.NormalizedID,
 				Name:           r.ch.Name, // original provider display name
 				EmittedGroup:   r.ch.EmittedGroup,
+				Region:         r.ch.Region,
 				Number:         r.ch.Number,
 				OffsetNumber:   r.ch.OffsetNumber,
 				Classification: r.ch.Classification,

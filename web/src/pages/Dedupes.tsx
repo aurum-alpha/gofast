@@ -9,6 +9,7 @@ type Member = {
   normalized_id: string
   name: string
   emitted_group?: string
+  region?: string
   number: number
   offset_number: number
   classification?: string
@@ -473,6 +474,7 @@ export function DedupesPage() {
                   <tr>
                     <th></th>
                     <th>Provider</th>
+                    <th>Region</th>
                     <th>Name</th>
                     <th>Prov #</th>
                     <th>Emit #</th>
@@ -502,6 +504,7 @@ export function DedupesPage() {
                             {m.provider}
                           </Link>
                         </td>
+                        <td>{m.region || '—'}</td>
                         <td className="dedupe-member-name">{m.name || '—'}</td>
                         <td>{m.number || '—'}</td>
                         <td>{m.offset_number || '—'}</td>

@@ -55,8 +55,8 @@ func TestScanMultiProviderAndBETSplit(t *testing.T) {
 	}
 	labels[model.ProviderTubi] = "Tubi"
 	chs := []model.Channel{
-		{Provider: model.ProviderSamsung, ID: "1", NormalizedID: "1", Name: "Cheaters · Samsung"},
-		{Provider: model.ProviderPluto, ID: "2", NormalizedID: "2", Name: "Cheaters · Pluto"},
+		{Provider: model.ProviderSamsung, ID: "1", NormalizedID: "1", Name: "Cheaters · Samsung", Region: "US"},
+		{Provider: model.ProviderPluto, ID: "2", NormalizedID: "2", Name: "Cheaters · Pluto", Region: "CA"},
 		{Provider: model.ProviderXumo, ID: "3", NormalizedID: "3", Name: "Cheaters · Xumo"},
 		// Each BET variant on two providers — three separate clusters
 		{Provider: model.ProviderSamsung, ID: "b1", NormalizedID: "b1", Name: "BET · Samsung"},
@@ -80,6 +80,13 @@ func TestScanMultiProviderAndBETSplit(t *testing.T) {
 	cheaters := byKey[NormalizeTitle("Cheaters")]
 	if len(cheaters.Members) != 3 || cheaters.Status != StatusUnresolved {
 		t.Fatalf("cheaters: %+v", cheaters)
+	}
+	byProv := map[model.ProviderID]Member{}
+	for _, m := range cheaters.Members {
+		byProv[m.Provider] = m
+	}
+	if byProv[model.ProviderSamsung].Region != "US" || byProv[model.ProviderPluto].Region != "CA" {
+		t.Fatalf("region not plumbed: %+v", cheaters.Members)
 	}
 	if _, ok := byKey[NormalizeTitle("BET")]; !ok {
 		t.Fatal("missing BET cluster")
