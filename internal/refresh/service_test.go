@@ -124,9 +124,9 @@ func waitFor(t *testing.T, timeout time.Duration, what string, cond func() bool)
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-// TestServiceReloadWarmsLogosOnBaseURLChange ensures a base_url change while
-// cache_logos is on re-warms so M3U/API logos use the new public origin (J27-72).
-func TestServiceReloadWarmsLogosOnBaseURLChange(t *testing.T) {
+// TestServiceReloadRewritesLogosOnBaseURLChange ensures a base_url change while
+// cache_logos is on re-emits /logos/ URLs with the new origin (no proactive fetch).
+func TestServiceReloadRewritesLogosOnBaseURLChange(t *testing.T) {
 	logoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write([]byte("png"))
@@ -147,14 +147,22 @@ func TestServiceReloadWarmsLogosOnBaseURLChange(t *testing.T) {
 	)
 	feed, _ := reg.Feed(model.ProviderLG)
 	cc := cache.New(t.TempDir())
-	pr := &providerRefresher{feed: feed, cache: cc}
-	if err := pr.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
 	oldBase := "http://old.example:8180"
 	newBase := "http://new.example:8180"
 	logos := logocache.New(cc, logoSrv.Client(), oldBase, time.Hour)
+	t.Cleanup(logos.Close)
+	pr := &providerRefresher{feed: feed, cache: cc, pipe: &pipeline{logos: logos}}
+	if err := pr.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	m3u, err := cc.ReadM3U(model.ProviderLG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(m3u), oldBase+"/logos/lg/") {
+		t.Fatalf("want old base in m3u before reload: %s", m3u)
+	}
+
 	svc := New(nil, reg, nil, cc, nil, nil, nil, nil, nil)
 	svc.pipe.set(EmissionPolicy{}, nil, nil, logos)
 	svc.logosSrc = logos
@@ -166,15 +174,6 @@ func TestServiceReloadWarmsLogosOnBaseURLChange(t *testing.T) {
 		Providers:  overlay,
 	}
 
-	svc.WarmLogos(context.Background())
-	m3u, err := cc.ReadM3U(model.ProviderLG)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(m3u), oldBase+"/logos/lg/") {
-		t.Fatalf("want old base in m3u before reload: %s", m3u)
-	}
-
 	newCfg := &config.Config{
 		BaseURL:    newBase,
 		CacheLogos: &cacheLogos,
@@ -183,7 +182,6 @@ func TestServiceReloadWarmsLogosOnBaseURLChange(t *testing.T) {
 	if err := svc.Reload(context.Background(), newCfg); err != nil {
 		t.Fatal(err)
 	}
-	// CommitProvider updates M3U before setLineup; wait for the live feed too.
 	waitFor(t, 3*time.Second, "logos rewritten to new base_url", func() bool {
 		data, err := cc.ReadM3U(model.ProviderLG)
 		chs := feed.Channels()

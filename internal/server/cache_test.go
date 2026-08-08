@@ -21,7 +21,7 @@ import (
 func TestCacheInventoryAPI(t *testing.T) {
 	dataDir := t.TempDir()
 	cc := cache.New(filepath.Join(dataDir, "cache"))
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#"), cache.XMLTV("<tv/>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, model.M3UFile("#"), model.XMLTVFile("<tv/>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	attrs, err := channelattr.Open(dataDir)
@@ -71,7 +71,7 @@ func TestProviderCachePurgeAPI(t *testing.T) {
 	lgFeed, _ := reg.Feed("lg")
 	lgFeed.Set(provider.Lineup{FetchedAt: time.Now()})
 	cc := cache.New(t.TempDir())
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("CUR"), cache.XMLTV("<tv/>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, model.M3UFile("CUR"), model.XMLTVFile("<tv/>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	gens := filepath.Join(mustCacheRoot(t, cc), "lg", "generations")
@@ -85,15 +85,7 @@ func TestProviderCachePurgeAPI(t *testing.T) {
 
 	svc := refresh.New(nil, reg, nil, cc, nil, nil, nil, nil, nil)
 	runCtx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case <-reader.release:
-		default:
-			close(reader.release)
-		}
-		time.Sleep(50 * time.Millisecond)
-	})
+	t.Cleanup(cancel)
 	svc.Run(runCtx)
 
 	h := server.ProviderCachePurgeHandler(svc, runCtx)
@@ -123,6 +115,19 @@ func TestProviderCachePurgeAPI(t *testing.T) {
 	if rec2.Code != http.StatusConflict {
 		t.Fatalf("want 409, got %d", rec2.Code)
 	}
+
+	// Drain the in-flight refresh so TempDir cleanup isn't racing CommitProvider.
+	before := lgFeed.FetchedAt()
+	close(reader.release)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if lgFeed.FetchedAt().After(before) {
+			time.Sleep(50 * time.Millisecond)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("refresh did not complete")
 }
 
 func TestLogosClearAPI(t *testing.T) {

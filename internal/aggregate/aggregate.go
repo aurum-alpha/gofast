@@ -70,7 +70,7 @@ func (a *Aggregator) Rebuild() error {
 	if err != nil {
 		return err
 	}
-	return a.cache.CommitAggregate(cache.M3U(m3uData), cache.XMLTV(xmlData))
+	return a.cache.CommitAggregate(model.M3UFile(m3uData), model.XMLTVFile(xmlData))
 }
 
 // Run rebuilds on each coalesced signal until ctx is cancelled.

@@ -1,5 +1,5 @@
-// Package logocache downloads channel logos and rewrites LogoURL to local
-// /logos/... paths served by fastgen. On-disk storage is owned by internal/cache
+// Package logocache rewrites channel logos to local /logos/... URLs and
+// lazily fetches artwork on request. On-disk storage is owned by internal/cache
 // under {provider}/logos/. Artwork TLS exceptions apply only to this package's
 // HTTP client — never to stream or EPG clients.
 package logocache
@@ -15,24 +15,40 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/model"
 )
 
-const DefaultMaxAge = 7 * 24 * time.Hour
+// DefaultMaxAge is how long a cached logo is served without revalidation.
+const DefaultMaxAge = 24 * time.Hour
 
-// Cache downloads logos into the shared disk cache and rewrites channel URLs.
+const defaultWorkers = 10
+
+// SourceFunc resolves the upstream logo URL (and optional request headers) for
+// a provider/channel when the disk meta has no SourceURL.
+type SourceFunc func(provider model.ProviderID, channelID string) (sourceURL string, headers map[string]string, ok bool)
+
+// Cache rewrites emit URLs and lazily fills disk logos via a worker pool.
 type Cache struct {
 	store   *cache.Cache
 	client  *http.Client
 	baseURL string
 	maxAge  time.Duration
+
+	jobs     chan *fetchJob
+	stopOnce sync.Once
+	stop     chan struct{}
+	wg       sync.WaitGroup
+
+	mu       sync.Mutex
+	inflight map[string]*fetchWait
 }
 
-// New returns a logo cache that persists under store ({provider}/logos/).
-// baseURL is the public origin with no trailing slash. Zero maxAge uses DefaultMaxAge.
+// New returns a logo cache. Zero maxAge uses DefaultMaxAge. Starts defaultWorkers
+// fetch workers; call Close when replacing the cache (e.g. base_url reload).
 func New(store *cache.Cache, client *http.Client, baseURL string, maxAge time.Duration) *Cache {
 	if client == nil {
 		client = http.DefaultClient
@@ -40,111 +56,106 @@ func New(store *cache.Cache, client *http.Client, baseURL string, maxAge time.Du
 	if maxAge <= 0 {
 		maxAge = DefaultMaxAge
 	}
-	return &Cache{
-		store:   store,
-		client:  client,
-		baseURL: strings.TrimRight(baseURL, "/"),
-		maxAge:  maxAge,
+	c := &Cache{
+		store:    store,
+		client:   client,
+		baseURL:  strings.TrimRight(baseURL, "/"),
+		maxAge:   maxAge,
+		jobs:     make(chan *fetchJob),
+		stop:     make(chan struct{}),
+		inflight: make(map[string]*fetchWait),
 	}
+	c.startWorkers(defaultWorkers)
+	return c
 }
 
-// Rewrite updates LogoURL on each channel that has one, preserving the provider
-// original in LogoSourceURL. Failures keep the upstream LogoURL except hard
-// HTTP 403/404, which clear LogoURL and set LogoError (source URL is retained).
-func (c *Cache) Rewrite(ctx context.Context, channels []model.Channel) {
-	c.RewriteProgress(ctx, channels, nil)
+// Close stops fetch workers. Safe to call once.
+func (c *Cache) Close() {
+	if c == nil {
+		return
+	}
+	c.stopOnce.Do(func() {
+		close(c.stop)
+	})
+	c.wg.Wait()
 }
 
-// RewriteProgress is Rewrite with an optional per-logo callback (after each Ensure).
-func (c *Cache) RewriteProgress(ctx context.Context, channels []model.Channel, onEach func()) {
+// BaseURL returns the public origin used in rewritten logo URLs.
+func (c *Cache) BaseURL() string {
+	if c == nil {
+		return ""
+	}
+	return c.baseURL
+}
+
+// RewriteURLs sets LogoSourceURL from the upstream LogoURL (when needed) and
+// points LogoURL at {base}/logos/{provider}/{id}{ext}. No HTTP. Hard-invalidates
+// disk bytes when the upstream source URL changed since the last meta.
+func (c *Cache) RewriteURLs(channels []model.Channel) {
 	if c == nil {
 		return
 	}
 	for i := range channels {
-		if err := ctx.Err(); err != nil {
-			return
-		}
-		if channels[i].LogoURL == "" {
+		src := emitSourceURL(channels[i], c.baseURL)
+		if src == "" {
 			continue
 		}
-		channels[i].LogoSourceURL = channels[i].LogoURL
-		channels[i].LogoURL, channels[i].LogoError = c.Ensure(ctx, channels[i])
-		if onEach != nil {
-			onEach()
+		id := channels[i].NormalizedID
+		if id == "" {
+			id = model.NormalizeID(channels[i].ID)
 		}
+		ext, err := extensionHint(src)
+		if err != nil {
+			slog.Warn("logo cache skip: bad logo url",
+				"provider", channels[i].Provider, "id", id, "err", err)
+			continue
+		}
+		file := id + ext
+		c.invalidateIfSourceChanged(channels[i].Provider, id, src)
+		channels[i].LogoSourceURL = src
+		channels[i].LogoURL = c.publicURL(channels[i].Provider, file)
+		channels[i].LogoError = ""
+		meta := c.readMeta(channels[i].Provider, file)
+		meta.SourceURL = src
+		_ = c.writeMeta(channels[i].Provider, file, meta)
 	}
 }
 
-// Ensure downloads or revalidates the channel logo and returns the public local
-// URL (or upstream on soft failure). logoError is set when LogoURL is cleared
-// after a hard upstream failure (HTTP 403/404).
-//
-// On each refresh:
-//   - upstream URL change → unconditional GET
-//   - same URL with ETag/Last-Modified → conditional GET
-//   - same URL, no validators, file within maxAge → skip HTTP
-func (c *Cache) Ensure(ctx context.Context, ch model.Channel) (logoURL string, logoError string) {
-	if c == nil || c.store == nil || ch.LogoURL == "" {
-		return ch.LogoURL, ""
+func emitSourceURL(ch model.Channel, base string) string {
+	u := strings.TrimSpace(ch.LogoURL)
+	if u == "" {
+		return strings.TrimSpace(ch.LogoSourceURL)
 	}
-	id := ch.NormalizedID
-	if id == "" {
-		id = model.NormalizeID(ch.ID)
+	if isLocalLogoURL(u, base) {
+		return strings.TrimSpace(ch.LogoSourceURL)
 	}
-	ext, err := extensionHint(ch.LogoURL)
-	if err != nil {
-		slog.Warn("logo cache skip: bad logo url",
-			"provider", ch.Provider, "id", id, "err", err)
-		return ch.LogoURL, ""
-	}
+	return u
+}
 
-	file := id + ext
-	public := c.baseURL + "/logos/" + string(ch.Provider) + "/" + file
-	meta := c.readMeta(ch.Provider, file)
-	_, statErr := c.store.StatLogo(ch.Provider, file)
-	hasFile := statErr == nil
+func isLocalLogoURL(raw, base string) bool {
+	base = strings.TrimRight(base, "/")
+	if base == "" {
+		return false
+	}
+	return strings.HasPrefix(raw, base+"/logos/")
+}
 
-	urlChanged := meta.SourceURL != "" && meta.SourceURL != ch.LogoURL
-	hasValidators := meta.ETag != "" || meta.LastModified != ""
+func (c *Cache) publicURL(provider model.ProviderID, file string) string {
+	return c.baseURL + "/logos/" + string(provider) + "/" + file
+}
 
-	if hasFile && !urlChanged {
-		if !hasValidators && c.withinMaxAge(ch.Provider, file) {
-			return public, ""
-		}
-		// Validators present (or file past maxAge without them): revalidate below.
+func (c *Cache) invalidateIfSourceChanged(provider model.ProviderID, channelID, newSource string) {
+	if c.store == nil || newSource == "" || channelID == "" {
+		return
 	}
-
-	conditional := hasFile && !urlChanged && hasValidators
-	body, newExt, newMeta, err := c.fetch(ctx, ch, meta, conditional)
-	if err != nil {
-		var status httpStatusError
-		if errors.As(err, &status) && (status.code == http.StatusForbidden || status.code == http.StatusNotFound) {
-			slog.Warn("logo download failed; clearing logo",
-				"provider", ch.Provider, "id", id, "err", err)
-			return "", status.Error()
-		}
-		slog.Warn("logo download failed; keeping upstream url",
-			"provider", ch.Provider, "id", id, "err", err)
-		return ch.LogoURL, ""
+	file := c.findLogoFile(provider, channelID)
+	if file == "" {
+		return
 	}
-	if newExt != "" && newExt != ext {
-		ext = newExt
-		file = id + ext
-		public = c.baseURL + "/logos/" + string(ch.Provider) + "/" + file
+	meta := c.readMeta(provider, file)
+	if meta.SourceURL != "" && meta.SourceURL != newSource {
+		_, _ = c.store.DeleteChannelLogos(provider, channelID)
 	}
-	if body != nil {
-		if err := c.store.WriteLogo(ch.Provider, file, body); err != nil {
-			slog.Warn("logo write failed; keeping upstream url",
-				"provider", ch.Provider, "id", id, "err", err)
-			return ch.LogoURL, ""
-		}
-	} else if _, err := c.store.StatLogo(ch.Provider, file); err != nil {
-		// 304 without a local file — treat as miss.
-		return ch.LogoURL, ""
-	}
-	newMeta.SourceURL = ch.LogoURL
-	_ = c.writeMeta(ch.Provider, file, newMeta)
-	return public, ""
 }
 
 func (c *Cache) withinMaxAge(id model.ProviderID, file string) bool {
@@ -153,6 +164,119 @@ func (c *Cache) withinMaxAge(id model.ProviderID, file string) bool {
 		return false
 	}
 	return time.Since(info.ModTime()) <= c.maxAge
+}
+
+// Ensure fetches or revalidates one logo (used by tests and the worker pool).
+// LogoURL on ch must be the upstream source URL. Returns public local URL.
+func (c *Cache) Ensure(ctx context.Context, ch model.Channel) (logoURL string, logoError string) {
+	if c == nil || c.store == nil {
+		return ch.LogoURL, ""
+	}
+	src := strings.TrimSpace(ch.LogoURL)
+	if src == "" {
+		src = strings.TrimSpace(ch.LogoSourceURL)
+	}
+	if src == "" {
+		return "", ""
+	}
+	id := ch.NormalizedID
+	if id == "" {
+		id = model.NormalizeID(ch.ID)
+	}
+	ext, err := extensionHint(src)
+	if err != nil {
+		return "", ""
+	}
+	file := id + ext
+	ch.LogoURL = src
+	public := c.publicURL(ch.Provider, file)
+	meta := c.readMeta(ch.Provider, file)
+	_, statErr := c.store.StatLogo(ch.Provider, file)
+	hasFile := statErr == nil
+	urlChanged := meta.SourceURL != "" && meta.SourceURL != src
+	if hasFile && !urlChanged {
+		hasValidators := meta.ETag != "" || meta.LastModified != ""
+		if !hasValidators && c.freshAge(ch.Provider, file, meta) {
+			return public, ""
+		}
+	}
+	forceFull := !hasFile || urlChanged
+	if err := c.fetchToDisk(ctx, ch.Provider, file, src, ch.RequestHeaders, forceFull); err != nil {
+		var status httpStatusError
+		if errors.As(err, &status) && (status.code == http.StatusForbidden || status.code == http.StatusNotFound) {
+			return "", status.Error()
+		}
+		slog.Warn("logo download failed; keeping upstream url",
+			"provider", ch.Provider, "id", id, "err", err)
+		return src, ""
+	}
+	if _, err := c.store.StatLogo(ch.Provider, file); err != nil {
+		if alt := c.findLogoFile(ch.Provider, id); alt != "" {
+			file = alt
+		}
+	}
+	return c.publicURL(ch.Provider, file), ""
+}
+
+func (c *Cache) findLogoFile(provider model.ProviderID, channelID string) string {
+	for _, ext := range []string{".png", ".jpg", ".gif", ".webp", ".svg"} {
+		file := channelID + ext
+		if _, err := c.store.StatLogo(provider, file); err == nil {
+			return file
+		}
+	}
+	return ""
+}
+
+// fetchToDisk performs full or conditional GET and writes the result.
+// forceFull skips conditional headers (e.g. after hard invalidate / miss).
+func (c *Cache) fetchToDisk(ctx context.Context, provider model.ProviderID, file, sourceURL string, headers map[string]string, forceFull bool) error {
+	meta := c.readMeta(provider, file)
+	_, statErr := c.store.StatLogo(provider, file)
+	hasFile := statErr == nil
+	conditional := !forceFull && hasFile && meta.SourceURL == sourceURL && (meta.ETag != "" || meta.LastModified != "")
+
+	ch := model.Channel{
+		Provider:       provider,
+		LogoURL:        sourceURL,
+		RequestHeaders: headers,
+	}
+	body, newExt, newMeta, err := c.fetch(ctx, ch, meta, conditional)
+	if err != nil {
+		return err
+	}
+	id, _ := logoChannelID(file)
+	ext := filepath.Ext(file)
+	if newExt != "" && newExt != ext {
+		if id != "" {
+			_, _ = c.store.DeleteLogo(provider, file)
+			file = id + newExt
+		}
+	}
+	if body != nil {
+		if err := c.store.WriteLogo(provider, file, body); err != nil {
+			return err
+		}
+	} else if !hasFile {
+		if _, err := c.store.StatLogo(provider, file); err != nil {
+			return fmt.Errorf("304 without local file")
+		}
+	} else {
+		// 304: touch mtime by rewriting meta; bump freshness via WriteLogoMeta only.
+		// Stat mtime won't change — update a FetchedAt in meta for age checks.
+	}
+	newMeta.SourceURL = sourceURL
+	newMeta.FetchedAt = time.Now().UTC()
+	if err := c.writeMeta(provider, file, newMeta); err != nil {
+		return err
+	}
+	// Touch file mtime on 304 so withinMaxAge advances.
+	if body == nil && hasFile {
+		if data, err := c.store.ReadLogo(provider, file); err == nil {
+			_ = c.store.WriteLogo(provider, file, data)
+		}
+	}
+	return nil
 }
 
 func (c *Cache) fetch(ctx context.Context, ch model.Channel, meta fileMeta, conditional bool) (body []byte, ext string, out fileMeta, err error) {
@@ -214,10 +338,13 @@ func (e httpStatusError) Error() string {
 	return fmt.Sprintf("HTTP %d", e.code)
 }
 
+func (e httpStatusError) HTTPStatus() int { return e.code }
+
 type fileMeta struct {
-	SourceURL    string `json:"source_url,omitempty"`
-	ETag         string `json:"etag,omitempty"`
-	LastModified string `json:"last_modified,omitempty"`
+	SourceURL    string    `json:"source_url,omitempty"`
+	ETag         string    `json:"etag,omitempty"`
+	LastModified string    `json:"last_modified,omitempty"`
+	FetchedAt    time.Time `json:"fetched_at,omitempty"`
 }
 
 func (c *Cache) readMeta(id model.ProviderID, file string) fileMeta {
@@ -238,6 +365,14 @@ func (c *Cache) writeMeta(id model.ProviderID, file string, m fileMeta) error {
 		return err
 	}
 	return c.store.WriteLogoMeta(id, file, data)
+}
+
+func logoChannelID(filename string) (string, bool) {
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	if base == "" || base != filepath.Base(base) {
+		return "", false
+	}
+	return base, true
 }
 
 func extensionHint(rawURL string) (string, error) {

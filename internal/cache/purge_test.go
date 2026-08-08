@@ -13,11 +13,11 @@ import (
 
 func TestPurgeNonCurrentKeepsServing(t *testing.T) {
 	cc := cache.New(t.TempDir())
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("A")}, cache.M3U("A"), cache.XMLTV("<a/>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("A")}, model.M3UFile("A"), model.XMLTVFile("<a/>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(2 * time.Millisecond)
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("B")}, cache.M3U("B"), cache.XMLTV("<b/>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("B")}, model.M3UFile("B"), model.XMLTVFile("<b/>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	providerDir := filepath.Join(ccRoot(t, cc), "lg", "generations")
@@ -76,7 +76,7 @@ func ccRoot(t *testing.T, cc *cache.Cache) string {
 func TestInventoryAndLogoDelete(t *testing.T) {
 	dir := t.TempDir()
 	cc := cache.New(dir)
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#"), cache.XMLTV("<tv/>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, model.M3UFile("#"), model.XMLTVFile("<tv/>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cc.WriteLogo("lg", "ch1.png", []byte("png")); err != nil {
@@ -117,7 +117,7 @@ func TestInventoryAndLogoDelete(t *testing.T) {
 func TestSweepOrphans(t *testing.T) {
 	dir := t.TempDir()
 	cc := cache.New(dir)
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#"), cache.XMLTV("<tv/>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, model.M3UFile("#"), model.XMLTVFile("<tv/>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cc.WriteLogo("lg", "keep.png", []byte("k")); err != nil {

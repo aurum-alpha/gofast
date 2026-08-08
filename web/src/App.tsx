@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { ChannelDetailPage } from './pages/ChannelDetail'
 import { ChannelsPage } from './pages/Channels'
@@ -16,62 +15,6 @@ import { ProvidersPage } from './pages/Providers'
 import { ProviderDetailPage } from './pages/ProviderDetail'
 import { StatusPage } from './pages/Status'
 import './App.css'
-
-type StatusResponse = {
-  ready: boolean
-  logos: {
-    running: boolean
-    done: number
-    total: number
-    provider?: string
-  }
-}
-
-function LogoProgressBanner() {
-  const [status, setStatus] = useState<StatusResponse | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-
-    const poll = () => {
-      fetch('/api/status')
-        .then(async (res) => {
-          if (!res.ok) throw new Error(String(res.status))
-          return res.json() as Promise<StatusResponse>
-        })
-        .then((body) => {
-          if (cancelled) return
-          setStatus(body)
-          const delay = body.logos.running ? 1000 : 5000
-          timer = window.setTimeout(poll, delay)
-        })
-        .catch(() => {
-          if (!cancelled) {
-            timer = window.setTimeout(poll, 5000)
-          }
-        })
-    }
-    poll()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [])
-
-  if (!status?.logos.running) return null
-  const { done, total, provider } = status.logos
-  const label =
-    total > 0
-      ? `Caching logos ${done}/${total}${provider ? ` · ${provider}` : ''}`
-      : 'Caching logos…'
-
-  return (
-    <div className="boot-banner" role="status">
-      {label}
-    </div>
-  )
-}
 
 export default function App() {
   return (
@@ -97,7 +40,6 @@ export default function App() {
           <NavLink to="/config">Config</NavLink>
         </nav>
       </header>
-      <LogoProgressBanner />
       <main className="main">
         <Routes>
           <Route path="/" element={<ChannelsPage />} />

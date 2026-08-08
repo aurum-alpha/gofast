@@ -40,6 +40,7 @@ func TestEnsureConditionalRevalidateOnRefresh(t *testing.T) {
 
 	store := cache.New(t.TempDir())
 	c := New(store, srv.Client(), "http://fastgen.lan:8180", time.Hour)
+	t.Cleanup(c.Close)
 	ch := model.Channel{
 		Provider:     "lg",
 		ID:           "ch1",
@@ -184,17 +185,14 @@ func TestEnsureForbiddenClearsLogo(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := New(cache.New(t.TempDir()), srv.Client(), "http://base", 0)
-	chs := []model.Channel{{
+	t.Cleanup(c.Close)
+	got, logoErr := c.Ensure(context.Background(), model.Channel{
 		Provider:     "distrotv",
 		NormalizedID: "dtv_EPGElectricNOW",
 		LogoURL:      srv.URL + "/logo.png",
-	}}
-	c.Rewrite(context.Background(), chs)
-	if chs[0].LogoURL != "" || chs[0].LogoError != "HTTP 403" {
-		t.Fatalf("got logo=%q error=%q", chs[0].LogoURL, chs[0].LogoError)
-	}
-	if chs[0].LogoSourceURL != srv.URL+"/logo.png" {
-		t.Fatalf("source=%q", chs[0].LogoSourceURL)
+	})
+	if got != "" || logoErr != "HTTP 403" {
+		t.Fatalf("got logo=%q error=%q", got, logoErr)
 	}
 }
 
@@ -213,23 +211,18 @@ func TestEnsureNotFoundClearsLogo(t *testing.T) {
 	}
 }
 
-func TestRewrite(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write([]byte("jpeg"))
-	}))
-	t.Cleanup(srv.Close)
-
-	c := New(cache.New(t.TempDir()), srv.Client(), "http://base", 0)
+func TestRewriteURLs(t *testing.T) {
+	c := New(cache.New(t.TempDir()), http.DefaultClient, "http://base", 0)
+	t.Cleanup(c.Close)
 	chs := []model.Channel{
-		{Provider: "pluto", NormalizedID: "a", LogoURL: srv.URL + "/a.jpg"},
+		{Provider: "pluto", NormalizedID: "a", LogoURL: "https://cdn.example/a.jpg"},
 		{Provider: "pluto", NormalizedID: "b", LogoURL: ""},
 	}
-	c.Rewrite(context.Background(), chs)
+	c.RewriteURLs(chs)
 	if chs[0].LogoURL != "http://base/logos/pluto/a.jpg" {
 		t.Fatalf("chs[0]=%q", chs[0].LogoURL)
 	}
-	if chs[0].LogoSourceURL != srv.URL+"/a.jpg" {
+	if chs[0].LogoSourceURL != "https://cdn.example/a.jpg" {
 		t.Fatalf("source=%q", chs[0].LogoSourceURL)
 	}
 	if chs[1].LogoURL != "" {

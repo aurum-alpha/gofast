@@ -1,6 +1,6 @@
-// Package cache is the sole owner of the on-disk generated artifacts. It maps a
-// provider id to its files and exposes typed reads/writes; no other package
-// knows the layout or touches disk, so persistence is controlled centrally.
+// Package cache persists domain emit artifacts (model.M3UFile / model.XMLTVFile)
+// and provider raw snapshots on disk. It owns layout and typed reads/writes; no
+// other package knows the paths or touches generation disk.
 //
 // Layout under root:
 //
@@ -46,12 +46,6 @@ const (
 	aggXML       = "epg.xml"
 )
 
-// M3U is a rendered playlist document.
-type M3U []byte
-
-// XMLTV is a rendered guide document.
-type XMLTV []byte
-
 // Cache reads and writes the generated artifacts rooted at a directory.
 type Cache struct {
 	root string
@@ -62,7 +56,7 @@ func New(root string) *Cache { return &Cache{root: root} }
 
 // CommitProvider publishes raw, playlist, guide, and meta as one immutable
 // generation. Replacing current is the sole commit point.
-func (c *Cache) CommitProvider(id model.ProviderID, raw provider.Raw, m3u M3U, xml XMLTV, meta provider.Meta) error {
+func (c *Cache) CommitProvider(id model.ProviderID, raw provider.Raw, m3u model.M3UFile, xml model.XMLTVFile, meta provider.Meta) error {
 	if len(raw) == 0 {
 		return errors.New("cache: raw snapshot is empty")
 	}
@@ -148,28 +142,28 @@ func (c *Cache) ReadRaw(id model.ProviderID) (provider.Raw, error) {
 }
 
 // ReadM3U returns a provider's playlist (fs.ErrNotExist if not yet generated).
-func (c *Cache) ReadM3U(id model.ProviderID) (M3U, error) {
+func (c *Cache) ReadM3U(id model.ProviderID) (model.M3UFile, error) {
 	dir, _, err := c.selectedDir(id)
 	if err != nil {
 		return nil, err
 	}
 	b, err := os.ReadFile(filepath.Join(dir, fileM3U))
-	return M3U(b), err
+	return model.M3UFile(b), err
 }
 
 // ReadXMLTV returns a provider's guide (fs.ErrNotExist if not yet generated).
-func (c *Cache) ReadXMLTV(id model.ProviderID) (XMLTV, error) {
+func (c *Cache) ReadXMLTV(id model.ProviderID) (model.XMLTVFile, error) {
 	dir, _, err := c.selectedDir(id)
 	if err != nil {
 		return nil, err
 	}
 	b, err := os.ReadFile(filepath.Join(dir, fileXML))
-	return XMLTV(b), err
+	return model.XMLTVFile(b), err
 }
 
 // CommitAggregate publishes playlist and guide as one immutable generation.
 // Replacing aggregate/current is the sole commit point for the pair.
-func (c *Cache) CommitAggregate(m3u M3U, xml XMLTV) error {
+func (c *Cache) CommitAggregate(m3u model.M3UFile, xml model.XMLTVFile) error {
 	aggregateDir := filepath.Join(c.root, dirAggregate)
 	generationsDir := filepath.Join(aggregateDir, dirGenerations)
 	if err := os.MkdirAll(generationsDir, 0o755); err != nil {
@@ -212,23 +206,23 @@ func (c *Cache) CommitAggregate(m3u M3U, xml XMLTV) error {
 }
 
 // ReadAggregateM3U returns the combined playlist (fs.ErrNotExist if not generated).
-func (c *Cache) ReadAggregateM3U() (M3U, error) {
+func (c *Cache) ReadAggregateM3U() (model.M3UFile, error) {
 	dir, err := c.selectedAggregateDir()
 	if err != nil {
 		return nil, err
 	}
 	b, err := os.ReadFile(filepath.Join(dir, aggM3U))
-	return M3U(b), err
+	return model.M3UFile(b), err
 }
 
 // ReadAggregateXMLTV returns the combined guide (fs.ErrNotExist if not generated).
-func (c *Cache) ReadAggregateXMLTV() (XMLTV, error) {
+func (c *Cache) ReadAggregateXMLTV() (model.XMLTVFile, error) {
 	dir, err := c.selectedAggregateDir()
 	if err != nil {
 		return nil, err
 	}
 	b, err := os.ReadFile(filepath.Join(dir, aggXML))
-	return XMLTV(b), err
+	return model.XMLTVFile(b), err
 }
 
 // LoadMeta reads one provider's meta.json (fetch time + classifications).

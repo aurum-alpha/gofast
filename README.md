@@ -105,7 +105,7 @@ Embedded SPA in the fastgen binary — see [screenshots](#screenshots) for Statu
 - **Dedupes** — same-title clusters across providers; prefer / drop so you don’t keep five “BET”s (losers marked Duplicate, distinct from manual emit-disable)
 - **Health** — scheduled L1 segment probes + optional L2 ffprobe; history and on-demand tests
 - **Cache** — disk inventory (generations, logo **file count + size**, attr history); soft purge & logo clear without a serving gap
-- **Access / Proxy / Status** — who pulled your playlists, proxy events, build identity, logo warm progress, lineup problem rollups, ops-report schedule when enabled
+- **Access / Proxy / Status** — who pulled your playlists, proxy events, build identity, lineup problem rollups, ops-report schedule when enabled
 
 ### Daily ops-report email
 

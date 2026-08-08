@@ -28,7 +28,7 @@ func playlistTestRegistry() *provider.Registry {
 
 func TestPlaylistHandlers(t *testing.T) {
 	cc := cache.New(t.TempDir())
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, model.M3UFile("#EXTM3U\n"), model.XMLTVFile("<tv></tv>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	reg := playlistTestRegistry()
@@ -72,7 +72,7 @@ func TestPlaylistHandlers(t *testing.T) {
 func TestPlaylistDisabledProviderIs404(t *testing.T) {
 	cc := cache.New(t.TempDir())
 	// Cached last-good files exist on disk...
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, model.M3UFile("#EXTM3U\n"), model.XMLTVFile("<tv></tv>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	// ...but the provider was disabled live (feed removed from the registry).
@@ -102,7 +102,7 @@ func TestAggregateHandlers(t *testing.T) {
 		t.Fatalf("want 503 before generation, got %d", rec.Code)
 	}
 
-	if err := cc.CommitAggregate(cache.M3U("#EXTM3U\nAGG\n"), cache.XMLTV("<tv/>")); err != nil {
+	if err := cc.CommitAggregate(model.M3UFile("#EXTM3U\nAGG\n"), model.XMLTVFile("<tv/>")); err != nil {
 		t.Fatal(err)
 	}
 	rec = httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestPlaylistETag304(t *testing.T) {
 	wantETag := `"` + hex.EncodeToString(sum[:]) + `"`
 
 	cc := cache.New(t.TempDir())
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U(body), cache.XMLTV("<tv></tv>"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, model.M3UFile(body), model.XMLTVFile("<tv></tv>"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -197,7 +197,7 @@ func TestAggregateETag304(t *testing.T) {
 	wantETag := `"` + hex.EncodeToString(sum[:]) + `"`
 
 	cc := cache.New(t.TempDir())
-	if err := cc.CommitAggregate(cache.M3U(body), cache.XMLTV("<tv/>")); err != nil {
+	if err := cc.CommitAggregate(model.M3UFile(body), model.XMLTVFile("<tv/>")); err != nil {
 		t.Fatal(err)
 	}
 

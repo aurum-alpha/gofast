@@ -186,6 +186,13 @@ dropped from export. Proxy cannot help.
 Primary binary (`fastgen`): providers, classify, emit M3U/XMLTV, health, UI.
 Control plane for the lineup.
 
+### Logo cache (`cache_logos`)
+
+When enabled, emit rewrites channel logos to `{base_url}/logos/{provider}/{id}.ext`
+with **no** boot/refresh download. `GET /logos/…` fills disk lazily (worker pool,
+24h conditional revalidate; hard invalidate only when the upstream logo URL
+changes). Unused channels never hit the CDN.
+
 ### FASTProxy
 
 Optional binary (`fastproxy`): make FAST streams **consumable by ffmpeg/Jellyfin**

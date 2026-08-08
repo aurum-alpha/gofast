@@ -353,7 +353,7 @@ func TestPublishedGuideFetchFailureKeepsLastGoodGeneration(t *testing.T) {
 		published.RawPlaylist:  []byte("OLD-PLAYLIST"),
 		published.RawGuideGzip: []byte("OLD-GUIDE"),
 	}
-	if err := cc.CommitProvider(model.ProviderDistroTV, oldRaw, cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider(model.ProviderDistroTV, oldRaw, model.M3UFile("OLD-M3U"), model.XMLTVFile("OLD-XML"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -389,7 +389,7 @@ func TestRefreshFailureKeepsLastGoodAndPersistsStatus(t *testing.T) {
 		"channels.json.gz": []byte("OLD-CHANNELS"),
 		"guide.xml.gz":     []byte("OLD-GUIDE"),
 	}
-	if err := cc.CommitProvider(model.ProviderPluto, oldRaw, cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider(model.ProviderPluto, oldRaw, model.M3UFile("OLD-M3U"), model.XMLTVFile("OLD-XML"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	notified := 0
@@ -955,29 +955,28 @@ func TestPrepareRewritesLogosWhenEnabled(t *testing.T) {
 	feed, _ := reg.Feed(model.ProviderLG)
 	cc := cache.New(t.TempDir())
 	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
-	pr := &providerRefresher{feed: feed, cache: cc}
+	t.Cleanup(logos.Close)
+	pr := &providerRefresher{feed: feed, cache: cc, pipe: &pipeline{logos: logos}}
 	if err := pr.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if hits != 0 {
-		t.Fatalf("refresh should not hit artwork yet, hits=%d", hits)
-	}
-	pr.pipe = &pipeline{logos: logos}
-	if _, err := pr.rewriteLogosAndRepublish(context.Background(), nil); err != nil {
-		t.Fatal(err)
+		t.Fatalf("emit rewrite must not download logos, hits=%d", hits)
 	}
 	m3uData, err := cc.ReadM3U(model.ProviderLG)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(m3uData), "http://fastgen.lan:8180/logos/lg/news.png") {
+	want := "http://fastgen.lan:8180/logos/lg/news.png"
+	if !strings.Contains(string(m3uData), want) {
 		t.Fatalf("m3u missing rewritten logo: %s", m3uData)
 	}
-	if hits != 1 {
-		t.Fatalf("logo hits=%d", hits)
+	ch := feed.Channels()[0]
+	if ch.LogoURL != want {
+		t.Fatalf("api logo_url=%q", ch.LogoURL)
 	}
-	if got := feed.Channels()[0].LogoURL; got != "http://fastgen.lan:8180/logos/lg/news.png" {
-		t.Fatalf("api logo_url=%q", got)
+	if ch.LogoSourceURL != logoSrv.URL+"/a.png" {
+		t.Fatalf("logo_source_url=%q", ch.LogoSourceURL)
 	}
 }
 
@@ -1005,8 +1004,8 @@ func TestPrepareKeepsUpstreamLogosWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestEmitCustomLogoRewrittenOnWarm(t *testing.T) {
-	// Per-channel emit logo_url is cached/rewritten like provider logos (J27-72).
+func TestEmitCustomLogoRewrittenAtPrepare(t *testing.T) {
+	// Per-channel emit logo_url is rewritten like provider logos (no proactive fetch).
 	var hits int
 	logoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits++
@@ -1028,31 +1027,25 @@ func TestEmitCustomLogoRewrittenOnWarm(t *testing.T) {
 	)
 	feed, _ := reg.Feed(model.ProviderLG)
 	cc := cache.New(t.TempDir())
-	pr := &providerRefresher{feed: feed, cache: cc}
-	if err := pr.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if got := feed.Channels()[0].LogoURL; got != custom {
-		t.Fatalf("emit logo before warm: %q", got)
-	}
-	if !strings.Contains(string(mustReadM3U(t, cc)), custom) {
-		t.Fatalf("m3u should carry emit CDN URL before warm")
-	}
-
 	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
-	pr.pipe = &pipeline{logos: logos}
-	if _, err := pr.rewriteLogosAndRepublish(context.Background(), nil); err != nil {
+	t.Cleanup(logos.Close)
+	pr := &providerRefresher{feed: feed, cache: cc, pipe: &pipeline{logos: logos}}
+	if err := pr.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	want := "http://fastgen.lan:8180/logos/lg/news.png"
 	if !strings.Contains(string(mustReadM3U(t, cc)), want) {
 		t.Fatalf("m3u missing rewritten emit logo: %s", mustReadM3U(t, cc))
 	}
-	if got := feed.Channels()[0].LogoURL; got != want {
-		t.Fatalf("api logo_url=%q", got)
+	ch := feed.Channels()[0]
+	if ch.LogoURL != want {
+		t.Fatalf("api logo_url=%q", ch.LogoURL)
 	}
-	if hits != 1 {
-		t.Fatalf("logo hits=%d", hits)
+	if ch.LogoSourceURL != custom {
+		t.Fatalf("logo_source_url=%q", ch.LogoSourceURL)
+	}
+	if hits != 0 {
+		t.Fatalf("emit rewrite must not download, hits=%d", hits)
 	}
 }
 
@@ -1065,11 +1058,10 @@ func mustReadM3U(t *testing.T, cc *cache.Cache) []byte {
 	return data
 }
 
-func TestWarmLogosUpdatesStatus(t *testing.T) {
+func TestRestoreRewritesLogosWithoutHTTP(t *testing.T) {
 	var hits atomic.Int32
 	logoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		time.Sleep(20 * time.Millisecond)
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write([]byte("png"))
 	}))
@@ -1086,42 +1078,24 @@ func TestWarmLogosUpdatesStatus(t *testing.T) {
 	if err := pr.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	st := &Status{}
-	svc := New(nil, reg, nil, cc, nil, nil, nil, nil, st)
+	svc := New(nil, reg, nil, cc, nil, nil, nil, nil, nil)
+	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
+	t.Cleanup(logos.Close)
+	svc.pipe.set(EmissionPolicy{}, nil, nil, logos)
 	svc.Restore()
 	if hits.Load() != 0 {
 		t.Fatalf("restore must not download logos, hits=%d", hits.Load())
 	}
-
-	logos := logocache.New(cc, logoSrv.Client(), "http://fastgen.lan:8180", time.Hour)
-	svc.pipe.set(EmissionPolicy{}, nil, nil, logos)
-	done := make(chan struct{})
-	go func() {
-		svc.WarmLogos(context.Background())
-		close(done)
-	}()
-	deadline := time.After(2 * time.Second)
-	sawRunning := false
-	for !sawRunning {
-		if st.Snapshot().Logos.Running {
-			sawRunning = true
-			break
-		}
-		select {
-		case <-done:
-			t.Fatal("WarmLogos finished before status showed running")
-		case <-deadline:
-			t.Fatal("timeout waiting for logos.running")
-		case <-time.After(5 * time.Millisecond):
-		}
+	want := "http://fastgen.lan:8180/logos/lg/news.png"
+	if got := feed.Channels()[0].LogoURL; got != want {
+		t.Fatalf("logo_url=%q", got)
 	}
-	<-done
-	snap := st.Snapshot()
-	if snap.Logos.Running || !snap.Ready || snap.Logos.Done != snap.Logos.Total {
-		t.Fatalf("after warm: %+v", snap)
+	m3u, err := cc.ReadM3U(model.ProviderLG)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if hits.Load() < 1 {
-		t.Fatalf("expected logo downloads, hits=%d", hits.Load())
+	if !strings.Contains(string(m3u), want) {
+		t.Fatalf("m3u missing /logos/ url: %s", m3u)
 	}
 }
 

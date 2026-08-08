@@ -306,9 +306,6 @@ func (p *providerRefresher) refreshLocked(ctx context.Context) error {
 		p.notify()
 	}
 	p.logPublished(lineup, len(m3uData), len(xmlData), duration)
-	if _, _, _, logos := p.pipe.snapshot(); logos != nil {
-		go p.scheduleLogoRewrite(context.WithoutCancel(ctx))
-	}
 	return nil
 }
 
@@ -655,7 +652,7 @@ func (p *providerRefresher) transform(chs []model.Channel, progs []model.Program
 // prepare applies export rules, runs quality gates, and renders one immutable
 // candidate without mutating the feed or cache. The emit environment (emission
 // policy + group taxonomy) is snapshotted once from the pipeline.
-func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, progs []model.Programme, assignments provider.ChannelNumberAssignments, fetchedAt time.Time) (provider.Lineup, cache.M3U, cache.XMLTV, error) {
+func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, progs []model.Programme, assignments provider.ChannelNumberAssignments, fetchedAt time.Time) (provider.Lineup, model.M3UFile, model.XMLTVFile, error) {
 	id := p.feed.ID()
 	s := p.feed.Settings()
 	policy, groupsPolicy, categoriesPolicy, _ := p.pipe.snapshot()
@@ -685,6 +682,8 @@ func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, pr
 		)
 	}
 	chs = model.PaintChannelEmit(chs, s.ChannelEmit)
+	_, _, _, logos := p.pipe.snapshot()
+	applyLogoEmitRewrite(logos, chs)
 
 	label := s.Label
 	if label == "" {
@@ -734,7 +733,7 @@ func (p *providerRefresher) prepare(ctx context.Context, chs []model.Channel, pr
 		FetchedAt:               fetchedAt,
 		SyntheticChannelNumbers: assignments,
 	}
-	return lineup, cache.M3U(m3uData), cache.XMLTV(xmlData), nil
+	return lineup, model.M3UFile(m3uData), model.XMLTVFile(xmlData), nil
 }
 
 func (p *providerRefresher) fail(err error, duration time.Duration) error {

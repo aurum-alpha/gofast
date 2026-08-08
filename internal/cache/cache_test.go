@@ -20,7 +20,7 @@ func TestProviderRoundTrip(t *testing.T) {
 		Classifications:         map[string]model.Classification{"a": model.ClassNative, "b": model.ClassDRM},
 		SyntheticChannelNumbers: provider.ChannelNumberAssignments{"a": 5000, "gone": 5001},
 	}
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv></tv>"), meta); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, model.M3UFile("#EXTM3U\n"), model.XMLTVFile("<tv></tv>"), meta); err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,7 +89,7 @@ func TestRawAndAggregateRoundTrip(t *testing.T) {
 	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("RAW")}, nil, nil, provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cc.CommitAggregate(cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv/>")); err != nil {
+	if err := cc.CommitAggregate(model.M3UFile("#EXTM3U\n"), model.XMLTVFile("<tv/>")); err != nil {
 		t.Fatal(err)
 	}
 	if m, err := cc.ReadAggregateM3U(); err != nil || string(m) != "#EXTM3U\n" {
@@ -189,7 +189,7 @@ func TestMalformedCurrentDoesNotFallBackToLegacy(t *testing.T) {
 func TestUnselectedGenerationIsNeverVisible(t *testing.T) {
 	root := t.TempDir()
 	cc := cache.New(root)
-	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("OLD")}, cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML"), provider.Meta{}); err != nil {
+	if err := cc.CommitProvider("lg", provider.Raw{"schedule.json": []byte("OLD")}, model.M3UFile("OLD-M3U"), model.XMLTVFile("OLD-XML"), provider.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -237,7 +237,7 @@ func TestTraversalRejected(t *testing.T) {
 func TestAggregatePairAtomicAndUnselectedInvisible(t *testing.T) {
 	root := t.TempDir()
 	cc := cache.New(root)
-	if err := cc.CommitAggregate(cache.M3U("OLD-M3U"), cache.XMLTV("OLD-XML")); err != nil {
+	if err := cc.CommitAggregate(model.M3UFile("OLD-M3U"), model.XMLTVFile("OLD-XML")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -263,7 +263,7 @@ func TestAggregatePairAtomicAndUnselectedInvisible(t *testing.T) {
 		t.Fatalf("xml: %q %v", xmlData, err)
 	}
 
-	if err := cc.CommitAggregate(cache.M3U("PAIR-M3U"), cache.XMLTV("PAIR-XML")); err != nil {
+	if err := cc.CommitAggregate(model.M3UFile("PAIR-M3U"), model.XMLTVFile("PAIR-XML")); err != nil {
 		t.Fatal(err)
 	}
 	m3uData, _ = cc.ReadAggregateM3U()

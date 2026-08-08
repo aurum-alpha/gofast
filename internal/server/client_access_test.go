@@ -9,12 +9,13 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/clientaccess"
+	"github.com/j27-aurum/gofast/internal/model"
 	"github.com/j27-aurum/gofast/internal/server"
 )
 
 func TestPlaylistAccessRecords200And304(t *testing.T) {
 	cc := cache.New(t.TempDir())
-	if err := cc.CommitAggregate(cache.M3U("#EXTM3U\n"), cache.XMLTV("<tv/>")); err != nil {
+	if err := cc.CommitAggregate(model.M3UFile("#EXTM3U\n"), model.XMLTVFile("<tv/>")); err != nil {
 		t.Fatal(err)
 	}
 	access, err := clientaccess.Open(t.TempDir())

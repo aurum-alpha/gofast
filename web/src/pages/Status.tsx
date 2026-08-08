@@ -30,17 +30,6 @@ type HealthzResponse = {
   providers?: HealthzProvider[]
 }
 
-type ApiStatusResponse = {
-  ready: boolean
-  version?: BuildVersion
-  logos: {
-    running: boolean
-    done: number
-    total: number
-    provider?: string
-  }
-}
-
 function formatBuildVersion(v?: BuildVersion): string {
   if (!v?.build) return '—'
   const commit = v.commit?.trim()
@@ -163,7 +152,6 @@ function Metric({
 
 export function StatusPage() {
   const [healthz, setHealthz] = useState<HealthzResponse | null>(null)
-  const [boot, setBoot] = useState<ApiStatusResponse | null>(null)
   const [channels, setChannels] = useState<Channel[] | null>(null)
   const [schedule, setSchedule] = useState<HealthSchedule | null>(null)
   const [access, setAccess] = useState<ClientAccessResponse | null>(null)
@@ -181,10 +169,6 @@ export function StatusPage() {
         fetch('/healthz').then(async (res) => {
           if (!res.ok) throw new Error(`healthz ${res.status}`)
           return res.json() as Promise<HealthzResponse>
-        }),
-        fetch('/api/status').then(async (res) => {
-          if (!res.ok) throw new Error(`status ${res.status}`)
-          return res.json() as Promise<ApiStatusResponse>
         }),
         fetch('/api/channels').then(async (res) => {
           if (!res.ok) throw new Error(`channels ${res.status}`)
@@ -211,10 +195,9 @@ export function StatusPage() {
         }),
         fetchOpsSchedule().catch(() => null),
       ])
-        .then(([hz, st, ch, sched, ca, px, pr, ops]) => {
+        .then(([hz, ch, sched, ca, px, pr, ops]) => {
           if (cancelled) return
           setHealthz(hz)
-          setBoot(st)
           setChannels(ch.channels)
           setSchedule(sched)
           setAccess(ca)
@@ -222,8 +205,7 @@ export function StatusPage() {
           setPresence(pr)
           setOpsReport(ops)
           setError(null)
-          const delay = st.logos.running ? 1000 : 5000
-          timer = window.setTimeout(poll, delay)
+          timer = window.setTimeout(poll, 5000)
         })
         .catch((err: unknown) => {
           if (cancelled) return
@@ -240,7 +222,6 @@ export function StatusPage() {
 
   const providers = healthz?.providers ?? []
   const staleCount = providers.filter((p) => p.stale).length
-  const logosRunning = Boolean(boot?.logos.running)
 
   const rollups = useMemo(() => {
     const health = { healthy: 0, degraded: 0, down: 0, untested: 0 }
@@ -313,18 +294,6 @@ export function StatusPage() {
                 healthz.version?.built_at
                   ? `Built ${healthz.version.built_at}`
                   : 'CI run number + short git SHA (ldflags)'
-              }
-            />
-            <Metric
-              label="Logo warm"
-              value={
-                logosRunning
-                  ? boot!.logos.total > 0
-                    ? `${boot!.logos.done}/${boot!.logos.total}${boot!.logos.provider ? ` · ${boot!.logos.provider}` : ''}`
-                    : 'running'
-                  : boot?.ready
-                    ? 'idle'
-                    : '—'
               }
             />
             <Metric

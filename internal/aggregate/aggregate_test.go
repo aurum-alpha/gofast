@@ -75,7 +75,7 @@ func TestRebuildWritesNamespacedAggregate(t *testing.T) {
 
 func TestEmptyRebuildPreservesExistingAggregate(t *testing.T) {
 	cc := cache.New(t.TempDir())
-	if err := cc.CommitAggregate(cache.M3U("KEEP-M3U"), cache.XMLTV("KEEP-XML")); err != nil {
+	if err := cc.CommitAggregate(model.M3UFile("KEEP-M3U"), model.XMLTVFile("KEEP-XML")); err != nil {
 		t.Fatal(err)
 	}
 	reg := provider.NewRegistry(

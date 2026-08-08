@@ -15,7 +15,7 @@ func TestLogoFileServesAndRejectsTraversal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := LogoFile(cc)
+	h := LogoFile(nil, cc)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/logos/lg/ch1.png", nil)
 	req.SetPathValue("provider", "lg")

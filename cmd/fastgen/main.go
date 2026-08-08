@@ -135,7 +135,6 @@ func main() {
 	}
 	go agg.Run(ctx)
 	go svc.Run(ctx)
-	go svc.WarmLogos(ctx)
 
 	// Post-save reload registry: every UI config save kicks these in order.
 	// Restart-only settings (listen/PORT, data_dir) intentionally have no
@@ -198,7 +197,7 @@ func main() {
 			mux.HandleFunc("DELETE /api/logos", server.LogosClearHandler(svc, ctx))
 			mux.HandleFunc("DELETE /api/logos/{provider}", server.LogosClearHandler(svc, ctx))
 			mux.HandleFunc("DELETE /api/logos/{provider}/{channelId}", server.LogosClearHandler(svc, ctx))
-			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(cc))
+			mux.HandleFunc("GET /logos/{provider}/{file}", server.LogoFile(svc, cc))
 			mux.HandleFunc("GET /playlist.m3u", server.AggregatePlaylist(cc, access))
 			mux.HandleFunc("GET /epg.xml", server.AggregateGuide(cc, access))
 			mux.HandleFunc("GET /{file}", server.PlaylistFile(reg, cc, uiHandler, access))

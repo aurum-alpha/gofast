@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -178,11 +179,13 @@ func (s *Service) Reload(ctx context.Context, cfg *config.Config) error {
 	// Logo cache identity: base_url / artwork_tls changes rebuild it.
 	logosRebuilt := prev.BaseURL != cfg.BaseURL || !reflect.DeepEqual(prev.ArtworkTLS, cfg.ArtworkTLS)
 	if logosRebuilt {
+		if s.logosSrc != nil {
+			s.logosSrc.Close()
+		}
 		s.logosSrc = buildLogoCache(cfg, s.cache)
 	}
 
 	reapplyAll := false
-	warm := false
 	changed := false
 
 	// Provider reconcile: start newly enabled, stop newly disabled, reload
@@ -237,22 +240,12 @@ func (s *Service) Reload(ctx context.Context, cfg *config.Config) error {
 	wasLogos := prev.CacheLogosEnabled()
 	nowLogos := cfg.CacheLogosEnabled()
 	if wasLogos != nowLogos {
-		if nowLogos {
-			warm = true // one background warm pass rewrites + republishes
-		} else {
-			reapplyAll = true // re-parse raw so LogoURL reverts upstream
-		}
+		// On: re-emit with /logos/ URLs (lazy fetch). Off: re-emit upstream CDN URLs.
+		reapplyAll = true
 	}
-	// base_url / artwork_tls change rebuilds the logo cache identity; reapply
-	// alone would republish CDN URLs under the old rewrite base — warm after.
+	// base_url / artwork_tls: re-emit so LogoURL hosts match the new public origin.
 	if logosRebuilt && nowLogos {
 		reapplyAll = true
-		warm = true
-	}
-	// Provider settings reapply (incl. channel_emit logo_url) leaves LogoURL at
-	// the operator/CDN value until a warm pass caches + rewrites it.
-	if nowLogos && len(perProvider) > 0 {
-		warm = true
 	}
 	s.pipe.set(policy, groups.Compile(cfg.Groups), categories.Compile(cfg.Categories), s.gateLogos(cfg))
 	s.applied = cfg
@@ -269,17 +262,11 @@ func (s *Service) Reload(ctx context.Context, cfg *config.Config) error {
 			if err := rp.pr.reapplyFromCache(); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				slog.Warn("provider reapply failed; keeping last-good", "provider", id, "err", err)
 			}
+			changed = true
 		}
 	}
 	if changed && s.notify != nil {
 		s.notify()
-	}
-	if warm {
-		ctx := s.runCtx
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		go s.WarmLogos(ctx)
 	}
 	return nil
 }
@@ -292,8 +279,8 @@ func (s *Service) Reload(ctx context.Context, cfg *config.Config) error {
 // Providers with no cached raw are left empty (they fetch on boot).
 //
 // Call Restore before starting channelattr.Receive so meta seed Handle calls
-// do not race the AttrReceiver writer. Logo HTTP is not run here — call
-// WarmLogos in the background after listen.
+// do not race the AttrReceiver writer. When cache_logos is on, prepare rewrites
+// LogoURL to /logos/… with no upstream HTTP (lazy fill on GET).
 func (s *Service) Restore() {
 	for _, f := range s.reg.Feeds() {
 		raw, meta, _, err := s.cache.LoadProvider(f.ID())
@@ -470,6 +457,52 @@ func buildLogoCache(cfg *config.Config, cc *cache.Cache) *logocache.Cache {
 		return nil
 	}
 	return logocache.New(cc, client, cfg.BaseURL, 0)
+}
+
+// LogoCache returns the gated logo cache (nil when cache_logos is off).
+func (s *Service) LogoCache() *logocache.Cache {
+	if s == nil {
+		return nil
+	}
+	_, _, _, logos := s.pipe.snapshot()
+	return logos
+}
+
+// ResolveLogoSource returns the upstream logo URL for lazy GET /logos/ fills.
+func (s *Service) ResolveLogoSource(provider model.ProviderID, channelID string) (sourceURL string, headers map[string]string, ok bool) {
+	if s == nil || s.reg == nil {
+		return "", nil, false
+	}
+	f, found := s.reg.Feed(provider)
+	if !found || f == nil {
+		return "", nil, false
+	}
+	for _, ch := range f.Channels() {
+		nid := ch.NormalizedID
+		if nid == "" {
+			nid = model.NormalizeID(ch.ID)
+		}
+		if nid != channelID {
+			continue
+		}
+		src := ch.LogoSourceURL
+		if src == "" {
+			src = ch.LogoURL
+		}
+		if src == "" {
+			return "", nil, false
+		}
+		// Prefer upstream, not the local /logos/ rewrite.
+		if logos := s.LogoCache(); logos != nil && strings.HasPrefix(src, logos.BaseURL()+"/logos/") {
+			if ch.LogoSourceURL != "" {
+				src = ch.LogoSourceURL
+			} else {
+				return "", nil, false
+			}
+		}
+		return src, ch.RequestHeaders, true
+	}
+	return "", nil, false
 }
 
 // emissionPolicyFrom maps the config snapshot to the emit-time policy.

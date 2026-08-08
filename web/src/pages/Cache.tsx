@@ -198,7 +198,7 @@ export function CachePage() {
           onClick={() => {
             void runAction(
               'logos-all',
-              'Clear all cached logos? They will re-warm if logo caching is enabled.',
+              'Clear all cached logos? They will refill on the next request if logo caching is enabled.',
               () => fetch('/api/logos', { method: 'DELETE' }),
             )
           }}

@@ -9,7 +9,6 @@ import (
 
 	"github.com/j27-aurum/gofast/internal/cache"
 	"github.com/j27-aurum/gofast/internal/model"
-	"github.com/j27-aurum/gofast/internal/provider"
 	"github.com/j27-aurum/gofast/internal/providerset"
 )
 
@@ -125,7 +124,7 @@ func (s *Service) PurgeAllAndRefresh(ctx context.Context, clearLogos bool) (Purg
 	return out, nil
 }
 
-// ClearAllLogos deletes every cached logo and re-warms when cache_logos is on.
+// ClearAllLogos deletes every cached logo. Next GET /logos/ refills lazily.
 func (s *Service) ClearAllLogos(ctx context.Context) (cache.ClearStats, error) {
 	if s == nil || s.cache == nil {
 		return cache.ClearStats{}, nil
@@ -135,11 +134,10 @@ func (s *Service) ClearAllLogos(ctx context.Context) (cache.ClearStats, error) {
 		return stats, err
 	}
 	slog.Info("cache logos cleared", "scope", "all", "deleted_files", stats.DeletedFiles, "deleted_bytes", stats.DeletedBytes)
-	go s.WarmLogos(ctx)
 	return stats, nil
 }
 
-// ClearProviderLogos deletes one provider's logos and re-warms that feed.
+// ClearProviderLogos deletes one provider's logos. Next GET refills lazily.
 func (s *Service) ClearProviderLogos(ctx context.Context, id model.ProviderID) (cache.ClearStats, error) {
 	if s == nil || s.cache == nil {
 		return cache.ClearStats{}, ErrUnknownProvider
@@ -152,11 +150,10 @@ func (s *Service) ClearProviderLogos(ctx context.Context, id model.ProviderID) (
 		return stats, err
 	}
 	slog.Info("cache logos cleared", "provider", id, "deleted_files", stats.DeletedFiles, "deleted_bytes", stats.DeletedBytes)
-	go s.WarmProviderLogos(ctx, id)
 	return stats, nil
 }
 
-// ClearChannelLogo deletes one channel's logo files and re-fetches when logos on.
+// ClearChannelLogo deletes one channel's logo files. Next GET refills lazily.
 func (s *Service) ClearChannelLogo(ctx context.Context, id model.ProviderID, channelID string) (cache.ClearStats, error) {
 	if s == nil || s.cache == nil {
 		return cache.ClearStats{}, ErrUnknownProvider
@@ -169,103 +166,7 @@ func (s *Service) ClearChannelLogo(ctx context.Context, id model.ProviderID, cha
 		return stats, err
 	}
 	slog.Info("cache logos cleared", "provider", id, "channel", channelID, "deleted_files", stats.DeletedFiles, "deleted_bytes", stats.DeletedBytes)
-	go s.WarmChannelLogo(ctx, id, channelID)
 	return stats, nil
-}
-
-// WarmProviderLogos rewrites logos for one provider (no-op when logos off).
-func (s *Service) WarmProviderLogos(ctx context.Context, id model.ProviderID) {
-	if _, _, _, logos := s.pipe.snapshot(); logos == nil {
-		return
-	}
-	f, ok := s.reg.Feed(id)
-	if !ok || f == nil {
-		return
-	}
-	total := countLogoTargets(f.Channels())
-	if total == 0 {
-		return
-	}
-	if s.status != nil {
-		s.status.SetLogos(true, 0, total, string(id))
-		defer s.status.SetLogos(false, total, total, "")
-	}
-	pr := s.newRefresher(f)
-	done := 0
-	_, err := pr.rewriteLogosAndRepublish(ctx, func() {
-		done++
-		if s.status != nil {
-			s.status.SetLogos(true, done, total, string(id))
-		}
-	})
-	if err != nil {
-		slog.Warn("background logo rewrite failed", "provider", id, "err", err)
-		return
-	}
-	slog.Info("background logos published", "provider", id)
-}
-
-// WarmChannelLogo re-fetches one channel logo and republishes the provider feed.
-func (s *Service) WarmChannelLogo(ctx context.Context, id model.ProviderID, channelID string) {
-	_, _, _, logos := s.pipe.snapshot()
-	if logos == nil {
-		return
-	}
-	f, ok := s.reg.Feed(id)
-	if !ok || f == nil {
-		return
-	}
-	pr := s.newRefresher(f)
-	lineup := f.Lineup()
-	chs := append([]model.Channel(nil), lineup.Channels...)
-	idx := -1
-	for i := range chs {
-		nid := chs[i].NormalizedID
-		if nid == "" {
-			nid = model.NormalizeID(chs[i].ID)
-		}
-		if nid == channelID {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return
-	}
-	if chs[idx].LogoSourceURL != "" {
-		chs[idx].LogoURL = chs[idx].LogoSourceURL
-	}
-	if chs[idx].LogoURL == "" {
-		return
-	}
-	if s.status != nil {
-		s.status.SetLogos(true, 0, 1, string(id))
-		defer s.status.SetLogos(false, 1, 1, "")
-	}
-	chs[idx].LogoSourceURL = chs[idx].LogoURL
-	chs[idx].LogoURL, chs[idx].LogoError = logos.Ensure(ctx, chs[idx])
-	if s.status != nil {
-		s.status.SetLogos(true, 1, 1, string(id))
-	}
-
-	prepared, m3uData, xmlData, err := pr.prepare(ctx, chs, lineup.Programmes, lineup.SyntheticChannelNumbers, lineup.FetchedAt)
-	if err != nil {
-		slog.Warn("channel logo rewrite prepare failed", "provider", id, "channel", channelID, "err", err)
-		return
-	}
-	raw, err := pr.cache.ReadRaw(id)
-	if err != nil {
-		slog.Warn("channel logo rewrite read raw failed", "provider", id, "err", err)
-		return
-	}
-	if err := pr.cache.CommitProvider(id, raw, m3uData, xmlData, provider.MetaOf(prepared)); err != nil {
-		slog.Warn("channel logo rewrite commit failed", "provider", id, "err", err)
-		return
-	}
-	pr.setLineup(prepared)
-	if pr.notify != nil {
-		pr.notify()
-	}
 }
 
 func (s *Service) enabledIDs() []model.ProviderID {
