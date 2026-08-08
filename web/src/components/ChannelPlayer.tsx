@@ -201,9 +201,10 @@ export function ChannelPlayer({ channel }: Props) {
       <h2>Preview</h2>
       <p className="meta">
         Audition HLS in the browser using the emitted playback URL or the raw
-        upstream URL. Browser CORS and codecs differ from Jellyfin/VLC — prefer
-        Emitted when the channel is via FASTProxy. Cross-origin NATIVE streams
-        are routed through FASTProxy (<code>?browser=1</code>) when configured.
+        upstream URL. Class B <code>/stable/…ts</code> pipes are MPEG-TS for
+        Jellyfin — not playable here with hls.js; use Raw (or VLC) for those.
+        Prefer Emitted for FASTProxy HLS (<code>/stream/</code>). Cross-origin
+        NATIVE streams use FASTProxy (<code>?browser=1</code>) when configured.
       </p>
 
       <div className="preview-toolbar">

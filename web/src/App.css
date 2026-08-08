@@ -1109,6 +1109,7 @@
 }
 
 .epg-name {
+  min-width: 0;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;

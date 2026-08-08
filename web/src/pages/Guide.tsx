@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { CLASS_FILTERS, canonicalClassification, classBadge } from '../lib/channel'
+import { Link, useSearchParams } from 'react-router-dom'
+import {
+  CLASS_FILTERS,
+  canonicalClassification,
+  channelDetailPath,
+  classBadge,
+} from '../lib/channel'
 import {
   clearStoredGuideFilters,
   DEFAULT_GUIDE_FILTERS,
@@ -667,9 +672,16 @@ export function GuidePage() {
                           }}
                         />
                       )}
-                      <span className="epg-name" title={r.name}>
+                      <Link
+                        to={channelDetailPath({
+                          provider: r.provider,
+                          normalized_id: r.normalizedId,
+                        })}
+                        className="epg-name channel-link"
+                        title={r.name}
+                      >
                         {r.name}
-                      </span>
+                      </Link>
                     </div>
                     <div className="epg-track" style={{ width: timelineW }}>
                       {r.programmes.map((p, i) => {

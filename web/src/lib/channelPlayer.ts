@@ -11,6 +11,19 @@ export type PreviewURLs = {
   emitted?: string
 }
 
+/**
+ * Class B demux-stable pipe: progressive MPEG-TS from FASTProxy `/stable/…ts`.
+ * hls.js cannot play this (it expects an HLS master/media playlist).
+ */
+export function isDemuxStablePipeURL(url: string): boolean {
+  try {
+    const path = new URL(url).pathname
+    return path.includes('/stable/') && /\.ts$/i.test(path)
+  } catch {
+    return /\/stable\/.+\.ts(?:\?|$)/i.test(url)
+  }
+}
+
 /** Resolve raw vs emitted playback URLs for the channel preview player. */
 export function previewURLs(ch: Pick<Channel, 'stream_url' | 'emitted_url'>): PreviewURLs {
   const raw = ch.stream_url?.trim() || undefined
@@ -24,8 +37,13 @@ export function showPreviewSourceToggle(urls: PreviewURLs): boolean {
   return Boolean(urls.raw && urls.emitted && urls.raw !== urls.emitted)
 }
 
-/** Default source: emitted when available, otherwise raw. */
+/**
+ * Default source: emitted when it is browser-HLS-playable; otherwise raw.
+ * Class B `/stable/…ts` pipes default to Raw so Play does not feed MPEG-TS to hls.js.
+ */
 export function defaultPreviewSource(urls: PreviewURLs): PreviewSource {
+  if (urls.emitted && !isDemuxStablePipeURL(urls.emitted)) return 'emitted'
+  if (urls.raw) return 'raw'
   if (urls.emitted) return 'emitted'
   return 'raw'
 }
@@ -69,6 +87,8 @@ export function browserPreviewURL(
     const directURL = new URL(direct)
     const proxyHost = new URL(base).host
     if (directURL.host === proxyHost) {
+      // Class B pipe is already on the proxy; do not treat it as HLS (?browser=1).
+      if (isDemuxStablePipeURL(direct)) return direct
       return withBrowserQuery(direct)
     }
   } catch {
@@ -98,6 +118,14 @@ export function previewBlockReason(
         : 'No emitted playback URL for this channel.'
     }
     return 'No upstream stream URL.'
+  }
+  if (isDemuxStablePipeURL(url)) {
+    return (
+      'Emitted is a Class B MPEG-TS pipe (/stable/…ts) for Jellyfin/DVR — ' +
+      'the browser HLS player cannot load it. Switch to Raw for upstream HLS, ' +
+      'or open the .ts URL in VLC/ffplay. (Browser Class B preview needs an MPEG-TS ' +
+      'player or the HLS facade.)'
+    )
   }
   return ''
 }
