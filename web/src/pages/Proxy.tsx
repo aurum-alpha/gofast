@@ -68,6 +68,7 @@ const KIND_OPTIONS = [
   'demux_stable_close',
   'demux_stable_fail',
   'demux_stable_stall',
+  'demux_stable_restart',
 ] as const
 
 function formatWhen(value?: string): string {

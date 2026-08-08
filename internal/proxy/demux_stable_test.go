@@ -189,3 +189,82 @@ func TestServeDemuxStableOriginMiss(t *testing.T) {
 		t.Fatalf("status=%d", rec.Code)
 	}
 }
+
+func TestDemuxFFmpegArgsMidRollHarden(t *testing.T) {
+	h := NewHandler(NewStaticOrigin(), NewStore(), nil)
+	h.demux = newDemuxStableTracker()
+	args := h.demuxFFmpegArgs("https://cdn.example/live.m3u8", nil)
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"-reinit_filter 1",
+		"-reconnect_at_eof 1",
+		"-rw_timeout",
+		"-map 0:v:0",
+		"-map 0:a:0",
+		"-fps_mode cfr",
+		"-crf 23",
+		"eval=frame",
+		"-max_muxing_queue_size",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %q in %q", want, joined)
+		}
+	}
+	if strings.Contains(joined, "0:v:0?") || strings.Contains(joined, "0:a:0?") {
+		t.Fatalf("optional maps must not be used: %q", joined)
+	}
+}
+
+func TestDemuxShouldRestart(t *testing.T) {
+	if demuxShouldRestart(nil, nil) {
+		t.Fatal("clean EOF must not restart")
+	}
+	if !demuxShouldRestart(nil, errors.New("exit status 1")) {
+		t.Fatal("ffmpeg exit should restart")
+	}
+	if demuxShouldRestart(errors.New("broken pipe"), errors.New("exit status 1")) {
+		t.Fatal("copy err must not restart")
+	}
+}
+
+func TestServeDemuxStableRestartsAfterFFmpegExit(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "ffmpeg")
+	count := filepath.Join(dir, "count")
+	script := "#!/bin/sh\n" +
+		"c=\"" + count + "\"\n" +
+		"n=0\n" +
+		"if [ -f \"$c\" ]; then n=$(cat \"$c\"); fi\n" +
+		"n=$((n+1))\n" +
+		"echo \"$n\" > \"$c\"\n" +
+		"if [ \"$n\" = \"1\" ]; then\n" +
+		"  printf 'chunk-one'\n" +
+		"  exit 1\n" +
+		"fi\n" +
+		"printf 'chunk-two'\n" +
+		"exit 0\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FASTPROXY_FFMPEG", stub)
+	t.Setenv("FASTPROXY_DEMUX_STABLE_MAX", "2")
+
+	origin := NewStaticOrigin()
+	origin.Set(model.ProviderPluto, "news", ChannelOrigin{
+		StreamURL: "https://cdn.example/live.m3u8", Classification: model.ClassNative,
+	})
+	h := NewHandler(origin, NewStore(), nil)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/stable/pluto/news.ts", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "chunk-one") || !strings.Contains(body, "chunk-two") {
+		t.Fatalf("expected both encode attempts, body=%q", body)
+	}
+}

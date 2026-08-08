@@ -661,6 +661,9 @@ under ten seconds.
   `/stream/` when both A and B apply; proxy may loopback to `/stream/` for Amagi
   ingest then encode. Knobs: `FASTPROXY_DEMUX_STABLE_MAX` (default 2),
   `FASTPROXY_DEMUX_STABLE_SIZE` (default `1280x720`), `FASTPROXY_FFMPEG`.
+  Mid-roll harden (#60): filter reinit + CFR/CRF encode, required A/V maps, and
+  encode restart on stall/exit (`demux_stable_restart`) while the client stays
+  connected so Pluto inline ads cannot accumulate audio-only gaps.
 - **Amagi (`AMAGI_SSAI`):** Class A only on `/stream/` — not a DVR guarantee.
   Relative URL resolution; rewrite variants/segments/`#EXT-X-KEY`; short-TTL
   sessions; never strip ads (beacon GET still fires).

@@ -234,6 +234,11 @@ stream identity** for the whole tune-in / recording. Implemented as
 resolution than programme content (proven on Pluto). Constant-parameter ladders
 (e.g. many Roku channels) stay on the cheap path — no blanket re-encode.
 
+`/stable/` harden (#60): ffmpeg rebuilds filters on size change (`-reinit_filter`,
+scale `eval=frame`), requires video+audio maps (no silent audio-only mux), and
+**restarts** the encode process on exit/stall while Jellyfin stays connected —
+Threadfin-style supervisor, not a Go RAM segment buffer.
+
 GoFAST only applies this to **in-tree FAST providers**, not reseller IPTV.
 
 ### Class B packagings: pipe vs HLS facade

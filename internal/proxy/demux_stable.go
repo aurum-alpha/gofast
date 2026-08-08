@@ -23,24 +23,32 @@ import (
 )
 
 const (
-	EventDemuxStableOpen  = "demux_stable_open"
-	EventDemuxStableClose = "demux_stable_close"
-	EventDemuxStableFail  = "demux_stable_fail"
-	EventDemuxStableStall = "demux_stable_stall"
+	EventDemuxStableOpen    = "demux_stable_open"
+	EventDemuxStableClose   = "demux_stable_close"
+	EventDemuxStableFail    = "demux_stable_fail"
+	EventDemuxStableStall   = "demux_stable_stall"
+	EventDemuxStableRestart = "demux_stable_restart"
 
-	ReasonDemuxStableSlots  = "demux_stable_slots_full"
-	ReasonDemuxStableIngest = "demux_stable_ingest"
-	ReasonDemuxStableFFmpeg = "demux_stable_ffmpeg"
-	ReasonFFmpegExit        = "ffmpeg_exit"
+	ReasonDemuxStableSlots   = "demux_stable_slots_full"
+	ReasonDemuxStableIngest  = "demux_stable_ingest"
+	ReasonDemuxStableFFmpeg  = "demux_stable_ffmpeg"
+	ReasonDemuxStableRestart = "demux_stable_restart"
+	ReasonFFmpegExit         = "ffmpeg_exit"
 
 	defaultDemuxStableMax  = 2
 	defaultDemuxStableSize = "1280x720"
 	maxDemuxSessionRows    = 16
 
-	demuxStderrLogLimit   = 800
-	demuxStallCheckEvery  = 5 * time.Second
-	demuxStallQuietFor    = 15 * time.Second
-	demuxStallLogInterval = 30 * time.Second
+	demuxStderrLogLimit       = 800
+	demuxStallCheckEvery      = 5 * time.Second
+	demuxStallQuietFor        = 15 * time.Second
+	demuxStallLogInterval     = 30 * time.Second
+	demuxRWTimeoutUS          = 15_000_000 // 15s; ffmpeg -rw_timeout is microseconds
+	demuxMaxRestartsPerWindow = 6
+	demuxRestartWindow        = time.Minute
+	demuxMuxQueueSize         = 1024
+	demuxOutputFPS            = 30
+	demuxCRF                  = 23
 )
 
 // DemuxStableSession is one active Class B ffmpeg pipe (for snapshots / UI).
@@ -157,6 +165,8 @@ func (t *demuxStableTracker) snapshotRows() (active, max int, rateBps float64, s
 }
 
 // serveDemuxStable handles GET /stable/{provider}/{id}: Class B MPEG-TS pipe.
+// While the client stays connected, ffmpeg is restarted on exit/stall (mid-roll
+// harden #60) instead of limping along audio-only.
 func (h *Handler) serveDemuxStable(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	provider := model.ProviderID(r.PathValue("provider"))
@@ -222,20 +232,127 @@ func (h *Handler) serveDemuxStable(w http.ResponseWriter, r *http.Request) {
 	})
 
 	ctx := r.Context()
+	cw := &countingWriter{w: w, slot: slot, total: &h.demux.bytes}
+	headersSent := false
+	var totalBytes int64
+	var lastCopyErr, lastWaitErr error
+	var lastStderr string
+	restarts := 0
+	restartWindowStart := time.Now()
+
+	for {
+		if ctx.Err() != nil {
+			break
+		}
+		enc, startErr := h.startDemuxEncode(ctx, slot, provider, id, ffArgs)
+		if startErr != nil {
+			if !headersSent {
+				h.failDemuxStart(w, provider, id, start, startErr)
+				return
+			}
+			h.demux.fails.Add(1)
+			break
+		}
+		if !headersSent {
+			w.Header().Set("Content-Type", "video/mp2t")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusOK)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			headersSent = true
+		}
+		n, copyErr, waitErr, stderrMsg := enc.copyAndWait(cw)
+		totalBytes += n
+		lastCopyErr, lastWaitErr, lastStderr = copyErr, waitErr, stderrMsg
+
+		if ctx.Err() != nil {
+			break
+		}
+		if !demuxShouldRestart(copyErr, waitErr) {
+			break
+		}
+		if time.Since(restartWindowStart) > demuxRestartWindow {
+			restarts = 0
+			restartWindowStart = time.Now()
+		}
+		if restarts >= demuxMaxRestartsPerWindow {
+			logEvent(slog.LevelWarn, EventDemuxStableFail,
+				"provider", provider, "channel", id, "reason", ReasonDemuxStableFFmpeg,
+				"err", "restart budget exceeded", "restarts", restarts)
+			h.emit(Event{
+				Kind: EventDemuxStableFail, Provider: string(provider), ChannelID: id,
+				Reason: ReasonDemuxStableFFmpeg, Message: "restart budget exceeded",
+				Bytes: totalBytes, DurationMS: time.Since(start).Milliseconds(),
+			})
+			h.demux.fails.Add(1)
+			break
+		}
+		restarts++
+		logEvent(slog.LevelWarn, EventDemuxStableRestart,
+			"provider", provider, "channel", id, "restart", restarts,
+			"bytes", totalBytes, "stderr", stderrMsg,
+			"wait_err", errString(waitErr), "copy_err", errString(copyErr))
+		h.emit(Event{
+			Kind: EventDemuxStableRestart, Provider: string(provider), ChannelID: id,
+			Reason: ReasonDemuxStableRestart, Message: stderrMsg,
+			Bytes: totalBytes, DurationMS: time.Since(start).Milliseconds(),
+			Attrs: map[string]any{
+				"restart":  restarts,
+				"wait_err": errString(waitErr),
+				"copy_err": errString(copyErr),
+			},
+		})
+	}
+
+	slot.state.Store("ending")
+	reason := demuxCloseReason(ctx.Err() != nil, lastCopyErr, lastWaitErr)
+	exitCode, signal := ffmpegWaitInfo(lastWaitErr)
+	elapsed := time.Since(start)
+	bps := 0.0
+	if elapsed.Seconds() > 0.5 {
+		bps = float64(totalBytes) / elapsed.Seconds()
+	}
+	logEvent(slog.LevelInfo, EventDemuxStableClose,
+		"provider", provider, "channel", id, "bytes", totalBytes,
+		"duration_ms", elapsed.Milliseconds(), "bytes_per_sec", int64(bps),
+		"reason", reason, "restarts", restarts,
+		"wait_err", errString(lastWaitErr), "copy_err", errString(lastCopyErr),
+		"exit_code", exitCode, "signal", signal, "stderr", lastStderr)
+	h.emit(Event{
+		Kind: EventDemuxStableClose, Provider: string(provider), ChannelID: id,
+		Reason: reason, Message: lastStderr, Bytes: totalBytes, DurationMS: elapsed.Milliseconds(),
+		Attrs: map[string]any{
+			"bytes_per_sec": int64(bps),
+			"exit_code":     exitCode,
+			"signal":        signal,
+			"wait_err":      errString(lastWaitErr),
+			"copy_err":      errString(lastCopyErr),
+			"restarts":      restarts,
+		},
+	})
+}
+
+type demuxEncodeProc struct {
+	cmd       *exec.Cmd
+	stdout    io.ReadCloser
+	stderrCh  <-chan string
+	stallStop chan struct{}
+}
+
+// startDemuxEncode launches one ffmpeg encode (stdout ready; headers not yet required).
+func (h *Handler) startDemuxEncode(ctx context.Context, slot *demuxStableSlot, provider model.ProviderID, id string, ffArgs []string) (*demuxEncodeProc, error) {
 	cmd := h.demuxFFmpegCmd(ctx, ffArgs)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		h.failDemuxStart(w, provider, id, start, err)
-		return
+		return nil, err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		h.failDemuxStart(w, provider, id, start, err)
-		return
+		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		h.failDemuxStart(w, provider, id, start, err)
-		return
+		return nil, err
 	}
 	if cmd.Process != nil {
 		slot.pid.Store(int32(cmd.Process.Pid))
@@ -254,61 +371,33 @@ func (h *Handler) serveDemuxStable(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	stallStop := make(chan struct{})
-	go h.watchDemuxStall(stallStop, slot, provider, id)
-
-	w.Header().Set("Content-Type", "video/mp2t")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusOK)
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-
-	n, copyErr := io.Copy(&countingWriter{w: w, slot: slot, total: &h.demux.bytes}, stdout)
-	close(stallStop)
-	_ = cmd.Process.Kill()
-	waitErr := cmd.Wait()
-	slot.state.Store("ending")
-
-	stderrMsg := ""
-	select {
-	case stderrMsg = <-stderrCh:
-	case <-time.After(500 * time.Millisecond):
-	}
-
-	reason := demuxCloseReason(ctx.Err() != nil, copyErr, waitErr)
-	exitCode, signal := ffmpegWaitInfo(waitErr)
-	elapsed := time.Since(start)
-	bps := 0.0
-	if elapsed.Seconds() > 0.5 {
-		bps = float64(n) / elapsed.Seconds()
-	}
-	logEvent(slog.LevelInfo, EventDemuxStableClose,
-		"provider", provider, "channel", id, "bytes", n,
-		"duration_ms", elapsed.Milliseconds(), "bytes_per_sec", int64(bps),
-		"reason", reason,
-		"wait_err", errString(waitErr), "copy_err", errString(copyErr),
-		"exit_code", exitCode, "signal", signal, "stderr", stderrMsg)
-	h.emit(Event{
-		Kind: EventDemuxStableClose, Provider: string(provider), ChannelID: id,
-		Reason: reason, Message: stderrMsg, Bytes: n, DurationMS: elapsed.Milliseconds(),
-		Attrs: map[string]any{
-			"bytes_per_sec": int64(bps),
-			"exit_code":     exitCode,
-			"signal":        signal,
-			"wait_err":      errString(waitErr),
-			"copy_err":      errString(copyErr),
-		},
-	})
+	go h.watchDemuxStall(stallStop, slot, provider, id, cmd.Process)
+	return &demuxEncodeProc{cmd: cmd, stdout: stdout, stderrCh: stderrCh, stallStop: stallStop}, nil
 }
 
-// watchDemuxStall logs observe-only warnings when the encode produces no bytes
-// for demuxStallQuietFor. It never kills ffmpeg (#60 instrumentation).
-func (h *Handler) watchDemuxStall(stop <-chan struct{}, slot *demuxStableSlot, provider model.ProviderID, id string) {
+func (p *demuxEncodeProc) copyAndWait(out io.Writer) (n int64, copyErr, waitErr error, stderrMsg string) {
+	n, copyErr = io.Copy(out, p.stdout)
+	close(p.stallStop)
+	if p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
+	}
+	waitErr = p.cmd.Wait()
+	select {
+	case stderrMsg = <-p.stderrCh:
+	case <-time.After(500 * time.Millisecond):
+	}
+	return n, copyErr, waitErr, stderrMsg
+}
+
+// watchDemuxStall kills ffmpeg when no bytes flow for demuxStallQuietFor so the
+// supervisor can restart (#60). Also emits stall telemetry (rate-limited).
+func (h *Handler) watchDemuxStall(stop <-chan struct{}, slot *demuxStableSlot, provider model.ProviderID, id string, proc *os.Process) {
 	ticker := time.NewTicker(demuxStallCheckEvery)
 	defer ticker.Stop()
 	var lastBytes int64
 	lastProgress := time.Now()
 	var lastWarn time.Time
+	killed := false
 	for {
 		select {
 		case <-stop:
@@ -336,13 +425,17 @@ func (h *Handler) watchDemuxStall(stop <-chan struct{}, slot *demuxStableSlot, p
 			logEvent(slog.LevelWarn, EventDemuxStableStall,
 				"provider", provider, "channel", id,
 				"bytes", n, "quiet_ms", quiet.Milliseconds(),
-				"elapsed_ms", elapsedMS, "pid", slot.pid.Load())
+				"elapsed_ms", elapsedMS, "pid", slot.pid.Load(), "action", "kill")
 			h.emit(Event{
 				Kind: EventDemuxStableStall, Provider: string(provider), ChannelID: id,
 				Reason:  EventDemuxStableStall,
-				Message: fmt.Sprintf("no demux-stable bytes for %ds", int(quiet.Seconds())),
+				Message: fmt.Sprintf("no demux-stable bytes for %ds; killing encode", int(quiet.Seconds())),
 				Bytes:   n, DurationMS: elapsedMS,
 			})
+			if !killed && proc != nil {
+				killed = true
+				_ = proc.Kill()
+			}
 		}
 	}
 }
@@ -365,18 +458,25 @@ func (h *Handler) demuxFFmpegArgs(ingestURL string, headers map[string]string) [
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-fflags", "+genpts+discardcorrupt",
-		"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "2",
+		"-reinit_filter", "1",
+		"-reconnect", "1", "-reconnect_at_eof", "1",
+		"-reconnect_streamed", "1", "-reconnect_delay_max", "2",
+		"-rw_timeout", strconv.Itoa(demuxRWTimeoutUS),
 	}
 	if hdr := ffmpegHeadersArg(headers); hdr != "" {
 		args = append(args, "-headers", hdr)
 	}
 	geom := strings.ReplaceAll(h.demux.size, "x", ":")
+	vf := "scale=" + geom + ":force_original_aspect_ratio=decrease:eval=frame,pad=" + geom + ":(ow-iw)/2:(oh-ih)/2"
 	args = append(args,
 		"-i", ingestURL,
-		"-map", "0:v:0?", "-map", "0:a:0?",
+		"-map", "0:v:0", "-map", "0:a:0",
 		"-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
-		"-vf", "scale="+geom+":force_original_aspect_ratio=decrease,pad="+geom+":(ow-iw)/2:(oh-ih)/2",
+		"-crf", strconv.Itoa(demuxCRF),
+		"-r", strconv.Itoa(demuxOutputFPS), "-fps_mode", "cfr",
+		"-vf", vf,
 		"-c:a", "aac", "-ac", "2", "-ar", "48000", "-b:a", "128k",
+		"-max_muxing_queue_size", strconv.Itoa(demuxMuxQueueSize),
 		"-f", "mpegts", "pipe:1",
 	)
 	return args
@@ -426,6 +526,17 @@ func truncateDemuxLog(s string, limit int) string {
 		return s
 	}
 	return s[:limit] + "…"
+}
+
+// demuxShouldRestart reports whether the supervisor should start a new encode.
+// Clean EOF (nil wait/copy) stops — the stub and intentional ends must not loop.
+// Non-zero exit or stall-kill (waitErr set) triggers a restart. Client/copy
+// failures do not restart (body already broken).
+func demuxShouldRestart(copyErr, waitErr error) bool {
+	if copyErr != nil {
+		return false
+	}
+	return waitErr != nil
 }
 
 // demuxCloseReason classifies why a Class B pipe ended (for soak diagnosis #60).
