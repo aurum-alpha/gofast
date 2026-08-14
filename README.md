@@ -313,6 +313,19 @@ go run ./cmd/fastgen
 # open http://localhost:8180/
 ```
 
+## Node (host-side)
+
+Node is pinned in [`.node-version`](.node-version) and managed with [fnm](https://github.com/Schniz/fnm).
+fnm itself is installed once per machine (repos never pin fnm):
+
+```bash
+brew install fnm                                    # once per machine
+echo 'eval "$(fnm env --use-on-cd)"' >> ~/.zshrc    # once per machine
+fnm install                                         # in the repo: installs the pinned Node
+```
+
+With `--use-on-cd`, `cd`-ing into the repo switches to the pinned Node automatically.
+
 ## Status
 
 Ten baked-in providers (LG API, i.mjh.nz/jmp2.uk, and published M3U/XMLTV pairs) — see [Built-in providers](#built-in-providers-where-data-comes-from).
