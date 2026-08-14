@@ -17,6 +17,10 @@ env:
   # Go aligns with the Dockerfile pin (golang:1.26.5-bookworm).
   GO_VERSION: "1.26.5"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   compile:
     name: Compile
