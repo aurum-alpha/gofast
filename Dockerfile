@@ -2,12 +2,12 @@
 #
 # LOCAL / DEV — build UI + Go from source (docker compose build).
 # Production/GHCR uses Dockerfile.prod (CI binaries only). Keep image pins in sync:
-#   node:22-bookworm
+#   node:26-bookworm
 #   golang:1.26.5-bookworm
 #   debian:bookworm-slim (fastgen + fastproxy — ships ffmpeg)
 #   busybox:1.36.1-musl (legacy note; fastproxy HEALTHCHECK uses wget from apt)
 
-FROM node:22-bookworm AS web
+FROM node:26-bookworm AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
