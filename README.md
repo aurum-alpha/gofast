@@ -178,7 +178,7 @@ Default ports: **8180** (gen), **8181** (proxy). Front with your own reverse pro
 
 | Knob | Who uses it | Typical local compose |
 |------|-------------|------------------------|
-| `FASTGEN_PROXY_BASE_URL` / `proxy_base_url` | Jellyfin/browser (M3U emit) | `http://localhost:8181` |
+| `FASTGEN_PROXY_BASE_URL` / `proxy_base_url` | Jellyfin/browser (M3U emit) | `http://localhost:4601` |
 | `FASTPROXY_PUBLIC_BASE_URL` | Proxy playlist rewrite (`/s`, `/seg`) when set | unset locally; optional `https://…` behind TLS |
 | `FASTGEN_PROXY_INTERNAL_URL` / `proxy_internal_url` | Gen health probes (Manual L2) rewrite | `http://fastproxy:8181` (compose default) |
 | `FASTPROXY_GEN_URL` | Proxy → gen (origins + event push) | `http://fastgen:8180` |
