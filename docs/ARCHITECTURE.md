@@ -79,15 +79,15 @@ flowchart LR
 
 **Production images must not recompile.** CI is the build authority; `Dockerfile.prod` only packages artifacts.
 
-CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. Workflow YAML only calls canonical Makefile targets / npm scripts; repo-specific flags live in the `Makefile` and `web/package.json`.
+CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. Workflow YAML only calls canonical scripts / npm scripts; repo-specific flags live under `scripts/` and `web/package.json` (a thin `Makefile` wraps the scripts for local dev).
 
 | Job | What runs | Output |
 |-----|-----------|--------|
-| `go-mod` | `make go-mod` (`go mod download && go mod verify`), saves module cache | verified modules |
-| `build` | UI `npm ci && npm run build`, then `make build` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` + `ui-dist` artifacts |
-| `gofmt` | `make gofmt` (`gofmt -l .` must be empty) | pass/fail gate |
-| `vet` | `make vet` (`go vet ./...`) | pass/fail gate |
-| `test-unit` | `make test-unit` (`go test ./... -cover`, using the `ui-dist` artifact so embed is present) | pass/fail gate |
+| `go-mod` | `scripts/go-mod.sh` (`go mod download && go mod verify`), saves module cache | verified modules |
+| `build` | UI `npm ci && npm run build`, then `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` + `ui-dist` artifacts |
+| `gofmt` | `scripts/gofmt.sh` (`gofmt -l .` must be empty) | pass/fail gate |
+| `vet` | `scripts/vet.sh` (`go vet ./...`) | pass/fail gate |
+| `test-unit` | `scripts/test-unit.sh` (`go test ./... -cover`, using the `ui-dist` artifact so embed is present) | pass/fail gate |
 | `lint` | `npm run lint` (oxlint) in `web/` | pass/fail gate |
 | `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` artifact into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
 | `ci-ok` | rollup (`if: always()`), fails if any needed job failed/cancelled | single required check |
@@ -101,7 +101,7 @@ Why this works: both artifacts are **standalone** static Go (`CGO_ENABLED=0`) wi
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI uses Node from `.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `make build` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
+CI uses Node from `.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
 
 ## Config
 

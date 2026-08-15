@@ -36,7 +36,7 @@ jobs:
           cache: true
 
       - name: Download and verify modules
-        run: make go-mod
+        run: ./scripts/go-mod.sh
 
   build:
     name: build
@@ -70,7 +70,7 @@ jobs:
       - name: Build binaries
         env:
           BUILD_NUMBER: ${{ github.run_number }}
-        run: make build
+        run: ./scripts/build.sh
 
       - name: Upload binaries
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -103,7 +103,7 @@ jobs:
           cache: true
 
       - name: gofmt
-        run: make gofmt
+        run: ./scripts/gofmt.sh
 
   vet:
     name: vet
@@ -128,7 +128,7 @@ jobs:
           path: internal/ui/dist/
 
       - name: Vet
-        run: make vet
+        run: ./scripts/vet.sh
 
   test-unit:
     name: test-unit
@@ -153,7 +153,7 @@ jobs:
           path: internal/ui/dist/
 
       - name: Unit tests
-        run: make test-unit
+        run: ./scripts/test-unit.sh
 
   lint:
     name: lint
