@@ -82,7 +82,7 @@ flowchart LR
 | Stage | What runs | Output |
 |-------|-----------|--------|
 | CI — UI | Node 22, `npm ci && npm run build` in `web/` | `internal/ui/dist` |
-| CI — Go | Go 1.26.5, `CGO_ENABLED=0`, linux binaries | `bin/fastgen`, `bin/fastproxy` (UI already inside fastgen) |
+| CI — Go | Go 1.26.6, `CGO_ENABLED=0`, linux binaries | `bin/fastgen`, `bin/fastproxy` (UI already inside fastgen) |
 | CI — gofmt | `gofmt -l .` must be empty | pass/fail gate |
 | CI — test | `go test ./...` (after UI build so embed is present) | pass/fail gate |
 | CI — image | `Dockerfile.prod` copies binaries into `debian:bookworm-slim` + ffmpeg | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
@@ -96,7 +96,7 @@ Why this works: both artifacts are **standalone** static Go (`CGO_ENABLED=0`) wi
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI compile/test use GitHub-hosted Node **22** and Go **1.26.5** (same pins as the local `Dockerfile` image). Compile injects `internal/version` via `-ldflags` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
+CI compile/test use GitHub-hosted Node **22** and Go **1.26.6** (same pins as the local `Dockerfile` image). Compile injects `internal/version` via `-ldflags` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
 
 ## Config
 
