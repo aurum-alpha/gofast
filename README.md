@@ -156,7 +156,7 @@ Optional once-per-local-day digest so you can see overnight refresh/health/lineu
 
 ## Install & operate
 
-Images are published to GHCR on every merge to `main` (after UI build + compile + test pass):
+Images are published to GHCR on every merge to `main` (after the build and all gates — gofmt, vet, unit tests, lint — pass):
 
 | Service | Image tags |
 |---------|------------|

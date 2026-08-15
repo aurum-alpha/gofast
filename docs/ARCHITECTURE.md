@@ -79,13 +79,18 @@ flowchart LR
 
 **Production images must not recompile.** CI is the build authority; `Dockerfile.prod` only packages artifacts.
 
-| Stage | What runs | Output |
-|-------|-----------|--------|
-| CI — UI | Node 22, `npm ci && npm run build` in `web/` | `internal/ui/dist` |
-| CI — Go | Go 1.26.6, `CGO_ENABLED=0`, linux binaries | `bin/fastgen`, `bin/fastproxy` (UI already inside fastgen) |
-| CI — gofmt | `gofmt -l .` must be empty | pass/fail gate |
-| CI — test | `go test ./...` (after UI build so embed is present) | pass/fail gate |
-| CI — image | `Dockerfile.prod` copies binaries into `debian:bookworm-slim` + ffmpeg | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
+CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. Workflow YAML only calls canonical scripts / npm scripts; repo-specific flags live under `scripts/` and `web/package.json` (a thin `Makefile` wraps the scripts for local dev).
+
+| Job | What runs | Output |
+|-----|-----------|--------|
+| `go-mod` | `scripts/go-mod.sh` (`go mod download && go mod verify`), saves module cache | verified modules |
+| `build` | UI `npm ci && npm run build`, then `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` + `ui-dist` artifacts |
+| `gofmt` | `scripts/gofmt.sh` (`gofmt -l .` must be empty) | pass/fail gate |
+| `vet` | `scripts/vet.sh` (`go vet ./...`) | pass/fail gate |
+| `test-unit` | `scripts/test-unit.sh` (`go test ./... -cover`, using the `ui-dist` artifact so embed is present) | pass/fail gate |
+| `lint` | `npm run lint` (oxlint) in `web/` | pass/fail gate |
+| `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` artifact into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
+| `ci-ok` | rollup (`if: always()`), fails if any needed job failed/cancelled | single required check |
 
 Why this works: both artifacts are **standalone** static Go (`CGO_ENABLED=0`) with the UI baked into fastgen. Runtime images are **debian:bookworm-slim + ffmpeg** (ffprobe for gen Health L2; ffmpeg encode for proxy Class B `/stable/`). CI must build for the platforms you deploy (today: `linux/amd64` on `ubuntu-latest`; add `arm64` later if a NAS/Pi needs it).
 
@@ -96,7 +101,7 @@ Why this works: both artifacts are **standalone** static Go (`CGO_ENABLED=0`) wi
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI compile/test use GitHub-hosted Node **22** and Go **1.26.6** (same pins as the local `Dockerfile` image). Compile injects `internal/version` via `-ldflags` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
+CI uses Node from `.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
 
 ## Config
 
@@ -184,7 +189,7 @@ Dockerfile          # optional local multi-stage build from source
 docker-compose.yml
 docker-compose.prod.yml
 stack.env
-.github/workflows/  # UI build → go build → test → Dockerfile.prod → GHCR
+.github/workflows/  # go-mod → build → gofmt/vet/test-unit/lint → image → ci-ok
 ```
 
 Homelab pull requires `docker login ghcr.io` while the repo/packages are private.

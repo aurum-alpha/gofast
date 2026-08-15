@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
@@ -21,9 +20,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  compile:
-    name: Compile
+  go-mod:
+    name: go-mod
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download and verify modules
+        run: ./scripts/go-mod.sh
+
+  build:
+    name: build
+    needs: go-mod
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -47,19 +67,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Compile binaries
-        run: |
-          mkdir -p bin
-          COMMIT="${GITHUB_SHA::7}"
-          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          LDFLAGS="-s -w \
-            -X github.com/j27-aurum/gofast/internal/version.Build=${{ github.run_number }} \
-            -X github.com/j27-aurum/gofast/internal/version.Commit=${COMMIT} \
-            -X github.com/j27-aurum/gofast/internal/version.BuiltAt=${BUILT_AT}"
-          CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o bin/fastgen ./cmd/fastgen
-          CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o bin/fastproxy ./cmd/fastproxy
-          chmod 755 bin/fastgen bin/fastproxy
-          echo "build=${{ github.run_number }} commit=${COMMIT} built_at=${BUILT_AT}"
+      - name: Build binaries
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: ./scripts/build.sh
 
       - name: Upload binaries
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -68,10 +79,88 @@ jobs:
           path: bin/
           retention-days: 1
 
-  test:
-    name: Test
-    needs: compile
+      - name: Upload UI dist
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-dist
+          path: internal/ui/dist/
+          retention-days: 1
+
+  gofmt:
+    name: gofmt
+    needs: build
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: ./scripts/gofmt.sh
+
+  vet:
+    name: vet
+    needs: build
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download UI dist
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ui-dist
+          path: internal/ui/dist/
+
+      - name: Vet
+        run: ./scripts/vet.sh
+
+  test-unit:
+    name: test-unit
+    needs: build
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download UI dist
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ui-dist
+          path: internal/ui/dist/
+
+      - name: Unit tests
+        run: ./scripts/test-unit.sh
+
+  lint:
+    name: lint
+    needs: build
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -83,34 +172,19 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Build UI
+      - name: Lint web
         working-directory: web
         run: |
           npm ci
-          npm run build
+          npm run lint
 
-      - name: Set up Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: gofmt
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "The following files are not gofmt-clean:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: Test
-        run: go test ./...
-
-  docker:
-    name: Docker
-    needs: [compile, test]
+  image:
+    name: image
+    needs: [build, gofmt, vet, test-unit, lint]
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -165,3 +239,14 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  ci-ok:
+    name: ci-ok
+    needs: [go-mod, build, gofmt, vet, test-unit, lint, image]
+    if: always()
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions: {}
+    steps:
+      - name: Fail on failed or cancelled dependencies
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
