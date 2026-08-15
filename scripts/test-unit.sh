@@ -3,4 +3,5 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-go test ./... -cover
+mkdir -p coverage
+go test ./... -coverprofile=coverage/go-unit.out -covermode=atomic
