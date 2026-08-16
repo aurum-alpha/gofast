@@ -8,6 +8,11 @@ on:
 
 permissions:
   contents: read
+  # The shared node jobs request packages: read so private @aurum-alpha
+  # packages resolve. A called workflow can never hold more than the calling
+  # job, and naming any scope here sets every unnamed one to none — so
+  # omitting this rejects the whole file at startup, before any job runs.
+  packages: read
 
 env:
   REGISTRY: ghcr.io
