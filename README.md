@@ -156,7 +156,7 @@ Optional once-per-local-day digest so you can see overnight refresh/health/lineu
 
 ## Install & operate
 
-Images are published to GHCR on every merge to `main` (after UI build + compile + test pass):
+Images are published to GHCR on every merge to `main` (after the build and all gates — gofmt, vet, unit tests, lint — pass):
 
 | Service | Image tags |
 |---------|------------|
@@ -204,7 +204,7 @@ docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 curl http://localhost:8180/healthz
 ```
 
-CI builds UI + binaries inside `node:22-bookworm` / `golang:1.26.5-bookworm` (same pins as local `Dockerfile`), then packages with [`Dockerfile.prod`](Dockerfile.prod) into GHCR.
+CI builds UI + binaries inside `node:22-bookworm` / `golang:1.26.6-bookworm` (same pins as local `Dockerfile`), then packages with [`Dockerfile.prod`](Dockerfile.prod) into GHCR.
 
 ### Portainer (homelab stack)
 
