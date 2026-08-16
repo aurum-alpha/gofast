@@ -17,8 +17,9 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
-  # Node comes from .node-version (also mirrored by the Dockerfile node stage);
-  # Go comes from go.mod (go-version-file), which aligns with the Dockerfile pin.
+  # Node comes from web/.node-version (beside the app it pins, which is where
+  # the shared node jobs look); Go comes from go.mod (go-version-file), which
+  # aligns with the Dockerfile pin.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

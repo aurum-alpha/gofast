@@ -102,7 +102,7 @@ Why this works: both binaries are **standalone** static Go (`CGO_ENABLED=0`), an
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI uses Node from `.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
+CI uses Node from `web/.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
 
 ## Config
 
