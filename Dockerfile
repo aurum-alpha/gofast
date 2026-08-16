@@ -13,7 +13,7 @@ COPY web/package.json web/pnpm-lock.yaml ./
 # corepack activates the pnpm version pinned by packageManager in package.json.
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY web/ ./
-RUN mkdir -p /src/internal/ui && pnpm run build
+RUN pnpm run build
 
 # golang:1.26.6-bookworm
 FROM golang@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 AS build
@@ -22,7 +22,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
-COPY --from=web /src/internal/ui/dist/ internal/ui/dist/
+# vite builds to web/dist (fleet standard); the embed directory is filled here.
+COPY --from=web /src/web/dist/ internal/ui/dist/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV CGO_ENABLED=0
 # Optional identity for local compose builds (CI injects via ldflags on binaries).

@@ -70,7 +70,8 @@ Tech: React (Vite) SPA under `web/`. Production build lands in `internal/ui/dist
 
 ```mermaid
 flowchart LR
-  webSrc["web/ React source"] -->|pnpm run build| dist["internal/ui/dist"]
+  webSrc["web/ React source"] -->|pnpm run build| built["web/dist"]
+  built -->|CI artifact / Docker COPY| dist["internal/ui/dist"]
   dist -->|go:embed| fastgenBin["fastgen binary"]
   fastgenBin -->|serves| browser["Browser /"]
 ```
@@ -79,15 +80,16 @@ flowchart LR
 
 **Production images must not recompile.** CI is the build authority; `Dockerfile.prod` only packages artifacts.
 
-CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. The standard Go capabilities are **thin stubs of the shared jobs** in `aurum-alpha/workflows`, which own the commands themselves; this repo keeps no wrapper script for them (the `Makefile` runs the same native commands for local dev). Genuinely repo-specific work — the UI build and version stamping — stays in `scripts/build.sh` and `web/package.json`.
+CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. The standard Go capabilities are **thin stubs of the shared jobs** in `aurum-alpha/workflows`, which own the commands themselves; this repo keeps no wrapper script for them (the `Makefile` runs the same native commands for local dev). The React build is the shared `job-node-build`; only version stamping stays repo-specific, in `scripts/build.sh`.
 
 | Job | What runs | Output |
 |-----|-----------|--------|
 | `go-mod` | shared `job-go-mod` (`go mod download && go mod verify`) | verified modules |
-| `build` | UI `pnpm install && pnpm run build`, then `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` + `ui-dist` artifacts |
+| `web-build` | shared `job-node-build` (`pnpm run build`) in `web/` | `dist` artifact |
+| `build` | downloads `dist` into `internal/ui/dist`, then `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` artifact |
 | `gofmt` | shared `job-go-gofmt` (`gofmt -l .` must be empty) | pass/fail gate |
-| `vet` | shared `job-go-vet` (`go vet ./...`, with the `ui-dist` artifact so embed is present) | pass/fail gate |
-| `test-unit` | shared `job-go-test-unit` (`go test ./... -race -covermode=atomic`, `ui-dist` artifact restored) + Codecov upload | pass/fail gate |
+| `vet` | shared `job-go-vet` (`go vet ./...`, with the `dist` artifact so embed is present) | pass/fail gate |
+| `test-unit` | shared `job-go-test-unit` (`go test ./... -race -covermode=atomic`, `dist` artifact restored) + Codecov upload | pass/fail gate |
 | `web-lint` | shared `job-node-lint` (`pnpm run lint` — oxlint) in `web/` | pass/fail gate |
 | `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` artifact into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
 | `ci-ok` | rollup (`if: always()`), fails if any needed job failed/cancelled | single required check |

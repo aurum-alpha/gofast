@@ -1,11 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Build into the Go embed directory served by fastgen.
+// Builds to web/dist like every other React app in the fleet, so the shared
+// job-node-build can own this build. Getting the output into the Go embed
+// directory (internal/ui/dist) is the consumer's job: CI downloads the dist
+// artifact there, the Dockerfile copies it, and `make ui` does it locally.
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: '../internal/ui/dist',
+    outDir: 'dist',
     emptyOutDir: true,
   },
   server: {

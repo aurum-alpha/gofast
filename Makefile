@@ -7,17 +7,27 @@
 # no per-repo layer to drift from the shared definition. The targets below
 # invoke the same native commands for local use.
 #
-# build is the exception: it is genuinely repo-specific (UI build plus
-# version stamping), so scripts/build.sh stays the entrypoint for CI and
-# local alike.
+# The React app is built by the shared job-node-build in CI, which uploads
+# web/dist as an artifact that the Go build downloads into internal/ui/dist.
+# `make ui` is the local equivalent of that hand-off; `make build` runs it
+# first so a local build embeds a current UI.
+#
+# scripts/build.sh stays repo-specific: it stamps internal/version via
+# -ldflags, which no shared job can know about.
 
-.PHONY: go-mod build gofmt vet test-unit
+.PHONY: go-mod ui build gofmt vet test-unit
 
 go-mod:
 	go mod download
 	go mod verify
 
-build:
+ui:
+	cd web && pnpm install --frozen-lockfile && pnpm run build
+	rm -rf internal/ui/dist
+	mkdir -p internal/ui
+	cp -R web/dist internal/ui/dist
+
+build: ui
 	./scripts/build.sh
 
 gofmt:
