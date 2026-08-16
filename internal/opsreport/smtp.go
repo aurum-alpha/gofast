@@ -33,7 +33,7 @@ func (m *Mailer) Send(cfg config.OpsReport, subject, text, htmlBody string) erro
 	if len(to) == 0 {
 		return fmt.Errorf("opsreport: no recipients")
 	}
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	msg := buildMIME(from, to, subject, text, htmlBody)
 
 	timeout := m.DialTimeout
