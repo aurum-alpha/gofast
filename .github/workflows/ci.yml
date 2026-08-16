@@ -27,12 +27,12 @@ concurrency:
 
 jobs:
   go-mod:
-    uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@fbdda85976909f9713f3c076d72a6f61b19e7d3c # v1.5.0
+    uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
     secrets: inherit
 
   # The React app builds the same way as every other one in the fleet.
   web-build:
-    uses: aurum-alpha/workflows/.github/workflows/job-node-build.yml@fbdda85976909f9713f3c076d72a6f61b19e7d3c # v1.5.0
+    uses: aurum-alpha/workflows/.github/workflows/job-node-build.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
     with:
       workdir: web
     secrets: inherit
@@ -67,24 +67,24 @@ jobs:
 
   gofmt:
     needs: build
-    uses: aurum-alpha/workflows/.github/workflows/job-go-gofmt.yml@fbdda85976909f9713f3c076d72a6f61b19e7d3c # v1.5.0
+    uses: aurum-alpha/workflows/.github/workflows/job-go-gofmt.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
     secrets: inherit
 
   vet:
     needs: build
-    uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@fbdda85976909f9713f3c076d72a6f61b19e7d3c # v1.5.0
+    uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
     secrets: inherit
 
   test-unit:
     needs: build
-    uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@fbdda85976909f9713f3c076d72a6f61b19e7d3c # v1.5.0
+    uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
     secrets: inherit
 
   # Dual-stack naming (CI_STANDARD B4): this lints the React app, not the Go
   # code, so it carries the web- prefix. A bare `lint` here would read as the
   # Go linter it is not.
   web-lint:
-    uses: aurum-alpha/workflows/.github/workflows/job-node-lint.yml@fbdda85976909f9713f3c076d72a6f61b19e7d3c # v1.5.0
+    uses: aurum-alpha/workflows/.github/workflows/job-node-lint.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
     with:
       workdir: web
     secrets: inherit
