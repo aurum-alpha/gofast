@@ -31,18 +31,17 @@ concurrency:
 
 jobs:
   go-mod:
-    uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+    uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@027a84a487c3513266ca98014988eb0a9088b35c # v1.7.0
     secrets: inherit
 
   # The React app builds the same way as every other one in the fleet.
-  web-build:
-    uses: aurum-alpha/workflows/.github/workflows/job-node-build.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+  react-build:
+    uses: aurum-alpha/workflows/.github/workflows/job-node-build.yml@027a84a487c3513266ca98014988eb0a9088b35c # v1.7.0
     with:
       workdir: web
     secrets: inherit
 
-  build:
-    name: build
+  go-build:
     needs: go-mod
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions:
@@ -69,34 +68,32 @@ jobs:
           path: bin/
           retention-days: 1
 
-  gofmt:
-    needs: build
-    uses: aurum-alpha/workflows/.github/workflows/job-go-gofmt.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+  go-fmt:
+    needs: go-build
+    uses: aurum-alpha/workflows/.github/workflows/job-go-fmt.yml@027a84a487c3513266ca98014988eb0a9088b35c # v1.7.0
     secrets: inherit
 
-  vet:
-    needs: build
-    uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+  go-vet:
+    needs: go-build
+    uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@027a84a487c3513266ca98014988eb0a9088b35c # v1.7.0
     secrets: inherit
 
-  test-unit:
-    needs: build
-    uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+  go-test-unit:
+    needs: go-build
+    uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@027a84a487c3513266ca98014988eb0a9088b35c # v1.7.0
     secrets: inherit
 
-  # Dual-stack naming (CI_STANDARD B4): this lints the React app, not the Go
-  # code, so it carries the web- prefix. A bare `lint` here would read as the
-  # Go linter it is not.
-  web-lint:
-    needs: web-build
-    uses: aurum-alpha/workflows/.github/workflows/job-node-lint.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+  # The id names the codebase it acts on: this lints the React app, not the Go
+  # code. A bare `lint` would read as the Go linter it is not.
+  react-lint:
+    needs: react-build
+    uses: aurum-alpha/workflows/.github/workflows/job-node-lint.yml@027a84a487c3513266ca98014988eb0a9088b35c # v1.7.0
     with:
       workdir: web
     secrets: inherit
 
   image:
-    name: image
-    needs: [build, web-build, gofmt, vet, test-unit, web-lint]
+    needs: [go-build, react-build, go-fmt, go-vet, go-test-unit, react-lint]
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions:
       contents: read
@@ -165,8 +162,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   ci-ok:
-    name: ci-ok
-    needs: [go-mod, web-build, build, gofmt, vet, test-unit, web-lint, image]
+    needs: [go-mod, react-build, go-build, go-fmt, go-vet, go-test-unit, react-lint, image]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions: {}
