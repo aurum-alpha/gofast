@@ -21,9 +21,13 @@ env:
   # the shared node jobs look); Go comes from go.mod (go-version-file), which
   # aligns with the Dockerfile pin.
 
+# Cancel superseded pull-request runs, never the default branch: a main run
+# can publish, and cancelling it drops the publish silently — a cancelled run
+# is not a failed one, so the rollup stays green and the artifact simply never
+# appears (CI_STANDARD Principle 6).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   go-mod:
