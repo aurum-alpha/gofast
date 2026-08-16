@@ -88,6 +88,7 @@ jobs:
   # code, so it carries the web- prefix. A bare `lint` here would read as the
   # Go linter it is not.
   web-lint:
+    needs: web-build
     uses: aurum-alpha/workflows/.github/workflows/job-node-lint.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
     with:
       workdir: web
