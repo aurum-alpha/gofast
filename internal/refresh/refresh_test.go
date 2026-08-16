@@ -866,12 +866,39 @@ func (s scheduleStub) SetRefreshSchedule(time.Duration, time.Duration, bool) {}
 func (s scheduleStub) GuideHoursAhead() float64                              { return 0 }
 func (s scheduleStub) GuideEnd() time.Time                                   { return time.Time{} }
 
+// syncBuffer guards a bytes.Buffer for tests that read the log while the code
+// under test writes it from another goroutine. bytes.Buffer is not safe for
+// concurrent use, and slog offers no synchronization of its own — reading one
+// directly is a data race even when the test happens to pass.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func (b *syncBuffer) Len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Len()
+}
+
 func TestNextRefreshHeartbeat(t *testing.T) {
 	prev := scheduleHeartbeat
 	scheduleHeartbeat = 25 * time.Millisecond
 	t.Cleanup(func() { scheduleHeartbeat = prev })
 
-	var buf bytes.Buffer
+	var buf syncBuffer
 	prevLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prevLogger) })

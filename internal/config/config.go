@@ -28,6 +28,10 @@ const (
 	DefaultPath    = "/data/config.yaml"
 	DefaultListen  = ":8180"
 	DefaultDataDir = "/data"
+	// DefaultUIDir is where the container image places the built React app.
+	// The UI ships as files in the image rather than compiled into the binary,
+	// so this is a real path on disk, overridable for local runs.
+	DefaultUIDir = "/srv/gofast/ui"
 )
 
 // Config is the configuration surface for fastgen.
@@ -35,6 +39,7 @@ type Config struct {
 	Listen       string `yaml:"listen"`
 	BaseURL      string `yaml:"base_url"`
 	DataDir      string `yaml:"data_dir"`
+	UIDir        string `yaml:"ui_dir"`
 	ProxyBaseURL string `yaml:"proxy_base_url"`
 	// ProxyInternalURL is an optional gen-side origin for health probes when
 	// ProxyBaseURL is only reachable by clients (e.g. localhost). Empty = probe
@@ -290,6 +295,7 @@ func defaults() *Config {
 		Listen:     DefaultListen,
 		BaseURL:    "",
 		DataDir:    DefaultDataDir,
+		UIDir:      DefaultUIDir,
 		Regions:    RegionsField(model.DefaultRegions),
 		ProxyAll:   &proxyAll,
 		CacheLogos: &cacheLogos,
@@ -339,6 +345,9 @@ func envOverlay() (*Config, error) {
 	}
 	if v := os.Getenv("FASTGEN_DATA_DIR"); v != "" {
 		o.DataDir = v
+	}
+	if v := os.Getenv("FASTGEN_UI_DIR"); v != "" {
+		o.UIDir = v
 	}
 	if v := os.Getenv("FASTGEN_PROXY_BASE_URL"); v != "" {
 		o.ProxyBaseURL = v
@@ -538,6 +547,7 @@ func (c *Config) LogLoaded(path string, fromFile bool) {
 		"cache_logos", c.CacheLogosEnabled(),
 		"regions", c.EffectiveRegions(),
 		"data_dir", c.DataDir,
+		"ui_dir", c.UIDir,
 		"health_consecutive_failures", c.HealthConsecutiveFailures(),
 		"health_exclude_unhealthy", c.HealthExcludeUnhealthy(),
 		"health_l1_interval", c.HealthL1Interval().String(),
@@ -581,6 +591,9 @@ func (c *Config) merge(o *Config) {
 	}
 	if o.DataDir != "" {
 		c.DataDir = o.DataDir
+	}
+	if o.UIDir != "" {
+		c.UIDir = o.UIDir
 	}
 	if o.ProxyBaseURL != "" {
 		c.ProxyBaseURL = o.ProxyBaseURL

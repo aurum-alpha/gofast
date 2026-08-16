@@ -147,7 +147,7 @@ func main() {
 	store.Register("ops_report", opsSched)
 	store.Register("refresh", svc)
 
-	uiHandler := ui.Handler()
+	uiHandler := ui.Handler(cfg.UIDir)
 	srv := &server.Server{
 		Addr:    cfg.Listen,
 		Healthz: server.HealthzHandler(reg),

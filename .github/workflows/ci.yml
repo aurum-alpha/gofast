@@ -8,12 +8,18 @@ on:
 
 permissions:
   contents: read
+  # The shared node jobs request packages: read so private @aurum-alpha
+  # packages resolve. A called workflow can never hold more than the calling
+  # job, and naming any scope here sets every unnamed one to none — so
+  # omitting this rejects the whole file at startup, before any job runs.
+  packages: read
 
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
-  # Node comes from .node-version (also mirrored by the Dockerfile node stage);
-  # Go comes from go.mod (go-version-file), which aligns with the Dockerfile pin.
+  # Node comes from web/.node-version (beside the app it pins, which is where
+  # the shared node jobs look); Go comes from go.mod (go-version-file), which
+  # aligns with the Dockerfile pin.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,22 +27,15 @@ concurrency:
 
 jobs:
   go-mod:
-    name: go-mod
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+    secrets: inherit
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Download and verify modules
-        run: ./scripts/go-mod.sh
+  # The React app builds the same way as every other one in the fleet.
+  web-build:
+    uses: aurum-alpha/workflows/.github/workflows/job-node-build.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+    with:
+      workdir: web
+    secrets: inherit
 
   build:
     name: build
@@ -47,19 +46,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Build UI
-        working-directory: web
-        run: |
-          npm ci
-          npm run build
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -79,122 +65,33 @@ jobs:
           path: bin/
           retention-days: 1
 
-      - name: Upload UI dist
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ui-dist
-          path: internal/ui/dist/
-          retention-days: 1
-
   gofmt:
-    name: gofmt
     needs: build
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: gofmt
-        run: ./scripts/gofmt.sh
+    uses: aurum-alpha/workflows/.github/workflows/job-go-gofmt.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+    secrets: inherit
 
   vet:
-    name: vet
     needs: build
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Download UI dist
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ui-dist
-          path: internal/ui/dist/
-
-      - name: Vet
-        run: ./scripts/vet.sh
+    uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+    secrets: inherit
 
   test-unit:
-    name: test-unit
     needs: build
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+    secrets: inherit
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Download UI dist
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ui-dist
-          path: internal/ui/dist/
-
-      - name: Unit tests
-        run: ./scripts/test-unit.sh
-
-      - name: Upload Go coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          # Org upload token requires the target repo slug.
-          slug: ${{ github.repository }}
-          files: coverage/go-unit.out
-          flags: go
-          name: go-unit
-          fail_ci_if_error: true
-          disable_search: true
-          # Actions runners intermittently fail Codecov CLI GPG key fetch.
-          skip_validation: true
-
-  lint:
-    name: lint
-    needs: build
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Lint web
-        working-directory: web
-        run: |
-          npm ci
-          npm run lint
+  # Dual-stack naming (CI_STANDARD B4): this lints the React app, not the Go
+  # code, so it carries the web- prefix. A bare `lint` here would read as the
+  # Go linter it is not.
+  web-lint:
+    uses: aurum-alpha/workflows/.github/workflows/job-node-lint.yml@03728a3d8bd5fc6de8ef4c76671885bd965473be # v1.6.0
+    with:
+      workdir: web
+    secrets: inherit
 
   image:
     name: image
-    needs: [build, gofmt, vet, test-unit, lint]
+    needs: [build, web-build, gofmt, vet, test-unit, web-lint]
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions:
       contents: read
@@ -216,6 +113,14 @@ jobs:
         with:
           name: go-binaries
           path: bin/
+
+      # fastgen serves the React app from files in the image, so Dockerfile.prod
+      # packages this alongside the binary.
+      - name: Download UI dist
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: web/dist/
 
       - name: Restore execute bit
         run: chmod 755 bin/fastgen bin/fastproxy
@@ -256,7 +161,7 @@ jobs:
 
   ci-ok:
     name: ci-ok
-    needs: [go-mod, build, gofmt, vet, test-unit, lint, image]
+    needs: [go-mod, web-build, build, gofmt, vet, test-unit, web-lint, image]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions: {}

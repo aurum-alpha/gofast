@@ -66,48 +66,49 @@ The embedded UI ships early and grows with each milestone (no big-bang UI epic):
 | M4 | Config editor + formal acceptance |
 | M5 | Proxy-aware states / passive health views |
 
-Tech: React (Vite) SPA under `web/`. Production build lands in `internal/ui/dist` and is **`go:embed`’d into the fastgen binary**, which serves the static files (SPA fallback for client routes). Node is a **build-time** dependency only. Runtime is one static Go binary — no Node in the container. Proxy has no product UI.
+Tech: React (Vite) SPA under `web/`. The production build lands in `web/dist` and is **copied into the container image** at `/srv/gofast/ui`, which fastgen serves as static files (SPA fallback for client routes). Override the location with `FASTGEN_UI_DIR`. Node is a **build-time** dependency only — no Node in the runtime image. The deploy artifact is the container, so the UI is packaged rather than compiled in: `go build` never waits on a UI build, and what is being served can be inspected in a running container. Proxy has no product UI.
 
 ```mermaid
 flowchart LR
-  webSrc["web/ React source"] -->|npm run build| dist["internal/ui/dist"]
-  dist -->|go:embed| fastgenBin["fastgen binary"]
-  fastgenBin -->|serves| browser["Browser /"]
+  webSrc["web/ React source"] -->|pnpm run build| built["web/dist"]
+  built -->|COPY into image| imgDir["/srv/gofast/ui in image"]
+  imgDir -->|fastgen file server| browser["Browser /"]
 ```
 
 ## Build and packaging
 
 **Production images must not recompile.** CI is the build authority; `Dockerfile.prod` only packages artifacts.
 
-CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. Workflow YAML only calls canonical scripts / npm scripts; repo-specific flags live under `scripts/` and `web/package.json` (a thin `Makefile` wraps the scripts for local dev).
+CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. The standard Go capabilities are **thin stubs of the shared jobs** in `aurum-alpha/workflows`, which own the commands themselves; this repo keeps no wrapper script or Make target for them — run the native commands directly for local work. The React build is the shared `job-node-build`; only version stamping stays repo-specific, in `scripts/build.sh`.
 
 | Job | What runs | Output |
 |-----|-----------|--------|
-| `go-mod` | `scripts/go-mod.sh` (`go mod download && go mod verify`), saves module cache | verified modules |
-| `build` | UI `npm ci && npm run build`, then `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` + `ui-dist` artifacts |
-| `gofmt` | `scripts/gofmt.sh` (`gofmt -l .` must be empty) | pass/fail gate |
-| `vet` | `scripts/vet.sh` (`go vet ./...`) | pass/fail gate |
-| `test-unit` | `scripts/test-unit.sh` (`go test ./... -cover`, using the `ui-dist` artifact so embed is present) | pass/fail gate |
-| `lint` | `npm run lint` (oxlint) in `web/` | pass/fail gate |
-| `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` artifact into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
+| `go-mod` | shared `job-go-mod` (`go mod download && go mod verify`) | verified modules |
+| `web-build` | shared `job-node-build` (`pnpm run build`) in `web/` | `dist` artifact |
+| `build` | `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries, version stamped) — **build once** | `go-binaries` artifact |
+| `gofmt` | shared `job-go-gofmt` (`gofmt -l .` must be empty) | pass/fail gate |
+| `vet` | shared `job-go-vet` (`go vet ./...`) | pass/fail gate |
+| `test-unit` | shared `job-go-test-unit` (`go test ./... -race -covermode=atomic`) + Codecov upload | pass/fail gate |
+| `web-lint` | shared `job-node-lint` (`pnpm run lint` — oxlint) in `web/` | pass/fail gate |
+| `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` and `dist` artifacts into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
 | `ci-ok` | rollup (`if: always()`), fails if any needed job failed/cancelled | single required check |
 
-Why this works: both artifacts are **standalone** static Go (`CGO_ENABLED=0`) with the UI baked into fastgen. Runtime images are **debian:bookworm-slim + ffmpeg** (ffprobe for gen Health L2; ffmpeg encode for proxy Class B `/stable/`). CI must build for the platforms you deploy (today: `linux/amd64` on `ubuntu-latest`; add `arm64` later if a NAS/Pi needs it).
+Why this works: both binaries are **standalone** static Go (`CGO_ENABLED=0`), and fastgen's UI travels beside it in the image. Runtime images are **debian:bookworm-slim + ffmpeg** (ffprobe for gen Health L2; ffmpeg encode for proxy Class B `/stable/`). CI must build for the platforms you deploy (today: `linux/amd64` on `ubuntu-latest`; add `arm64` later if a NAS/Pi needs it).
 
 | File | Role |
 |------|------|
 | `Dockerfile.prod` | **Ship path** — copy CI binaries into debian-slim + ffmpeg; used by CI to push GHCR |
-| `Dockerfile` | **Local/dev** — multi-stage Node + Go build from source (`docker compose build`) |
+| `Dockerfile` | **Local/dev** — multi-stage Node + Go build from source, copying `web/dist` into the image (`docker compose build`) |
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI uses Node from `.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
+CI uses Node from `web/.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
 
 ## Config
 
 Follow [12factor.net/config](https://12factor.net/config) (see `AGENTS.md`):
 
-- **Deploy-varying values** → environment. Shared: **`PORT`** (listen) for both gen and proxy. Gen-only: `FASTGEN_BASE_URL`, `FASTGEN_DATA_DIR`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, `FASTGEN_CACHE_LOGOS`, `FASTGEN_HEALTH_CONSECUTIVE_FAILURES`. Env always wins.
+- **Deploy-varying values** → environment. Shared: **`PORT`** (listen) for both gen and proxy. Gen-only: `FASTGEN_BASE_URL`, `FASTGEN_DATA_DIR`, `FASTGEN_UI_DIR`, `FASTGEN_PROXY_BASE_URL`, `FASTGEN_PROXY_ALL`, `FASTGEN_CACHE_LOGOS`, `FASTGEN_HEALTH_CONSECUTIVE_FAILURES`. Env always wins.
 - **`FASTGEN_BASE_URL` / `base_url`:** public origin for logos and absolute links as seen by Jellyfin/browsers. Include the port unless on 80/443 (`http://host:8180`); omit port behind TLS reverse proxy (`https://gofast.example.com`). No trailing slash. Required when `cache_logos` is enabled.
 - **`FASTGEN_CACHE_LOGOS` / `cache_logos`:** when true, rewrite M3U/XMLTV/API logo URLs to `{base_url}/logos/...` at emit time (no proactive download). `GET /logos/{provider}/{file}` lazily fetches upstream on miss or after 24h soft revalidation (conditional GET); hard-invalidate only when the upstream logo URL changes. Default false (upstream CDN URLs unchanged). Logos live outside generations so they survive refresh commits; local compose bind-mounts a single writable `./.data:/data` (config + cache + channelattr), matching prod which mounts all of `/data`.
 - **`FASTGEN_PROXY_BASE_URL` / `proxy_base_url`:** public FASTProxy origin as reached by Jellyfin/ffmpeg. It is canonicalized without a trailing slash. `FASTGEN_PROXY_ALL` / `proxy_all` defaults false and requires a proxy base URL when enabled.
@@ -181,7 +182,7 @@ internal/
   proxy/         # FASTProxy rewrite, sessions, seg shuttle, reporter
   proxyactivity/ # gen-side SQLite glass for proxy events/snapshots (Proxy UI tab)
   server/ ui/   # ui embeds Vite dist from web/
-web/            # React + Vite source (build → internal/ui/dist)
+web/            # React + Vite source (build → web/dist, copied into the image)
 testdata/
 config.example.yaml
 Dockerfile.prod     # production: package CI-built binaries only (no Node/Go rebuild)

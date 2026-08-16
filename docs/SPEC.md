@@ -554,7 +554,7 @@ in the file = restart.**
 ## Docker
 
 - **CI builds artifacts; production images only package them.** Pipeline: Node
-  builds the React UI → Go embeds it and compiles static `fastgen` /
+  builds the React UI → the image packages it beside static `fastgen` /
   `fastproxy` → tests → `Dockerfile.prod` copies those binaries into
   `gcr.io/distroless/static` (plus ca-certificates; healthcheck helper as
   needed). Do **not** re-run `npm` / `go build` inside the production image
@@ -586,9 +586,9 @@ in the file = restart.**
 ## Web UI (required)
 
 Embedded web UI **in the fastgen binary**: a React (Vite) app under `web/` is
-built to static assets and embedded with Go `embed`, then served by the same
+built to static assets shipped in the container image, then served by the same
 fastgen process — no separate frontend container. Node is required only to
-*build* the UI (CI/Docker/`npm run build`); runtime stays one Go binary.
+*build* the UI (CI/Docker/`pnpm run build`); runtime stays one Go binary.
 Proxy has no product UI. Ship the UI foundation early and feather features as
 gen capabilities land (classification, export reasons, health, config editor).
 

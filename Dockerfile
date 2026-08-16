@@ -9,10 +9,11 @@
 
 FROM node:26-bookworm AS web
 WORKDIR /src/web
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
+COPY web/package.json web/pnpm-lock.yaml ./
+# corepack activates the pnpm version pinned by packageManager in package.json.
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY web/ ./
-RUN mkdir -p /src/internal/ui && npm run build
+RUN pnpm run build
 
 # golang:1.26.6-bookworm
 FROM golang@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 AS build
@@ -21,7 +22,6 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
-COPY --from=web /src/internal/ui/dist/ internal/ui/dist/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV CGO_ENABLED=0
 # Optional identity for local compose builds (CI injects via ldflags on binaries).
@@ -42,6 +42,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && rm -rf /var/lib/apt/lists/* \
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
 COPY --from=build /out/fastgen /fastgen
+# The React app ships as files served by fastgen, not compiled into it.
+COPY --from=web /src/web/dist/ /srv/gofast/ui/
 USER nonroot:nonroot
 EXPOSE 8180
 ENV PORT=8180
