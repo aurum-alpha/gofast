@@ -79,15 +79,15 @@ flowchart LR
 
 **Production images must not recompile.** CI is the build authority; `Dockerfile.prod` only packages artifacts.
 
-CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. Workflow YAML only calls canonical scripts / npm scripts; repo-specific flags live under `scripts/` and `web/package.json` (a thin `Makefile` wraps the scripts for local dev).
+CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. The standard Go capabilities are **thin stubs of the shared jobs** in `aurum-alpha/workflows`, which own the commands themselves; this repo keeps no wrapper script for them (the `Makefile` runs the same native commands for local dev). Genuinely repo-specific work — the UI build and version stamping — stays in `scripts/build.sh` and `web/package.json`.
 
 | Job | What runs | Output |
 |-----|-----------|--------|
-| `go-mod` | `scripts/go-mod.sh` (`go mod download && go mod verify`), saves module cache | verified modules |
+| `go-mod` | shared `job-go-mod` (`go mod download && go mod verify`) | verified modules |
 | `build` | UI `npm ci && npm run build`, then `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` + `ui-dist` artifacts |
-| `gofmt` | `scripts/gofmt.sh` (`gofmt -l .` must be empty) | pass/fail gate |
-| `vet` | `scripts/vet.sh` (`go vet ./...`) | pass/fail gate |
-| `test-unit` | `scripts/test-unit.sh` (`go test ./... -cover`, using the `ui-dist` artifact so embed is present) | pass/fail gate |
+| `gofmt` | shared `job-go-gofmt` (`gofmt -l .` must be empty) | pass/fail gate |
+| `vet` | shared `job-go-vet` (`go vet ./...`, with the `ui-dist` artifact so embed is present) | pass/fail gate |
+| `test-unit` | shared `job-go-test-unit` (`go test ./... -race -covermode=atomic`, `ui-dist` artifact restored) + Codecov upload | pass/fail gate |
 | `lint` | `npm run lint` (oxlint) in `web/` | pass/fail gate |
 | `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` artifact into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
 | `ci-ok` | rollup (`if: always()`), fails if any needed job failed/cancelled | single required check |
