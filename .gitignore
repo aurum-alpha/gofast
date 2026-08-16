@@ -11,3 +11,6 @@ web/node_modules/
 
 # Accidental Finder/editor duplicates ("foo 2.go").
 **/*[[:space:]]2.*
+
+# Go coverage output (scripts/test-unit.sh)
+/coverage/
