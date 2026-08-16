@@ -155,6 +155,20 @@ jobs:
       - name: Unit tests
         run: ./scripts/test-unit.sh
 
+      - name: Upload Go coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # Org upload token requires the target repo slug.
+          slug: ${{ github.repository }}
+          files: coverage/go-unit.out
+          flags: go
+          name: go-unit
+          fail_ci_if_error: true
+          disable_search: true
+          # Actions runners intermittently fail Codecov CLI GPG key fetch.
+          skip_validation: true
+
   lint:
     name: lint
     needs: build
