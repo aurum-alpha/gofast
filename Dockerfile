@@ -9,10 +9,11 @@
 
 FROM node:26-bookworm AS web
 WORKDIR /src/web
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
+COPY web/package.json web/pnpm-lock.yaml ./
+# corepack activates the pnpm version pinned by packageManager in package.json.
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY web/ ./
-RUN mkdir -p /src/internal/ui && npm run build
+RUN mkdir -p /src/internal/ui && pnpm run build
 
 # golang:1.26.6-bookworm
 FROM golang@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 AS build

@@ -308,7 +308,7 @@ docker compose up -d
 Or build UI/Go on the host, then run the binary:
 
 ```bash
-cd web && npm ci && npm run build && cd ..
+cd web && pnpm install --frozen-lockfile && pnpm run build && cd ..
 go run ./cmd/fastgen
 # open http://localhost:8180/
 ```

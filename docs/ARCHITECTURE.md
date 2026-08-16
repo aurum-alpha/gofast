@@ -70,7 +70,7 @@ Tech: React (Vite) SPA under `web/`. Production build lands in `internal/ui/dist
 
 ```mermaid
 flowchart LR
-  webSrc["web/ React source"] -->|npm run build| dist["internal/ui/dist"]
+  webSrc["web/ React source"] -->|pnpm run build| dist["internal/ui/dist"]
   dist -->|go:embed| fastgenBin["fastgen binary"]
   fastgenBin -->|serves| browser["Browser /"]
 ```
@@ -84,11 +84,11 @@ CI follows the fleet job catalog — one compile, artifact hand-off, parallel ga
 | Job | What runs | Output |
 |-----|-----------|--------|
 | `go-mod` | shared `job-go-mod` (`go mod download && go mod verify`) | verified modules |
-| `build` | UI `npm ci && npm run build`, then `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` + `ui-dist` artifacts |
+| `build` | UI `pnpm install && pnpm run build`, then `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries) — **build once** | `go-binaries` + `ui-dist` artifacts |
 | `gofmt` | shared `job-go-gofmt` (`gofmt -l .` must be empty) | pass/fail gate |
 | `vet` | shared `job-go-vet` (`go vet ./...`, with the `ui-dist` artifact so embed is present) | pass/fail gate |
 | `test-unit` | shared `job-go-test-unit` (`go test ./... -race -covermode=atomic`, `ui-dist` artifact restored) + Codecov upload | pass/fail gate |
-| `lint` | `npm run lint` (oxlint) in `web/` | pass/fail gate |
+| `web-lint` | shared `job-node-lint` (`pnpm run lint` — oxlint) in `web/` | pass/fail gate |
 | `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` artifact into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
 | `ci-ok` | rollup (`if: always()`), fails if any needed job failed/cancelled | single required check |
 

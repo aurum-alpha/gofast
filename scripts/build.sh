@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Canonical CI entrypoint: compile all packages and the release binaries.
 # Binaries expect internal/ui/dist to be populated (go:embed); CI builds the
-# UI first (npm run build in web/) and hands the dist to downstream jobs.
+# UI first (pnpm run build in web/) and hands the dist to downstream jobs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

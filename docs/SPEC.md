@@ -588,7 +588,7 @@ in the file = restart.**
 Embedded web UI **in the fastgen binary**: a React (Vite) app under `web/` is
 built to static assets and embedded with Go `embed`, then served by the same
 fastgen process — no separate frontend container. Node is required only to
-*build* the UI (CI/Docker/`npm run build`); runtime stays one Go binary.
+*build* the UI (CI/Docker/`pnpm run build`); runtime stays one Go binary.
 Proxy has no product UI. Ship the UI foundation early and feather features as
 gen capabilities land (classification, export reasons, health, config editor).
 
