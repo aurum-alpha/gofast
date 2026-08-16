@@ -6,7 +6,9 @@
 #   debian:bookworm-slim (fastgen + fastproxy — ships ffmpeg)
 #
 # Expectation: context includes executable bin/fastgen and bin/fastproxy
-# (linux, CGO_ENABLED=0, same flags as local Dockerfile build stage).
+# (linux, CGO_ENABLED=0, same flags as local Dockerfile build stage), plus
+# web/dist from the web-build job — fastgen serves the React app from files in
+# the image rather than from a go:embed, so the UI is packaged here too.
 
 # fastgen ships ffprobe for Health L2 probes.
 FROM debian:bookworm-slim AS fastgen
@@ -14,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && rm -rf /var/lib/apt/lists/* \
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
 COPY bin/fastgen /fastgen
+COPY web/dist/ /srv/gofast/ui/
 USER nonroot:nonroot
 EXPOSE 8180
 ENV PORT=8180

@@ -10,7 +10,7 @@ FAST (Free Ad-Supported Streaming TV) catalogs are everywhere — LG Channels, P
 
 | Piece | Role |
 |-------|------|
-| **fastgen** | Primary product: providers → cache → M3U/XMLTV, health, logos, embedded operator UI |
+| **fastgen** | Primary product: providers → cache → M3U/XMLTV, health, logos, operator UI |
 | **fastproxy** | Optional add-on: Amagi beacon rewrite + Google DAI SESSION mint for Jellyfin/ffmpeg |
 
 Gen works standalone. Add the proxy when you want Amagi / SESSION playback (or full `proxy_all` observability).
@@ -93,7 +93,7 @@ Providers are **Go packages compiled into fastgen** — not plugins. YAML only o
 
 Optional **`proxy_all`**: every tune starts at the proxy (better observability; proxy becomes critical for all channels). Default is selective: proxy only Amagi + SESSION + Distro/STIRR resolve.
 
-### Operator UI (embedded)
+### Operator UI
 
 Embedded SPA in the fastgen binary — see [screenshots](#screenshots) for Status, Providers, Channels, and Guide.
 
@@ -308,7 +308,7 @@ docker compose up -d
 Or build UI/Go on the host, then run the binary:
 
 ```bash
-make ui
+cd web && pnpm install --frozen-lockfile && pnpm run build
 go run ./cmd/fastgen
 # open http://localhost:8180/
 ```

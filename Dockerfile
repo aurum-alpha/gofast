@@ -22,8 +22,6 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
-# vite builds to web/dist (fleet standard); the embed directory is filled here.
-COPY --from=web /src/web/dist/ internal/ui/dist/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV CGO_ENABLED=0
 # Optional identity for local compose builds (CI injects via ldflags on binaries).
@@ -44,6 +42,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && rm -rf /var/lib/apt/lists/* \
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
 COPY --from=build /out/fastgen /fastgen
+# The React app ships as files served by fastgen, not compiled into it.
+COPY --from=web /src/web/dist/ /srv/gofast/ui/
 USER nonroot:nonroot
 EXPOSE 8180
 ENV PORT=8180

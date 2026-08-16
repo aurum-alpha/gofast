@@ -33,20 +33,13 @@ jobs:
 
   build:
     name: build
-    needs: [go-mod, web-build]
+    needs: go-mod
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions:
       contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      # internal/ui go:embed's this; the shared web-build job produced it.
-      - name: Download UI dist
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: dist
-          path: internal/ui/dist/
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -74,19 +67,11 @@ jobs:
   vet:
     needs: build
     uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@fbdda85976909f9713f3c076d72a6f61b19e7d3c # v1.5.0
-    with:
-      # internal/ui embeds the built UI; the packages do not compile without it.
-      needs_artifact: dist
-      artifact_path: internal/ui/dist/
     secrets: inherit
 
   test-unit:
     needs: build
     uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@fbdda85976909f9713f3c076d72a6f61b19e7d3c # v1.5.0
-    with:
-      # internal/ui embeds the built UI; the packages do not compile without it.
-      needs_artifact: dist
-      artifact_path: internal/ui/dist/
     secrets: inherit
 
   # Dual-stack naming (CI_STANDARD B4): this lints the React app, not the Go
@@ -100,7 +85,7 @@ jobs:
 
   image:
     name: image
-    needs: [build, gofmt, vet, test-unit, web-lint]
+    needs: [build, web-build, gofmt, vet, test-unit, web-lint]
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions:
       contents: read
@@ -122,6 +107,14 @@ jobs:
         with:
           name: go-binaries
           path: bin/
+
+      # fastgen serves the React app from files in the image, so Dockerfile.prod
+      # packages this alongside the binary.
+      - name: Download UI dist
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: web/dist/
 
       - name: Restore execute bit
         run: chmod 755 bin/fastgen bin/fastproxy

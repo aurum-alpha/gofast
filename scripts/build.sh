@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Canonical CI entrypoint: compile all packages and the release binaries.
-# Binaries expect internal/ui/dist to be populated (go:embed); CI builds the
-# UI first (pnpm run build in web/) and hands the dist to downstream jobs.
+# Compile all packages and the release binaries, stamping internal/version.
+# The React app is NOT needed here: it ships as files in the container image,
+# not compiled into the binary, so this builds standalone.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
