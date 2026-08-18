@@ -244,17 +244,61 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
 
-      - name: Build and push
+      - name: Build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: ./Dockerfile.prod
           target: fastgen
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Something has to run the image (CI_STANDARD "Standard job DAG", step 5).
+      # Building it proves it links; starting it proves it boots, and those are
+      # different claims — three repos in this fleet shipped images that could
+      # not start for months, green throughout, because nothing started them.
+      #
+      # Dockerfile.prod already declares a HEALTHCHECK for this target
+      # (wget /healthz on 8180), so the image states its own readiness contract
+      # and this waits for Docker's verdict rather than inventing a second one.
+      - name: The image starts
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          image=$(printf '%s\n' "$TAGS" | head -n1)
+          cid=$(docker run -d --rm "$image")
+          trap 'docker logs "$cid" 2>&1 | tail -40 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 40); do
+            state=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo gone)
+            if [ "$state" != "running" ]; then
+              echo "::error::fastgen exited before becoming healthy (state: $state)."
+              exit 1
+            fi
+            health=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            case "$health" in
+              healthy)   echo "fastgen healthy after ${i}s."; exit 0 ;;
+              unhealthy) echo "::error::fastgen reported unhealthy."; exit 1 ;;
+            esac
+            sleep 1
+          done
+          echo "::error::fastgen never became healthy within 40s."
+          exit 1
+
+      - name: Push to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$TAGS" | while read -r t; do
+            [ -n "$t" ] && docker push "$t"
+          done
 
 
   server-go-fastproxy-image:
@@ -316,17 +360,61 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
 
-      - name: Build and push
+      - name: Build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: ./Dockerfile.prod
           target: fastproxy
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Something has to run the image (CI_STANDARD "Standard job DAG", step 5).
+      # Building it proves it links; starting it proves it boots, and those are
+      # different claims — three repos in this fleet shipped images that could
+      # not start for months, green throughout, because nothing started them.
+      #
+      # Dockerfile.prod already declares a HEALTHCHECK for this target
+      # (wget /healthz on 8181), so the image states its own readiness contract
+      # and this waits for Docker's verdict rather than inventing a second one.
+      - name: The image starts
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          image=$(printf '%s\n' "$TAGS" | head -n1)
+          cid=$(docker run -d --rm "$image")
+          trap 'docker logs "$cid" 2>&1 | tail -40 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 40); do
+            state=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo gone)
+            if [ "$state" != "running" ]; then
+              echo "::error::fastproxy exited before becoming healthy (state: $state)."
+              exit 1
+            fi
+            health=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            case "$health" in
+              healthy)   echo "fastproxy healthy after ${i}s."; exit 0 ;;
+              unhealthy) echo "::error::fastproxy reported unhealthy."; exit 1 ;;
+            esac
+            sleep 1
+          done
+          echo "::error::fastproxy never became healthy within 40s."
+          exit 1
+
+      - name: Push to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$TAGS" | while read -r t; do
+            [ -n "$t" ] && docker push "$t"
+          done
 
   ci-ok:
     needs:
