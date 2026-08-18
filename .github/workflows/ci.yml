@@ -171,7 +171,17 @@ jobs:
     uses: aurum-alpha/workflows/.github/workflows/job-go-govulncheck.yml@77d5c7cdf9e19993171482d2cbf75cfa27a0d48f # v1.11.0
     secrets: inherit
 
-  image:
+  # Two images, two jobs. A matrix collapses them into one entry that reports as
+  # `image (fastgen, fastgen)`, so a reader cannot tell from the checks list what
+  # was built or which half failed — and both share a single set of needs even
+  # though only one carries the UI. Named jobs cost a few lines and make the DAG
+  # legible (CI_STANDARD "Job ids name the deployable unit").
+  #
+  # fastgen serves the React app from files in the image, so it is the one that
+  # consumes client-dist. fastproxy carries no UI at all — which is exactly how
+  # the Dockerfile.prod path error localised itself when fastgen failed and
+  # fastproxy passed.
+  server-go-fastgen-image:
     needs:
       - server-go-build
       - server-go-fmt
@@ -191,14 +201,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: fastgen
-            image_suffix: fastgen
-          - target: fastproxy
-            image_suffix: fastproxy
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -235,7 +237,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image_suffix }}
+          images: ${{ env.IMAGE_PREFIX }}/fastgen
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=build-${{ github.run_number }},enable={{is_default_branch}}
@@ -247,7 +249,79 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.prod
-          target: ${{ matrix.target }}
+          target: fastgen
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
+  server-go-fastproxy-image:
+    needs:
+      - server-go-build
+      - server-go-fmt
+      - server-go-vet
+      - server-go-test-unit
+      - server-go-lint-errcheck
+      - server-go-lint-staticcheck
+      - server-go-lint-ineffassign
+      - server-go-lint-unused
+      - server-go-govulncheck
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Download binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: go-binaries
+          path: bin/
+
+      # fastgen serves the React app from files in the image, so Dockerfile.prod
+      # packages this alongside the binary.
+      - name: Download UI dist
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: client-dist
+          path: client/dist/
+
+      - name: Restore execute bit
+        run: chmod 755 bin/fastgen bin/fastproxy
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/fastproxy
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=build-${{ github.run_number }},enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      - name: Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./Dockerfile.prod
+          target: fastproxy
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -270,7 +344,8 @@ jobs:
       - server-go-lint-ineffassign
       - server-go-lint-unused
       - server-go-govulncheck
-      - image
+      - server-go-fastgen-image
+      - server-go-fastproxy-image
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 30
