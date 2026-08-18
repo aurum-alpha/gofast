@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Colors copied from web/src/index.css (:root) and badge/stat patterns in App.css.
+// Colors copied from client/src/index.css (:root) and badge/stat patterns in App.css.
 const (
 	colorInk    = "#e8ebef"
 	colorPaper  = "#101014"
