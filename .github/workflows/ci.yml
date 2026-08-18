@@ -124,6 +124,53 @@ jobs:
       dir: "."
     secrets: inherit
 
+  server-go-lint-errcheck:
+    needs: server-go-build
+    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@fecc8e7a428dadb73acb80544cc8d74d873f260a # v1.11.0
+    with:
+      linter: errcheck
+      # 41 pre-existing finding(s). Stabilization window, not a mode —
+      # the gate goes hard when the debt is gone.
+      warn_only: true
+    secrets: inherit
+
+  server-go-lint-staticcheck:
+    needs: server-go-build
+    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@fecc8e7a428dadb73acb80544cc8d74d873f260a # v1.11.0
+    with:
+      linter: staticcheck
+      # 17 pre-existing finding(s). Stabilization window, not a mode —
+      # the gate goes hard when the debt is gone.
+      warn_only: true
+    secrets: inherit
+
+  server-go-lint-ineffassign:
+    needs: server-go-build
+    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@fecc8e7a428dadb73acb80544cc8d74d873f260a # v1.11.0
+    with:
+      linter: ineffassign
+      # 1 pre-existing finding(s). Stabilization window, not a mode —
+      # the gate goes hard when the debt is gone.
+      warn_only: true
+    secrets: inherit
+
+  server-go-lint-unused:
+    needs: server-go-build
+    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@fecc8e7a428dadb73acb80544cc8d74d873f260a # v1.11.0
+    with:
+      linter: unused
+      # 1 pre-existing finding(s). Stabilization window, not a mode —
+      # the gate goes hard when the debt is gone.
+      warn_only: true
+    secrets: inherit
+
+  # Lifted out of client-manager's tools/checks/govulncheck: a vulnerability
+  # scan is not one repo's concern (CI_STANDARD Principle 19).
+  server-go-govulncheck:
+    needs: server-go-build
+    uses: aurum-alpha/workflows/.github/workflows/job-go-govulncheck.yml@fecc8e7a428dadb73acb80544cc8d74d873f260a # v1.11.0
+    secrets: inherit
+
   image:
     needs:
       - server-go-build
@@ -134,6 +181,11 @@ jobs:
       - client-ts-react-lint
       - client-ts-react-typecheck
       - client-ts-react-test-unit
+      - server-go-lint-errcheck
+      - server-go-lint-staticcheck
+      - server-go-lint-ineffassign
+      - server-go-lint-unused
+      - server-go-govulncheck
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 30
     permissions:
@@ -213,6 +265,11 @@ jobs:
       - client-ts-react-lint
       - client-ts-react-typecheck
       - client-ts-react-test-unit
+      - server-go-lint-errcheck
+      - server-go-lint-staticcheck
+      - server-go-lint-ineffassign
+      - server-go-lint-unused
+      - server-go-govulncheck
       - image
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
