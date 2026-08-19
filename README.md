@@ -315,7 +315,7 @@ go run ./cmd/fastgen
 
 ## Node (host-side)
 
-Node is pinned in [`web/.node-version`](web/.node-version) and managed with [fnm](https://github.com/Schniz/fnm).
+Node is pinned in [`client/.node-version`](client/.node-version) and managed with [fnm](https://github.com/Schniz/fnm).
 fnm itself is installed once per machine (repos never pin fnm):
 
 ```bash

@@ -585,7 +585,7 @@ in the file = restart.**
 
 ## Web UI (required)
 
-Embedded web UI **in the fastgen binary**: a React (Vite) app under `web/` is
+Embedded web UI **in the fastgen binary**: a React (Vite) app under `client/` is
 built to static assets shipped in the container image, then served by the same
 fastgen process — no separate frontend container. Node is required only to
 *build* the UI (CI/Docker/`pnpm run build`); runtime stays one Go binary.

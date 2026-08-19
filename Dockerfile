@@ -9,10 +9,10 @@
 
 FROM node:26-bookworm AS web
 WORKDIR /src/web
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY client/package.json client/pnpm-lock.yaml ./
 # corepack activates the pnpm version pinned by packageManager in package.json.
 RUN corepack enable && pnpm install --frozen-lockfile
-COPY web/ ./
+COPY client/ ./
 RUN pnpm run build
 
 # golang:1.26.6-bookworm
@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
 COPY --from=build /out/fastgen /fastgen
 # The React app ships as files served by fastgen, not compiled into it.
-COPY --from=web /src/web/dist/ /srv/gofast/ui/
+COPY --from=web /src/client/dist/ /srv/gofast/ui/
 USER nonroot:nonroot
 EXPOSE 8180
 ENV PORT=8180

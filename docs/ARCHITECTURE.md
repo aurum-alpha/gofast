@@ -66,11 +66,11 @@ The embedded UI ships early and grows with each milestone (no big-bang UI epic):
 | M4 | Config editor + formal acceptance |
 | M5 | Proxy-aware states / passive health views |
 
-Tech: React (Vite) SPA under `web/`. The production build lands in `web/dist` and is **copied into the container image** at `/srv/gofast/ui`, which fastgen serves as static files (SPA fallback for client routes). Override the location with `FASTGEN_UI_DIR`. Node is a **build-time** dependency only — no Node in the runtime image. The deploy artifact is the container, so the UI is packaged rather than compiled in: `go build` never waits on a UI build, and what is being served can be inspected in a running container. Proxy has no product UI.
+Tech: React (Vite) SPA under `client/`. The production build lands in `client/dist` and is **copied into the container image** at `/srv/gofast/ui`, which fastgen serves as static files (SPA fallback for client routes). Override the location with `FASTGEN_UI_DIR`. Node is a **build-time** dependency only — no Node in the runtime image. The deploy artifact is the container, so the UI is packaged rather than compiled in: `go build` never waits on a UI build, and what is being served can be inspected in a running container. Proxy has no product UI.
 
 ```mermaid
 flowchart LR
-  webSrc["web/ React source"] -->|pnpm run build| built["web/dist"]
+  webSrc["client/ React source"] -->|pnpm run build| built["client/dist"]
   built -->|COPY into image| imgDir["/srv/gofast/ui in image"]
   imgDir -->|fastgen file server| browser["Browser /"]
 ```
@@ -84,12 +84,12 @@ CI follows the fleet job catalog — one compile, artifact hand-off, parallel ga
 | Job | What runs | Output |
 |-----|-----------|--------|
 | `go-mod` | shared `job-go-mod` (`go mod download && go mod verify`) | verified modules |
-| `web-build` | shared `job-node-build` (`pnpm run build`) in `web/` | `dist` artifact |
+| `client-ts-react-build` | shared `job-node-build` (`pnpm run build`) in `client/` | `dist` artifact |
 | `build` | `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries, version stamped) — **build once** | `go-binaries` artifact |
 | `gofmt` | shared `job-go-gofmt` (`gofmt -l .` must be empty) | pass/fail gate |
 | `vet` | shared `job-go-vet` (`go vet ./...`) | pass/fail gate |
 | `test-unit` | shared `job-go-test-unit` (`go test ./... -race -covermode=atomic`) + Codecov upload | pass/fail gate |
-| `web-lint` | shared `job-node-lint` (`pnpm run lint` — oxlint) in `web/` | pass/fail gate |
+| `client-ts-react-lint` | shared `job-node-lint` (`pnpm run lint` — oxlint) in `client/` | pass/fail gate |
 | `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` and `dist` artifacts into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
 | `ci-ok` | rollup (`if: always()`), fails if any needed job failed/cancelled | single required check |
 
@@ -98,11 +98,11 @@ Why this works: both binaries are **standalone** static Go (`CGO_ENABLED=0`), an
 | File | Role |
 |------|------|
 | `Dockerfile.prod` | **Ship path** — copy CI binaries into debian-slim + ffmpeg; used by CI to push GHCR |
-| `Dockerfile` | **Local/dev** — multi-stage Node + Go build from source, copying `web/dist` into the image (`docker compose build`) |
+| `Dockerfile` | **Local/dev** — multi-stage Node + Go build from source, copying `client/dist` into the image (`docker compose build`) |
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI uses Node from `web/.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
+CI uses Node from `client/.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
 
 ## Config
 
@@ -181,8 +181,8 @@ internal/
   logocache/ refresh/
   proxy/         # FASTProxy rewrite, sessions, seg shuttle, reporter
   proxyactivity/ # gen-side SQLite glass for proxy events/snapshots (Proxy UI tab)
-  server/ ui/   # ui embeds Vite dist from web/
-web/            # React + Vite source (build → web/dist, copied into the image)
+  server/ ui/   # ui embeds Vite dist from client/
+client/            # React + Vite source (build → client/dist, copied into the image)
 testdata/
 config.example.yaml
 Dockerfile.prod     # production: package CI-built binaries only (no Node/Go rebuild)
