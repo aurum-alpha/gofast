@@ -374,7 +374,6 @@ jobs:
       # The needs: list above is this repo's DAG and stays here. The lines that
       # decide what a red rollup means are shared: this repo carried its own
       # longer variant, which is precisely the drift the action ends.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: aurum-alpha/workflows/.github/actions/ci-ok@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
         with:
           needs_json: ${{ toJSON(needs) }}
