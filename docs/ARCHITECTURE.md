@@ -79,13 +79,13 @@ flowchart LR
 
 **Production images must not recompile.** CI is the build authority; `Dockerfile.prod` only packages artifacts.
 
-CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. The standard Go capabilities are **thin stubs of the shared jobs** in `aurum-alpha/workflows`, which own the commands themselves; this repo keeps no wrapper script or Make target for them — run the native commands directly for local work. The React build is the shared `job-node-build`; only version stamping stays repo-specific, in `scripts/build.sh`.
+CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. The standard Go capabilities are **thin stubs of the shared jobs** in `aurum-alpha/workflows`, which own the commands themselves; this repo keeps no wrapper script or Make target for them — run the native commands directly for local work. The React build is the shared `job-node-build`, and since the catalog gained `job-go-build` nothing is repo-specific here at all — version stamping moved into that job, which derives `internal/version` from the module path in `go.mod`.
 
 | Job | What runs | Output |
 |-----|-----------|--------|
 | `go-mod` | shared `job-go-mod` (`go mod download && go mod verify`) | verified modules |
 | `client-ts-react-build` | shared `job-node-build` (`pnpm run build`) in `client/` | `dist` artifact |
-| `build` | `scripts/build.sh` (`go build ./...` + `CGO_ENABLED=0` linux binaries, version stamped) — **build once** | `go-binaries` artifact |
+| `build` | shared `job-go-build` (`go build ./...` + `CGO_ENABLED=0 -trimpath` links, provenance stamped) — **build once** | `go-binaries` artifact |
 | `gofmt` | shared `job-go-gofmt` (`gofmt -l .` must be empty) | pass/fail gate |
 | `vet` | shared `job-go-vet` (`go vet ./...`) | pass/fail gate |
 | `test-unit` | shared `job-go-test-unit` (`go test ./... -race -covermode=atomic`) + Codecov upload | pass/fail gate |
@@ -102,7 +102,7 @@ Why this works: both binaries are **standalone** static Go (`CGO_ENABLED=0`), an
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI uses Node from `client/.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in `scripts/build.sh` (`Build` = Actions run number, `Commit` = short SHA). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
+CI uses Node from `client/.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in the shared `job-go-build` (`Version` = `dev`, since nothing outside this repo decides from it; `Build` = Actions run number, `Commit` = short SHA, `BuiltAt` = UTC timestamp). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
 
 ## Config
 
