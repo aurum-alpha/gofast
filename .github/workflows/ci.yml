@@ -30,6 +30,25 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # The caller-side checkers in the catalog — conformance, thinness,
+  # permissions and toolchain versions — run against this repo the way they
+  # run against the other eight (aurum-alpha/workflows#79). gofast was the
+  # last repo that passes all four and was not running them, which is the
+  # worst combination: conformant today, with nothing that would say so on
+  # the day it stops being.
+  #
+  # No needs:. It reads ci.yml, go.mod and package.json, never a build
+  # output, so a broken build makes its verdict no less true — and gating it
+  # would mean the repo least likely to be conformant is the one that never
+  # finds out. Rule D1 exempts it on exactly that ground.
+  #
+  # In ci-ok, because a check outside the rollup is a check nobody has to pass.
+  ci-conformance:
+    permissions:
+      contents: read
+    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@06b538843230f171f5fcbdcf99f282e2e011e22a # v1.14.5
+    secrets: inherit
+
   server-go-mod:
     uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     secrets: inherit
@@ -336,6 +355,7 @@ jobs:
 
   ci-ok:
     needs:
+      - ci-conformance
       - server-go-mod
       - server-go-build
       - server-go-fmt
