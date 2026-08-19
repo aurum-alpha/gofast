@@ -98,7 +98,7 @@ func TestProviderCachePurgeAPI(t *testing.T) {
 	}
 	select {
 	case <-reader.started:
-	case <-time.After(2 * time.Second):
+	case <-time.After(asyncWait):
 		t.Fatal("refresh did not start")
 	}
 	m3u, err := cc.ReadM3U("lg")
@@ -119,7 +119,7 @@ func TestProviderCachePurgeAPI(t *testing.T) {
 	// Drain the in-flight refresh so TempDir cleanup isn't racing CommitProvider.
 	before := lgFeed.FetchedAt()
 	close(reader.release)
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(asyncWait)
 	for time.Now().Before(deadline) {
 		if lgFeed.FetchedAt().After(before) {
 			time.Sleep(50 * time.Millisecond)
