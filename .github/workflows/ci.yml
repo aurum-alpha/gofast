@@ -227,9 +227,10 @@ jobs:
       image_name: gofast/fastgen
       dockerfile: Dockerfile.prod
       target: fastgen
+      # fastgen serves the React app from files in the image, so it is the
+      # one that consumes client-dist.
       artifacts: |
         go-binaries=bin
-        # fastgen serves the React app from files in the image.
         client-dist=client/dist
       # Artifact upload drops the execute bit, so the image builds
       # cleanly and the container dies on exec.
@@ -297,8 +298,9 @@ jobs:
       image_name: gofast/fastproxy
       dockerfile: Dockerfile.prod
       target: fastproxy
+      # fastproxy carries no UI at all — which is how the Dockerfile.prod path
+      # error localised itself when fastgen failed and fastproxy passed.
       artifacts: |
-        # fastproxy carries no UI at all.
         go-binaries=bin
       # Artifact upload drops the execute bit, so the image builds
       # cleanly and the container dies on exec.
