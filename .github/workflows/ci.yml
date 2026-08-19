@@ -381,9 +381,14 @@ jobs:
   # Housekeeping, outside the rollup and downstream of it. Two images, two
   # packages, two prunes — each sweeps only its own.
   #
-  # dry_run on both. wardley-mapper's main run proved the reference analysis
-  # works (31 of 37 digests protected) but its verdict was nothing to sweep, so
-  # the deletion path has still never executed anywhere.
+  # Live. Every dry run in the fleet reported the same two things: the
+  # reference analysis holds — jewelry-factory protected 111 of 120 digests,
+  # index children included — and nothing untagged had yet reached 30 days,
+  # so there was nothing to sweep. The age threshold is what protects a live
+  # image, not the dry run: `imagetools create` leaves the PROMOTED digest
+  # untagged, so an untagged-only sweep would delete what :latest resolves
+  # to. This job walks index children, and deletes nothing at all if it
+  # cannot inspect a tag.
   server-go-fastgen-image-prune:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [ci-ok]
@@ -393,7 +398,6 @@ jobs:
     uses: aurum-alpha/workflows/.github/workflows/job-image-prune.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
     with:
       image_name: gofast/fastgen
-      dry_run: true
     secrets: inherit
 
   server-go-fastproxy-image-prune:
@@ -405,5 +409,4 @@ jobs:
     uses: aurum-alpha/workflows/.github/workflows/job-image-prune.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
     with:
       image_name: gofast/fastproxy
-      dry_run: true
     secrets: inherit
