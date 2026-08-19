@@ -85,7 +85,7 @@ func TestProviderRefreshAPI(t *testing.T) {
 	}
 	select {
 	case <-reader.started:
-	case <-time.After(2 * time.Second):
+	case <-time.After(asyncWait):
 		t.Fatal("refresh did not start")
 	}
 
@@ -99,7 +99,7 @@ func TestProviderRefreshAPI(t *testing.T) {
 	if !ok {
 		t.Fatal("missing feed")
 	}
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(asyncWait)
 	for time.Now().Before(deadline) {
 		if feed.FetchedAt().After(before) {
 			// Let CommitProvider / status writes finish before TempDir cleanup.

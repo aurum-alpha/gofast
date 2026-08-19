@@ -63,37 +63,55 @@ jobs:
       outdir: dist
     secrets: inherit
 
-  # The compile and the linked binaries, from the catalog. This was
-  # scripts/build.sh: `go build ./...` then two CGO_ENABLED=0 -trimpath links
-  # with -ldflags stamping internal/version. The shared job does exactly that,
-  # which is why it should never have been a repo script — gha-runner-controller
-  # and client-manager each had their own wrapper around the same two commands.
+  # One build job per binary, because this repo tracks per-image build success
+  # and a binary is the same kind of claim: `server-go-fastgen-build` red says
+  # which deployable unit failed to link, where one job named `server-go-build`
+  # said only that something did.
+  #
+  # Each links exactly one binary and uploads only that one, so each image job
+  # downloads only what it ships. The single go-binaries artifact used to go to
+  # both, which put bin/fastgen in fastproxy's build context and made both
+  # image jobs chmod a binary neither of them needed.
+  #
+  # Both run `go build ./...` first. That is duplicated work and it is the
+  # point: each job proves the whole tree compiles before claiming its own
+  # binary links, so neither depends on the other having checked.
   #
   # Build is still github.run_number; the shared job reads it from the
   # environment rather than the caller passing it, so every Go repo in the
   # fleet stamps the same four fields whether or not it remembered to.
-  server-go-build:
+  server-go-fastgen-build:
     permissions:
       contents: read
     needs: server-go-mod
     uses: aurum-alpha/workflows/.github/workflows/job-go-build.yml@42dc97f304f53ca90de8a1aad5777aeacb069933 # v1.14.7
     with:
-      binaries: '["fastgen","fastproxy"]'
-      artifact_name: go-binaries
+      binaries: '["fastgen"]'
+      artifact_name: go-binary-fastgen
+    secrets: inherit
+
+  server-go-fastproxy-build:
+    permissions:
+      contents: read
+    needs: server-go-mod
+    uses: aurum-alpha/workflows/.github/workflows/job-go-build.yml@42dc97f304f53ca90de8a1aad5777aeacb069933 # v1.14.7
+    with:
+      binaries: '["fastproxy"]'
+      artifact_name: go-binary-fastproxy
     secrets: inherit
 
   server-go-fmt:
-    needs: server-go-build
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
     uses: aurum-alpha/workflows/.github/workflows/job-go-fmt.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     secrets: inherit
 
   server-go-vet:
-    needs: server-go-build
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
     uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     secrets: inherit
 
   server-go-test-unit:
-    needs: server-go-build
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
     uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     secrets: inherit
 
@@ -152,7 +170,7 @@ jobs:
     secrets: inherit
 
   server-go-lint-errcheck:
-    needs: server-go-build
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
     uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     with:
       linter: errcheck
@@ -162,7 +180,7 @@ jobs:
     secrets: inherit
 
   server-go-lint-staticcheck:
-    needs: server-go-build
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
     uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     with:
       linter: staticcheck
@@ -172,7 +190,7 @@ jobs:
     secrets: inherit
 
   server-go-lint-ineffassign:
-    needs: server-go-build
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
     uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     with:
       linter: ineffassign
@@ -182,7 +200,7 @@ jobs:
     secrets: inherit
 
   server-go-lint-unused:
-    needs: server-go-build
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
     uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     with:
       linter: unused
@@ -194,7 +212,7 @@ jobs:
   # Lifted out of client-manager's tools/checks/govulncheck: a vulnerability
   # scan is not one repo's concern (CI_STANDARD Principle 19).
   server-go-govulncheck:
-    needs: server-go-build
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
     uses: aurum-alpha/workflows/.github/workflows/job-go-govulncheck.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     secrets: inherit
 
@@ -213,7 +231,7 @@ jobs:
   # red run named the image and not which claim about it failed.
   server-go-fastgen-image-build:
     needs:
-      - server-go-build
+      - server-go-fastgen-build
       - server-go-fmt
       - server-go-vet
       - server-go-test-unit
@@ -240,13 +258,12 @@ jobs:
       # fastgen serves the React app from files in the image, so it is the
       # one that consumes client-dist.
       artifacts: |
-        go-binaries=bin
+        go-binary-fastgen=bin
         client-dist=client/dist
       # Artifact upload drops the execute bit, so the image builds
       # cleanly and the container dies on exec.
       executables: |
         bin/fastgen
-        bin/fastproxy
     secrets: inherit
 
   # probe: health — Dockerfile.prod declares a HEALTHCHECK for this target, so
@@ -289,7 +306,7 @@ jobs:
   # red run named the image and not which claim about it failed.
   server-go-fastproxy-image-build:
     needs:
-      - server-go-build
+      - server-go-fastproxy-build
       - server-go-fmt
       - server-go-vet
       - server-go-test-unit
@@ -311,11 +328,10 @@ jobs:
       # fastproxy carries no UI at all — which is how the Dockerfile.prod path
       # error localised itself when fastgen failed and fastproxy passed.
       artifacts: |
-        go-binaries=bin
+        go-binary-fastproxy=bin
       # Artifact upload drops the execute bit, so the image builds
       # cleanly and the container dies on exec.
       executables: |
-        bin/fastgen
         bin/fastproxy
     secrets: inherit
 
@@ -357,7 +373,8 @@ jobs:
     needs:
       - ci-conformance
       - server-go-mod
-      - server-go-build
+      - server-go-fastgen-build
+      - server-go-fastproxy-build
       - server-go-fmt
       - server-go-vet
       - server-go-test-unit

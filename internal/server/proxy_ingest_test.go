@@ -146,7 +146,7 @@ func TestProxyEventsFeedHealthFSM(t *testing.T) {
 
 	waitHealth := func(want model.Health) model.ChannelHealth {
 		t.Helper()
-		deadline := time.Now().Add(2 * time.Second)
+		deadline := time.Now().Add(asyncWait)
 		for time.Now().Before(deadline) {
 			raw, ok := attrs.Current(model.ProviderLG, "news", channelattr.KindHealth)
 			if !ok {
