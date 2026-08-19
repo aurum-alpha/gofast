@@ -198,7 +198,10 @@ jobs:
   # consumes client-dist. fastproxy carries no UI at all — which is exactly how
   # the Dockerfile.prod path error localised itself when fastgen failed and
   # fastproxy passed.
-  server-go-fastgen-image:
+  # fastgen: build, start, publish, prune — four claims, four checks.
+  # One job used to do all of it and reported as `server-go-fastgen-image`, so a
+  # red run named the image and not which claim about it failed.
+  server-go-fastgen-image-build:
     needs:
       - server-go-build
       - server-go-fmt
@@ -214,123 +217,67 @@ jobs:
       - server-go-lint-ineffassign
       - server-go-lint-unused
       - server-go-govulncheck
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    uses: aurum-alpha/workflows/.github/workflows/job-image-build.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+    with:
+      # A name under the owner: ghcr.io/aurum-alpha/gofast/fastgen, which is what
+      # IMAGE_PREFIX built by hand.
+      image_name: gofast/fastgen
+      dockerfile: Dockerfile.prod
+      target: fastgen
+      # fastgen serves the React app from files in the image, so it is the
+      # one that consumes client-dist.
+      artifacts: |
+        go-binaries=bin
+        client-dist=client/dist
+      # Artifact upload drops the execute bit, so the image builds
+      # cleanly and the container dies on exec.
+      executables: |
+        bin/fastgen
+        bin/fastproxy
+    secrets: inherit
 
-      - name: Download binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: go-binaries
-          path: bin/
+  # probe: health — Dockerfile.prod declares a HEALTHCHECK for this target, so
+  # the image states its own readiness contract and this waits for Docker's
+  # verdict instead of inventing a second one.
+  server-go-fastgen-image-starts:
+    needs: [server-go-fastgen-image-build]
+    permissions:
+      contents: read
+      packages: read
+    uses: aurum-alpha/workflows/.github/workflows/job-image-starts.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+    with:
+      image: ${{ needs.server-go-fastgen-image-build.outputs.image }}
+      digest: ${{ needs.server-go-fastgen-image-build.outputs.digest }}
+      probe: health
+      # config.DefaultPath is /data/config.yaml, and cache, clientaccess,
+      # proxyactivity and channelattr all open under /data — each os.Exit(1)
+      # on failure. A tmpfs is the same dependency without the cleanup;
+      # mode 1777 because the image runs as nonroot (uid 65532).
+      start_mounts: |
+        /data=1777
+    secrets: inherit
 
-      # fastgen serves the React app from files in the image, so Dockerfile.prod
-      # packages this alongside the binary.
-      - name: Download UI dist
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: client-dist
-          path: client/dist/
+  server-go-fastgen-image-publish:
+    needs: [server-go-fastgen-image-build, server-go-fastgen-image-starts]
+    permissions:
+      contents: read
+      packages: write
+    uses: aurum-alpha/workflows/.github/workflows/job-image-publish.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+    with:
+      image: ${{ needs.server-go-fastgen-image-build.outputs.image }}
+      digest: ${{ needs.server-go-fastgen-image-build.outputs.digest }}
+      # This repo has always stamped the run number alongside latest.
+      extra_tags: |
+        type=raw,value=build-${{ github.run_number }},enable={{is_default_branch}}
+    secrets: inherit
 
-      - name: Restore execute bit
-        run: chmod 755 bin/fastgen bin/fastproxy
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/fastgen
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=build-${{ github.run_number }},enable={{is_default_branch}}
-            type=sha,prefix=sha-,format=short
-            type=ref,event=branch
-
-      - name: Build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: ./Dockerfile.prod
-          target: fastgen
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Something has to run the image (CI_STANDARD "Standard job DAG", step 5).
-      # Building it proves it links; starting it proves it boots, and those are
-      # different claims — three repos in this fleet shipped images that could
-      # not start for months, green throughout, because nothing started them.
-      #
-      # Dockerfile.prod already declares a HEALTHCHECK for this target
-      # (wget /healthz on 8180), so the image states its own readiness contract
-      # and this waits for Docker's verdict rather than inventing a second one.
-      #
-      # fastgen needs a writable /data: config.DefaultPath is /data/config.yaml,
-      # and cache, clientaccess, proxyactivity and channelattr all open under
-      # /data — each os.Exit(1) on failure. docker-compose.prod.yml mounts a
-      # volume there; started bare it exits immediately. A tmpfs is the same
-      # dependency without the cleanup, mode 1777 because the image runs as
-      # nonroot (uid 65532).
-      #
-      # No --rm: a container that exits under --rm is gone before `docker logs`
-      # can run, so the first failure of this check reported the exit and none
-      # of the reason. It is removed in the trap instead.
-      - name: The image starts
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          set -euo pipefail
-          image=$(printf '%s\n' "$TAGS" | head -n1)
-          cid=$(docker run -d --mount type=tmpfs,destination=/data,tmpfs-mode=1777 "$image")
-          trap 'docker logs "$cid" 2>&1 | tail -40 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
-
-          for i in $(seq 1 40); do
-            state=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo gone)
-            if [ "$state" != "running" ]; then
-              echo "::error::fastgen exited before becoming healthy (state: $state)."
-              exit 1
-            fi
-            health=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
-            case "$health" in
-              healthy)   echo "fastgen healthy after ${i}s."; exit 0 ;;
-              unhealthy) echo "::error::fastgen reported unhealthy."; exit 1 ;;
-            esac
-            sleep 1
-          done
-          echo "::error::fastgen never became healthy within 40s."
-          exit 1
-
-      - name: Push to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          set -euo pipefail
-          printf '%s\n' "$TAGS" | while read -r t; do
-            [ -n "$t" ] && docker push "$t"
-          done
-
-
-  server-go-fastproxy-image:
+  # fastproxy: build, start, publish, prune — four claims, four checks.
+  # One job used to do all of it and reported as `server-go-fastproxy-image`, so a
+  # red run named the image and not which claim about it failed.
+  server-go-fastproxy-image-build:
     needs:
       - server-go-build
       - server-go-fmt
@@ -341,117 +288,60 @@ jobs:
       - server-go-lint-ineffassign
       - server-go-lint-unused
       - server-go-govulncheck
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    uses: aurum-alpha/workflows/.github/workflows/job-image-build.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+    with:
+      # A name under the owner: ghcr.io/aurum-alpha/gofast/fastproxy, which is what
+      # IMAGE_PREFIX built by hand.
+      image_name: gofast/fastproxy
+      dockerfile: Dockerfile.prod
+      target: fastproxy
+      # fastproxy carries no UI at all — which is how the Dockerfile.prod path
+      # error localised itself when fastgen failed and fastproxy passed.
+      artifacts: |
+        go-binaries=bin
+      # Artifact upload drops the execute bit, so the image builds
+      # cleanly and the container dies on exec.
+      executables: |
+        bin/fastgen
+        bin/fastproxy
+    secrets: inherit
 
-      - name: Download binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: go-binaries
-          path: bin/
+  # probe: health — Dockerfile.prod declares a HEALTHCHECK for this target, so
+  # the image states its own readiness contract and this waits for Docker's
+  # verdict instead of inventing a second one.
+  server-go-fastproxy-image-starts:
+    needs: [server-go-fastproxy-image-build]
+    permissions:
+      contents: read
+      packages: read
+    uses: aurum-alpha/workflows/.github/workflows/job-image-starts.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+    with:
+      image: ${{ needs.server-go-fastproxy-image-build.outputs.image }}
+      digest: ${{ needs.server-go-fastproxy-image-build.outputs.digest }}
+      probe: health
+      # HealthzHandler answers ok:true without reaching gen, so an
+      # unreachable URL is enough to prove this image boots. Whether it can
+      # actually reach fastgen is an integration question, not this job's.
+      start_env: |
+        FASTPROXY_GEN_URL=http://127.0.0.1:8180
+    secrets: inherit
 
-      # fastgen serves the React app from files in the image, so Dockerfile.prod
-      # packages this alongside the binary.
-      - name: Download UI dist
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: client-dist
-          path: client/dist/
-
-      - name: Restore execute bit
-        run: chmod 755 bin/fastgen bin/fastproxy
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/fastproxy
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=build-${{ github.run_number }},enable={{is_default_branch}}
-            type=sha,prefix=sha-,format=short
-            type=ref,event=branch
-
-      - name: Build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: ./Dockerfile.prod
-          target: fastproxy
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Something has to run the image (CI_STANDARD "Standard job DAG", step 5).
-      # Building it proves it links; starting it proves it boots, and those are
-      # different claims — three repos in this fleet shipped images that could
-      # not start for months, green throughout, because nothing started them.
-      #
-      # Dockerfile.prod already declares a HEALTHCHECK for this target
-      # (wget /healthz on 8181), so the image states its own readiness contract
-      # and this waits for Docker's verdict rather than inventing a second one.
-      #
-      # fastproxy exits at once without FASTPROXY_GEN_URL (cmd/fastproxy/main.go:26).
-      # Nothing is listening on that URL here and nothing needs to be: this asserts
-      # the image boots and answers its own /healthz, not that it can reach gen.
-      #
-      # No --rm: a container that exits under --rm is gone before `docker logs`
-      # can run, so the first failure of this check reported the exit and none
-      # of the reason. It is removed in the trap instead.
-      - name: The image starts
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          set -euo pipefail
-          image=$(printf '%s\n' "$TAGS" | head -n1)
-          cid=$(docker run -d -e FASTPROXY_GEN_URL=http://127.0.0.1:8180 "$image")
-          trap 'docker logs "$cid" 2>&1 | tail -40 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
-
-          for i in $(seq 1 40); do
-            state=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo gone)
-            if [ "$state" != "running" ]; then
-              echo "::error::fastproxy exited before becoming healthy (state: $state)."
-              exit 1
-            fi
-            health=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
-            case "$health" in
-              healthy)   echo "fastproxy healthy after ${i}s."; exit 0 ;;
-              unhealthy) echo "::error::fastproxy reported unhealthy."; exit 1 ;;
-            esac
-            sleep 1
-          done
-          echo "::error::fastproxy never became healthy within 40s."
-          exit 1
-
-      - name: Push to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          set -euo pipefail
-          printf '%s\n' "$TAGS" | while read -r t; do
-            [ -n "$t" ] && docker push "$t"
-          done
+  server-go-fastproxy-image-publish:
+    needs: [server-go-fastproxy-image-build, server-go-fastproxy-image-starts]
+    permissions:
+      contents: read
+      packages: write
+    uses: aurum-alpha/workflows/.github/workflows/job-image-publish.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+    with:
+      image: ${{ needs.server-go-fastproxy-image-build.outputs.image }}
+      digest: ${{ needs.server-go-fastproxy-image-build.outputs.digest }}
+      # This repo has always stamped the run number alongside latest.
+      extra_tags: |
+        type=raw,value=build-${{ github.run_number }},enable={{is_default_branch}}
+    secrets: inherit
 
   ci-ok:
     needs:
@@ -470,41 +360,51 @@ jobs:
       - server-go-lint-ineffassign
       - server-go-lint-unused
       - server-go-govulncheck
-      - server-go-fastgen-image
-      - server-go-fastproxy-image
+      - server-go-fastgen-image-build
+      - server-go-fastgen-image-starts
+      - server-go-fastgen-image-publish
+      - server-go-fastproxy-image-build
+      - server-go-fastproxy-image-starts
+      - server-go-fastproxy-image-publish
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 30
     permissions: {}
     steps:
-      # toJSON(needs) is keyed by job id, so printing it names which dependency
-      # ended how. The bare `exit 1` this replaces said nothing at all: every
-      # red ci-ok cost a log fetch to learn whether something broke or the run
-      # was simply superseded.
-      #
-      # The JSON arrives through env rather than being interpolated into the
-      # script, so no value inside it can be read as shell.
-      - name: Fail on failed or cancelled dependencies
-        if: always()
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          printf '%s\n' "$NEEDS"
+      # The needs: list above is this repo's DAG and stays here. The lines that
+      # decide what a red rollup means are shared: this repo carried its own
+      # longer variant, which is precisely the drift the action ends.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: aurum-alpha/workflows/.github/actions/ci-ok@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+        with:
+          needs_json: ${{ toJSON(needs) }}
 
-          if printf '%s' "$NEEDS" | grep -q '"result": *"failure"'; then
-            echo "::error::A required job failed. The object above names which."
-            exit 1
-          fi
+  # Housekeeping, outside the rollup and downstream of it. Two images, two
+  # packages, two prunes — each sweeps only its own.
+  #
+  # dry_run on both. wardley-mapper's main run proved the reference analysis
+  # works (31 of 37 digests protected) but its verdict was nothing to sweep, so
+  # the deletion path has still never executed anywhere.
+  server-go-fastgen-image-prune:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci-ok]
+    permissions:
+      contents: read
+      packages: write
+    uses: aurum-alpha/workflows/.github/workflows/job-image-prune.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+    with:
+      image_name: gofast/fastgen
+      dry_run: true
+    secrets: inherit
 
-          # Cancelled is reported separately because it usually is not a defect:
-          # pushing a newer commit cancels the older run, and ci-ok runs anyway
-          # under always(). Distinguishing the two here is what stops a
-          # superseded run reading like a broken one.
-          if printf '%s' "$NEEDS" | grep -q '"result": *"cancelled"'; then
-            echo "::error::A required job was cancelled. If a newer commit \
-          superseded this run that is expected, and nothing here is broken."
-            exit 1
-          fi
-
-          echo "All dependencies succeeded."
+  server-go-fastproxy-image-prune:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci-ok]
+    permissions:
+      contents: read
+      packages: write
+    uses: aurum-alpha/workflows/.github/workflows/job-image-prune.yml@1276f42e3aa5039c4068de55567886d7d96dbf62 # v1.13.1
+    with:
+      image_name: gofast/fastproxy
+      dry_run: true
+    secrets: inherit
