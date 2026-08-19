@@ -44,33 +44,24 @@ jobs:
       outdir: dist
     secrets: inherit
 
+  # The compile and the linked binaries, from the catalog. This was
+  # scripts/build.sh: `go build ./...` then two CGO_ENABLED=0 -trimpath links
+  # with -ldflags stamping internal/version. The shared job does exactly that,
+  # which is why it should never have been a repo script — gha-runner-controller
+  # and client-manager each had their own wrapper around the same two commands.
+  #
+  # Build is still github.run_number; the shared job reads it from the
+  # environment rather than the caller passing it, so every Go repo in the
+  # fleet stamps the same four fields whether or not it remembered to.
   server-go-build:
-    needs: server-go-mod
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    timeout-minutes: 30
     permissions:
       contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build binaries
-        env:
-          BUILD_NUMBER: ${{ github.run_number }}
-        run: ./scripts/build.sh
-
-      - name: Upload binaries
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: go-binaries
-          path: bin/
-          retention-days: 1
+    needs: server-go-mod
+    uses: aurum-alpha/workflows/.github/workflows/job-go-build.yml@42dc97f304f53ca90de8a1aad5777aeacb069933 # v1.14.7
+    with:
+      binaries: '["fastgen","fastproxy"]'
+      artifact_name: go-binaries
+    secrets: inherit
 
   server-go-fmt:
     needs: server-go-build
