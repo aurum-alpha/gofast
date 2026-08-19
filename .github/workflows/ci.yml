@@ -477,6 +477,34 @@ jobs:
     timeout-minutes: 30
     permissions: {}
     steps:
+      # toJSON(needs) is keyed by job id, so printing it names which dependency
+      # ended how. The bare `exit 1` this replaces said nothing at all: every
+      # red ci-ok cost a log fetch to learn whether something broke or the run
+      # was simply superseded.
+      #
+      # The JSON arrives through env rather than being interpolated into the
+      # script, so no value inside it can be read as shell.
       - name: Fail on failed or cancelled dependencies
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: exit 1
+        if: always()
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$NEEDS"
+
+          if printf '%s' "$NEEDS" | grep -q '"result": *"failure"'; then
+            echo "::error::A required job failed. The object above names which."
+            exit 1
+          fi
+
+          # Cancelled is reported separately because it usually is not a defect:
+          # pushing a newer commit cancels the older run, and ci-ok runs anyway
+          # under always(). Distinguishing the two here is what stops a
+          # superseded run reading like a broken one.
+          if printf '%s' "$NEEDS" | grep -q '"result": *"cancelled"'; then
+            echo "::error::A required job was cancelled. If a newer commit \
+          superseded this run that is expected, and nothing here is broken."
+            exit 1
+          fi
+
+          echo "All dependencies succeeded."
