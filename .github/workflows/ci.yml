@@ -265,13 +265,24 @@ jobs:
       # Dockerfile.prod already declares a HEALTHCHECK for this target
       # (wget /healthz on 8180), so the image states its own readiness contract
       # and this waits for Docker's verdict rather than inventing a second one.
+      #
+      # fastgen needs a writable /data: config.DefaultPath is /data/config.yaml,
+      # and cache, clientaccess, proxyactivity and channelattr all open under
+      # /data — each os.Exit(1) on failure. docker-compose.prod.yml mounts a
+      # volume there; started bare it exits immediately. A tmpfs is the same
+      # dependency without the cleanup, mode 1777 because the image runs as
+      # nonroot (uid 65532).
+      #
+      # No --rm: a container that exits under --rm is gone before `docker logs`
+      # can run, so the first failure of this check reported the exit and none
+      # of the reason. It is removed in the trap instead.
       - name: The image starts
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
           image=$(printf '%s\n' "$TAGS" | head -n1)
-          cid=$(docker run -d --rm "$image")
+          cid=$(docker run -d --mount type=tmpfs,destination=/data,tmpfs-mode=1777 "$image")
           trap 'docker logs "$cid" 2>&1 | tail -40 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
 
           for i in $(seq 1 40); do
@@ -381,13 +392,21 @@ jobs:
       # Dockerfile.prod already declares a HEALTHCHECK for this target
       # (wget /healthz on 8181), so the image states its own readiness contract
       # and this waits for Docker's verdict rather than inventing a second one.
+      #
+      # fastproxy exits at once without FASTPROXY_GEN_URL (cmd/fastproxy/main.go:26).
+      # Nothing is listening on that URL here and nothing needs to be: this asserts
+      # the image boots and answers its own /healthz, not that it can reach gen.
+      #
+      # No --rm: a container that exits under --rm is gone before `docker logs`
+      # can run, so the first failure of this check reported the exit and none
+      # of the reason. It is removed in the trap instead.
       - name: The image starts
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
           image=$(printf '%s\n' "$TAGS" | head -n1)
-          cid=$(docker run -d --rm "$image")
+          cid=$(docker run -d -e FASTPROXY_GEN_URL=http://127.0.0.1:8180 "$image")
           trap 'docker logs "$cid" 2>&1 | tail -40 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
 
           for i in $(seq 1 40); do
