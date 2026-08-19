@@ -92,7 +92,11 @@ jobs:
   # oxlint, not eslint. They are not interchangeable — oxlint has no type-aware
   # rules at all — and both jobs exist so this repo is not blocked on a linter
   # migration nobody asked for (CI_STANDARD "Two linters, on purpose, for now").
-  client-ts-react-lint:
+  # Two linters, named the way the Go side already names its four: the id says
+  # which tool, so a red check points at a tool rather than at "lint".
+  # oxlint runs the fast syntactic subset; eslint does the type-aware work
+  # oxlint cannot (CI_STANDARD "Two linters, on purpose, for now").
+  client-ts-react-lint-oxlint:
     needs: client-ts-react-build
     uses: aurum-alpha/workflows/.github/workflows/job-lint-js-oxlint.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
     with:
@@ -101,6 +105,19 @@ jobs:
       # 4 pre-existing react-hooks(exhaustive-deps) warnings. Today's `pnpm lint`
       # runs bare oxlint and tolerates them; --deny-warnings does not.
       # Stabilization window, not a mode.
+      warn_only: true
+    secrets: inherit
+
+  client-ts-react-lint-eslint:
+    needs: client-ts-react-build
+    uses: aurum-alpha/workflows/.github/workflows/job-lint-js-eslint.yml@0699402d6b60a96bb3ecda696ce02c607d83b995 # v1.12.0
+    with:
+      workdir: client
+      dir: "."
+      # 17 errors, all real: react-hooks/set-state-in-effect x9,
+      # no-misused-promises x5, no-floating-promises, react-hooks/purity x2.
+      # No `any` debt at all — the cleanest client in the fleet. Warn while
+      # those are fixed, then flip this off (CI_STANDARD Principle 3).
       warn_only: true
     secrets: inherit
 
@@ -188,7 +205,8 @@ jobs:
       - server-go-vet
       - server-go-test-unit
       - client-ts-react-build
-      - client-ts-react-lint
+      - client-ts-react-lint-oxlint
+      - client-ts-react-lint-eslint
       - client-ts-react-typecheck
       - client-ts-react-test-unit
       - server-go-lint-errcheck
@@ -443,7 +461,8 @@ jobs:
       - server-go-vet
       - server-go-test-unit
       - client-ts-react-build
-      - client-ts-react-lint
+      - client-ts-react-lint-oxlint
+      - client-ts-react-lint-eslint
       - client-ts-react-typecheck
       - client-ts-react-test-unit
       - server-go-lint-errcheck
