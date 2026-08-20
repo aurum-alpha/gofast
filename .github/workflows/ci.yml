@@ -46,7 +46,7 @@ jobs:
   ci-conformance:
     permissions:
       contents: read
-    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@a61dc6d310fdf67450e89eb650235f23b8deb824 # v1.14.8
+    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@82bfa915605626fd6a57fe6acb0ccece91a2068f # v1.15.0
     secrets: inherit
 
   server-go-mod:
@@ -98,6 +98,25 @@ jobs:
     with:
       binaries: '["fastproxy"]'
       artifact_name: go-binary-fastproxy
+    secrets: inherit
+
+  # Lockfile scanning, and it is not a Go job — it reads go.mod AND
+  # client/pnpm-lock.yaml, which is why it sits in the catalog language-neutral
+  # rather than beside the Go gates by accident of where it was written.
+  #
+  # Not a duplicate of govulncheck below. That one is Go-only and call-graph
+  # aware, so it answers "is the vulnerable code reachable". This one is
+  # lockfile-based and cross-ecosystem, so it answers "is a known-bad version
+  # in the tree at all" — and until it existed nothing in this repo looked at
+  # the pnpm side.
+  #
+  # A standard gate, so it hangs off the builds with the rest of them.
+  osv-scanner:
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
+    uses: aurum-alpha/workflows/.github/workflows/job-osv-scanner.yml@82bfa915605626fd6a57fe6acb0ccece91a2068f # v1.15.0
+    with:
+      go_version_file: go.mod
+      lockfiles: '["go.mod", "client/pnpm-lock.yaml"]'
     secrets: inherit
 
   server-go-fmt:
@@ -372,6 +391,7 @@ jobs:
   ci-ok:
     needs:
       - ci-conformance
+      - osv-scanner
       - server-go-mod
       - server-go-fastgen-build
       - server-go-fastproxy-build
