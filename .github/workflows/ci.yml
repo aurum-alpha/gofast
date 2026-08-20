@@ -46,7 +46,7 @@ jobs:
   ci-conformance:
     permissions:
       contents: read
-    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@a1110e72eae01485016cbcd05b34a7d2dede1a2b # v1.16.0
+    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@05d43c4be01d63c5a75b716ee961a9cc18d99be9 # v1.16.0
     secrets: inherit
 
   server-go-mod:
