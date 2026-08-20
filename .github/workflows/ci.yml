@@ -46,7 +46,7 @@ jobs:
   ci-conformance:
     permissions:
       contents: read
-    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@82bfa915605626fd6a57fe6acb0ccece91a2068f # v1.15.0
+    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@61326207ca084307e2fa0e21069f3b001c43a16b # v1.16.0
     secrets: inherit
 
   server-go-mod:
@@ -113,11 +113,37 @@ jobs:
   # A standard gate, so it hangs off the builds with the rest of them.
   osv-scanner:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-osv-scanner.yml@82bfa915605626fd6a57fe6acb0ccece91a2068f # v1.15.0
+    # Google's own reusable workflow, called directly. The catalog does not
+    # wrap it, because there was nothing left to add once scan-args took
+    # --lockfile= — see CI_STANDARD, "Lockfile scanning is not a Go job, and
+    # the job is not ours".
+    #
+    # Declared, not inherited, and wider than it looks: actions: read and
+    # security-events: write are what the upstream job asks for, and it asks
+    # whether or not the SARIF upload actually runs. No `secrets:` — this is
+    # a third party, and it reads the tree, not the credentials.
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
     with:
-      go_version_file: go.mod
-      lockfiles: '["go.mod", "client/pnpm-lock.yaml"]'
-    secrets: inherit
+      runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+      # Off, and this is the one repo where that is a choice rather than a
+      # constraint: gofast is public, so Code Scanning would accept the SARIF
+      # here. It stays off so every caller in the fleet reads the same, and
+      # flips the day the nine private repos can flip with it.
+      upload-sarif: false
+      # Blocking. What is accepted is accepted by id in osv-scanner.toml,
+      # where the reason sits beside the dependency it excuses.
+      fail-on-vuln: true
+      # Named, never discovered. The upstream default is a recursive walk;
+      # a scan that finds its own inputs stops covering a file the day it
+      # moves and reports the same clean result either way. A named lockfile
+      # that is missing exits 127 and writes no report, which fails the job.
+      scan-args: |-
+        --lockfile=./go.mod
+        --lockfile=./client/pnpm-lock.yaml
 
   server-go-fmt:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
