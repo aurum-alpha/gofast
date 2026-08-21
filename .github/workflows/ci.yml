@@ -464,7 +464,15 @@ jobs:
   # to. This job walks index children, and deletes nothing at all if it
   # cannot inspect a tag.
   server-go-fastgen-image-prune:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # !cancelled(), not a bare condition. A job whose `if:` omits it is also
+    # gated on success(), and a SKIPPED ancestor — not a failed one — is enough
+    # to suppress it. The skip reaches here through ci-ok, even though ci-ok
+    # itself survives on always() and reports success, so nothing goes red and
+    # the housekeeping simply stops. event-manager proved it: test-e2e sat at
+    # `if: false` and this job never dispatched across three consecutive merges
+    # to main, staging a manifest into a registry with no TTL each time.
+    if: ${{ !cancelled() && github.event_name == 'push'
+        && github.ref == 'refs/heads/main' }}
     needs: [ci-ok]
     permissions:
       contents: read
@@ -475,7 +483,15 @@ jobs:
     secrets: inherit
 
   server-go-fastproxy-image-prune:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # !cancelled(), not a bare condition. A job whose `if:` omits it is also
+    # gated on success(), and a SKIPPED ancestor — not a failed one — is enough
+    # to suppress it. The skip reaches here through ci-ok, even though ci-ok
+    # itself survives on always() and reports success, so nothing goes red and
+    # the housekeeping simply stops. event-manager proved it: test-e2e sat at
+    # `if: false` and this job never dispatched across three consecutive merges
+    # to main, staging a manifest into a registry with no TTL each time.
+    if: ${{ !cancelled() && github.event_name == 'push'
+        && github.ref == 'refs/heads/main' }}
     needs: [ci-ok]
     permissions:
       contents: read
