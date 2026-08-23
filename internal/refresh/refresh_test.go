@@ -1155,7 +1155,7 @@ func TestTriggerAsyncUnknownAndInFlight(t *testing.T) {
 	}
 	select {
 	case <-reader.started:
-	case <-time.After(2 * time.Second):
+	case <-time.After(asyncSettleTimeout):
 		t.Fatal("refresh did not start")
 	}
 	if err := svc.TriggerAsync(context.Background(), model.ProviderLG); !errors.Is(err, ErrRefreshInFlight) {
@@ -1166,15 +1166,24 @@ func TestTriggerAsyncUnknownAndInFlight(t *testing.T) {
 	}
 	close(reader.release)
 	p := svc.running[model.ProviderLG].pr
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if !p.inFlight.Load() {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("refresh did not finish")
+	waitFor(t, asyncSettleTimeout, "async refresh to finish", func() bool {
+		return !p.inFlight.Load()
+	})
 }
+
+// asyncSettleTimeout is a backstop against a hang, not a statement about how
+// fast the refresh should be. The distinction matters: this test used to give
+// the goroutine 2 seconds to clear inFlight, which is generous on an idle box
+// (the whole test takes ~7ms) and not generous at all on a CI runner building
+// four cross-compiled binaries while `go test ./... -race` runs a dozen
+// packages at once. It failed there on 2026-08-23 having passed everywhere
+// else, which is the signature of a wall-clock budget standing in for a
+// synchronization point.
+//
+// waitFor returns the instant the condition holds, so a long timeout costs
+// nothing when the code is correct and only spends time when it is not. If
+// this ever fires, the refresh genuinely did not finish.
+const asyncSettleTimeout = 30 * time.Second
 
 type gateReader struct {
 	started chan struct{}
