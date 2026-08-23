@@ -73,10 +73,6 @@ jobs:
   # both, which put bin/fastgen in fastproxy's build context and made both
   # image jobs chmod a binary neither of them needed.
   #
-  # Both run `go build ./...` first. That is duplicated work and it is the
-  # point: each job proves the whole tree compiles before claiming its own
-  # binary links, so neither depends on the other having checked.
-  #
   # Build is still github.run_number; the shared job reads it from the
   # environment rather than the caller passing it, so every Go repo in the
   # fleet stamps the same four fields whether or not it remembered to.
