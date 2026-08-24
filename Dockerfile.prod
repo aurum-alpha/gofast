@@ -5,17 +5,32 @@
 # Keep image pins in sync with Dockerfile / CI:
 #   debian:bookworm-slim (fastgen + fastproxy — ships ffmpeg)
 #
-# Expectation: context includes executable bin/fastgen and bin/fastproxy
-# (linux, CGO_ENABLED=0, same flags as local Dockerfile build stage), plus
-# client/dist from client-ts-react-build — fastgen serves the React app from files in
-# the image rather than from a go:embed, so the UI is packaged here too.
+# Expectation: context includes executable bin/<name>-linux-<arch> for every
+# architecture in the image job's `platforms` (linux, CGO_ENABLED=0, same flags
+# as local Dockerfile build stage), plus client/dist from client-ts-react-build
+# — fastgen serves the React app from files in the image rather than from a
+# go:embed, so the UI is packaged here too.
+#
+# MULTI-ARCH: buildx runs each stage once per target platform. `FROM
+# debian:bookworm-slim` resolves to that platform automatically because the
+# upstream tag is a manifest list, and client/dist is architecture-independent,
+# so the only thing needing selection is our own binary — hence ARG TARGETARCH
+# and the per-arch COPY. Declare TARGETARCH in EVERY stage that reads it: it
+# does not inherit across FROM, and a missing declaration expands to empty and
+# fails as a confusing "not found".
+#
+# The apt-get below runs under QEMU on a foreign architecture and is the slow
+# part of an arm64 build (workflows#158). It stays because the alternative was
+# distroless plus a third-party static-ffmpeg image in a public production
+# image, and that was the worse trade.
 
 # fastgen ships ffprobe for Health L2 probes.
 FROM debian:bookworm-slim AS fastgen
+ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
-COPY bin/fastgen /fastgen
+COPY bin/fastgen-linux-${TARGETARCH} /fastgen
 COPY client/dist/ /srv/gofast/ui/
 USER nonroot:nonroot
 EXPOSE 8180
@@ -26,10 +41,11 @@ ENTRYPOINT ["/fastgen"]
 
 # fastproxy ships ffmpeg for Class B (/stable/) demux-stable encode pipes.
 FROM debian:bookworm-slim AS fastproxy
+ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
-COPY bin/fastproxy /fastproxy
+COPY bin/fastproxy-linux-${TARGETARCH} /fastproxy
 USER nonroot:nonroot
 EXPOSE 8181
 ENV PORT=8181
