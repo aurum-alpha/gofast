@@ -4,3 +4,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Minor and patch bumps arrive as ONE pull request per run instead of one
+    # per action. Majors are deliberately left ungrouped: a major action bump is
+    # where breakage lives, so it gets its own review and its own revert.
+    # Security updates are ungrouped too -- `applies-to` defaults to
+    # version-updates -- so a security fix still lands on its own, immediately.
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
