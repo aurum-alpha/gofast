@@ -12,3 +12,14 @@ updates:
     groups:
       actions-minor-patch:
         update-types: [minor, patch]
+
+  # Go module dependencies. Grouped on the same terms as the actions above:
+  # minor and patch in one pull request, majors and security updates on their
+  # own. `gomod` is the only ecosystem key Dependabot has for Go.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      gomod-minor-patch:
+        update-types: [minor, patch]
