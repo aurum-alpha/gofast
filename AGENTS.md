@@ -2,15 +2,31 @@
 
 Instructions for humans and coding agents working in this repository.
 
+This repository follows the Aurum Alpha agent standard:
+https://github.com/aurum-alpha/workflows/blob/main/AGENTS.md
+Rules below are additional to it, or state where this repository differs.
+
 ## Source of truth
 
 - Product requirements: `docs/SPEC.md`
 - Architecture / build approach: `docs/ARCHITECTURE.md`
-- Work queue: **GitHub Issues** on [j27-aurum/gofast](https://github.com/j27-aurum/gofast/issues)
+- Terminology: `docs/TERMINOLOGY.md`
+
+When code and these documents disagree, the documents are right and the code is
+a defect — until someone changes the documents, in their own pull request,
+saying so.
+
+## Work queue
+
+**GitHub Issues** on [aurum-alpha/gofast](https://github.com/aurum-alpha/gofast/issues).
+This is a public repository, and public repositories track work in GitHub Issues.
+
+**Linear (team J27) is not in use here.** The GoFAST project still exists in
+Linear and is legacy: an issue filed there is invisible to everyone working from
+GitHub, which is worse than an unfiled issue because it looks handled. Do not
+create or update Linear issues for this repository.
 
 Implement **one GitHub issue at a time**. Do not invent parallel workstreams from a plan file.
-
-Linear (team J27) is legacy — do not create or update Linear issues for new work. Prefer GitHub for task tracking, discussion, and linking PRs.
 
 ## Branch and pull request rules
 
@@ -19,6 +35,38 @@ Linear (team J27) is legacy — do not create or update Linear issues for new wo
    - `37-distrotv-session-mint`
    - `issue-37-distrotv-session-mint`
 3. Open the PR against `main` (unless the issue says otherwise). Link the GitHub issue in the PR description (`Fixes #N` / `Closes #N` when the PR completes the work).
+
+## Commands
+
+Verbatim, and the same commands CI runs — these are read off the shared jobs in
+`aurum-alpha/workflows`, not reimplemented here. A gate you cannot reproduce
+locally with one command is a defect in the gate.
+
+Go, from the repository root:
+
+```sh
+test -z "$(gofmt -l .)"                                          # formatting
+go vet ./...                                                     # vet
+go test ./... -race -covermode=atomic -coverprofile=coverage/go-unit.out
+go build ./...                                                   # compiles
+```
+
+Client, from `client/`:
+
+```sh
+pnpm exec tsc -b --noEmit          # typecheck
+pnpm exec oxlint . --deny-warnings # lint, fast pass
+pnpm exec eslint . --max-warnings 0 # lint, full pass
+pnpm exec vitest run               # unit tests
+pnpm exec vite build               # build
+```
+
+Two linters is deliberate and temporary — see the CI standard's "Two linters, on
+purpose, for now". oxlint is the fast pass; eslint is the one that actually
+decides.
+
+Local development: `docker compose up` from the root; `pnpm dev` in `client/`
+for the Vite dev server.
 
 ## Quality gates (before commit and before push)
 
@@ -59,6 +107,19 @@ Keep the GitHub issue honest as you work:
 Honor project milestones M0 → M5 (see `docs/ARCHITECTURE.md`). Do not start work in milestone N+1 until milestone N exit criteria are met (tests green, milestone work accepted), unless the issue is explicitly unblocked and parallel-safe.
 
 **Vertical slice over adapter breadth:** ship one provider end-to-end (fetch → emit → HTTP playlist) before starting the next adapter epic.
+
+## Conventions
+
+What this repository does differently from the fleet, or holds itself to beyond
+it. Each has its own section below:
+
+| Convention | Section |
+| --- | --- |
+| What GoFAST is and is not responsible for | **Product boundaries** |
+| How state is stored and migrated | **Persistence design** |
+| Go style beyond `gofmt` and `vet` | **Idiomatic Go** |
+| Configuration strictly from the environment | **Config (Twelve-Factor)** |
+| Milestone ordering, M0 to M5 | **Milestone order** |
 
 ## Product boundaries
 
