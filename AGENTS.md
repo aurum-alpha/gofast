@@ -80,14 +80,16 @@ for the Vite dev server.
 
 ## Human approval gate (required)
 
-**Do not commit, push, merge, or close a GitHub issue until the human has manually tested and given feedback.**
+**Do not merge, deploy, or close a GitHub issue until the human has manually tested and given feedback.**
+
+**The gate is at merge, and pushing is not the gate.** `main` takes changes only through a pull request, so a push releases nothing — it is how the work reaches CI.
 
 Workflow for agents:
 
-1. Implement on a branch; leave changes **uncommitted** or **committed locally only** until the human confirms — ask if unclear.
+1. Implement on a branch. Commit, push, and open or update the PR as soon as the work is coherent — do not wait to be asked. A branch nobody has built is a branch nobody knows is broken.
 2. Post a short handoff: what changed, **exact commands to run**, and **what to look for** (expected logs, files, API fields, UI). Always include this verification block at the end of an implementation turn — do not wait to be asked.
-3. Wait for explicit human sign-off (e.g. “looks good”, “merge it”, “commit and push”).
-4. Only after sign-off: commit (if needed), push, open/update PR, merge if requested, and close or let `Fixes #N` close the issue.
+3. Wait for explicit human sign-off (e.g. “looks good”, “merge it”) before merging.
+4. Only after sign-off: merge, and close or let `Fixes #N` close the issue.
 
 Agents may comment on the GitHub issue while coding (progress, blockers, PR link). Never close an issue on agent-only verification.
 
