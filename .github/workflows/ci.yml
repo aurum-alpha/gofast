@@ -46,18 +46,18 @@ jobs:
   ci-conformance:
     permissions:
       contents: read
-    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-ci-conformance.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     secrets: inherit
 
   server-go-mod:
-    uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     secrets: inherit
 
   # The React app builds the same way as every other one in the fleet. workdir
   # is `client` because this repo is the second shape: the JS project lives
   # inside a Go tree with its own package.json, lockfile and .node-version.
   client-ts-react-build:
-    uses: aurum-alpha/workflows/.github/workflows/job-build-js-vite.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-build-js-vite.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       workdir: client
       outdir: dist
@@ -80,7 +80,7 @@ jobs:
     permissions:
       contents: read
     needs: server-go-mod
-    uses: aurum-alpha/workflows/.github/workflows/job-go-build.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-build.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       binaries: '["fastgen"]'
       # Explicit, not inherited. Passing neither made job-go-build target the
@@ -95,7 +95,7 @@ jobs:
     permissions:
       contents: read
     needs: server-go-mod
-    uses: aurum-alpha/workflows/.github/workflows/job-go-build.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-build.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       binaries: '["fastproxy"]'
       # Explicit, not inherited. Passing neither made job-go-build target the
@@ -135,7 +135,7 @@ jobs:
       actions: read
       contents: read
       security-events: write
-    uses: aurum-alpha/workflows/.github/workflows/job-osv-scan.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-osv-scan.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       # NOT the wrapper default, and the difference matters. fail_on_existing
       # defaults false because most repos here carry a backlog; gofast does
@@ -166,43 +166,50 @@ jobs:
 
   server-go-fmt:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-go-fmt.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-fmt.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     secrets: inherit
 
   server-go-vet:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-vet.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     secrets: inherit
 
   server-go-test-unit:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     secrets: inherit
 
   # The id names the codebase it acts on: this lints the React app, not the Go
   # code. A bare `lint` would read as the Go linter it is not.
-  # oxlint, not eslint. They are not interchangeable — oxlint has no type-aware
-  # rules at all — and both jobs exist so this repo is not blocked on a linter
-  # migration nobody asked for (CI_STANDARD "Two linters, on purpose, for now").
   # Two linters, named the way the Go side already names its four: the id says
   # which tool, so a red check points at a tool rather than at "lint".
-  # oxlint runs the fast syntactic subset; eslint does the type-aware work
-  # oxlint cannot (CI_STANDARD "Two linters, on purpose, for now").
+  #
+  # This runs the shared client/.oxlintrc.json, which is a translation of the
+  # shared eslint config, so the two jobs are meant to report the same findings
+  # and a disagreement between them is the signal worth having. oxlint is not
+  # the "fast subset" this comment used to claim: with --type-aware it reports
+  # all 22 findings the eslint job reports, plus 8 more, in about half the time
+  # (CI_STANDARD "Two linters, on purpose, for now").
   client-ts-react-lint-oxlint:
     needs: client-ts-react-build
-    uses: aurum-alpha/workflows/.github/workflows/job-lint-js-oxlint.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-lint-js-oxlint.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       workdir: client
       dir: "."
-      # 4 pre-existing react-hooks(exhaustive-deps) warnings. Today's `pnpm lint`
-      # runs bare oxlint and tolerates them; --deny-warnings does not.
-      # Stabilization window, not a mode.
+      # 30 findings: the same 22 the eslint job reports (9 set-state-in-effect,
+      # 5 no-misused-promises, 4 exhaustive-deps, 2 purity, no-floating-promises,
+      # no-unsafe-argument), plus 5 no-redundant-type-constituents and
+      # 3 no-base-to-string that the eslint config never enabled.
+      #
+      # warn_only stays on while oxlint's JS plugin API is alpha and the
+      # type-aware path rides on typescript-go, not only while the findings
+      # burn down. Stabilization window, not a mode.
       warn_only: true
     secrets: inherit
 
   client-ts-react-lint-eslint:
     needs: client-ts-react-build
-    uses: aurum-alpha/workflows/.github/workflows/job-lint-js-eslint.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-lint-js-eslint.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       workdir: client
       dir: "."
@@ -218,7 +225,7 @@ jobs:
   # without build mode tsc has no inputs and exits 0 having checked nothing.
   client-ts-react-typecheck:
     needs: client-ts-react-build
-    uses: aurum-alpha/workflows/.github/workflows/job-typecheck-ts-tsc.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-typecheck-ts-tsc.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       workdir: client
     secrets: inherit
@@ -227,7 +234,7 @@ jobs:
   # rather than inferred from a job that is not there (CI_STANDARD F3).
   client-ts-react-test-unit:
     needs: client-ts-react-build
-    uses: aurum-alpha/workflows/.github/workflows/job-test-unit-js-vitest.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-test-unit-js-vitest.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       workdir: client
       dir: "."
@@ -235,7 +242,7 @@ jobs:
 
   server-go-lint-errcheck:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       linter: errcheck
       # 41 pre-existing finding(s). Stabilization window, not a mode —
@@ -245,7 +252,7 @@ jobs:
 
   server-go-lint-staticcheck:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       linter: staticcheck
       # 17 pre-existing finding(s). Stabilization window, not a mode —
@@ -255,7 +262,7 @@ jobs:
 
   server-go-lint-ineffassign:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       linter: ineffassign
       # 1 pre-existing finding(s). Stabilization window, not a mode —
@@ -265,7 +272,7 @@ jobs:
 
   server-go-lint-unused:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       linter: unused
       # 1 pre-existing finding(s). Stabilization window, not a mode —
@@ -277,7 +284,7 @@ jobs:
   # scan is not one repo's concern (CI_STANDARD Principle 19).
   server-go-govulncheck:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
-    uses: aurum-alpha/workflows/.github/workflows/job-go-govulncheck.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-go-govulncheck.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     secrets: inherit
 
   # Two images, two jobs. A matrix collapses them into one entry that reports as
@@ -312,7 +319,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: aurum-alpha/workflows/.github/workflows/job-image-build.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-image-build.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       # A name under the owner: ghcr.io/aurum-alpha/gofast/fastgen, which is what
       # IMAGE_PREFIX built by hand.
@@ -346,7 +353,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: aurum-alpha/workflows/.github/workflows/job-image-starts.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-image-starts.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       image: ${{ needs.server-go-fastgen-image-build.outputs.image }}
       digest: ${{ needs.server-go-fastgen-image-build.outputs.digest }}
@@ -364,7 +371,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: aurum-alpha/workflows/.github/workflows/job-image-publish.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-image-publish.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       image: ${{ needs.server-go-fastgen-image-build.outputs.image }}
       digest: ${{ needs.server-go-fastgen-image-build.outputs.digest }}
@@ -390,7 +397,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: aurum-alpha/workflows/.github/workflows/job-image-build.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-image-build.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       # A name under the owner: ghcr.io/aurum-alpha/gofast/fastproxy, which is what
       # IMAGE_PREFIX built by hand.
@@ -421,7 +428,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: aurum-alpha/workflows/.github/workflows/job-image-starts.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-image-starts.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       image: ${{ needs.server-go-fastproxy-image-build.outputs.image }}
       digest: ${{ needs.server-go-fastproxy-image-build.outputs.digest }}
@@ -438,7 +445,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: aurum-alpha/workflows/.github/workflows/job-image-publish.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-image-publish.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       image: ${{ needs.server-go-fastproxy-image-build.outputs.image }}
       digest: ${{ needs.server-go-fastproxy-image-build.outputs.digest }}
@@ -473,7 +480,7 @@ jobs:
     # never the private registry.
     permissions:
       contents: read
-    uses: aurum-alpha/workflows/.github/workflows/job-coverage-upload.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-coverage-upload.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     secrets: inherit
 
   ci-ok:
@@ -511,7 +518,7 @@ jobs:
       # The needs: list above is this repo's DAG and stays here. The lines that
       # decide what a red rollup means are shared: this repo carried its own
       # longer variant, which is precisely the drift the action ends.
-      - uses: aurum-alpha/workflows/.github/actions/ci-ok@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+      - uses: aurum-alpha/workflows/.github/actions/ci-ok@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
         with:
           needs_json: ${{ toJSON(needs) }}
 
@@ -540,7 +547,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: aurum-alpha/workflows/.github/workflows/job-image-prune.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-image-prune.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       image_name: gofast/fastgen
     secrets: inherit
@@ -559,7 +566,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: aurum-alpha/workflows/.github/workflows/job-image-prune.yml@4dc0c27ab6905c9c0cf331306793fdbc688b220a # v1.29.9
+    uses: aurum-alpha/workflows/.github/workflows/job-image-prune.yml@3ddcc6b65883b5fc79aa0b6f5090445573551f87 # v1.31.0
     with:
       image_name: gofast/fastproxy
     secrets: inherit
