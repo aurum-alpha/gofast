@@ -1,8 +1,125 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
+
+  // Fleet standard oxlint config — byte-identical in every repo.
+  //
+  // DO NOT EDIT IN ONE REPO. Change it in every repo at once; the byte-identity
+  // checker fails the build otherwise. The canonical copy lives at
+  // config/.oxlintrc.json in aurum-alpha/workflows.
+  //
+  // THIS FILE IS A TRANSLATION OF config/eslint.config.mjs, and that is the
+  // property worth protecting. Two linters running the same rules at the same
+  // severities produce evidence when they disagree; two linters configured
+  // differently produce noise. It is also what makes retiring eslint later a
+  // deletion rather than a migration.
+  //
+  // Severity is tiered the same way the eslint config tiers it:
+  //
+  //   error  the rules that catch bugs — a floating promise is a dropped error
+  //          path, a misused promise is an `if (somePromise)` that is always
+  //          truthy. Defects, not opinions.
+  //
+  //   warn   the `no-unsafe-*` family and no-explicit-any, which describe how
+  //          much `any` the codebase carries. Real debt, not a reason to block
+  //          unrelated work.
+  //
+  // eslint-plugin-react-hooks recommended is 16 rules and oxlint implements 2
+  // of them natively, so the other 14 come through the JS plugin bridge under
+  // an alias. The split is not arbitrary: `react-hooks` is a namespace oxlint
+  // reserves for its native implementation, so a JS plugin claiming it must be
+  // aliased — and an alias renames the rule, which silently breaks every
+  // existing `// eslint-disable-next-line react-hooks/exhaustive-deps` in the
+  // fleet. The three rules developers actually suppress by name across the
+  // fleet — exhaustive-deps, rules-of-hooks, and react-refresh's
+  // only-export-components — therefore keep the names those comments use.
+  // `react-refresh` is not a reserved namespace, so its plugin needs no alias
+  // and its suppressions keep working unchanged.
+  //
+  // The cost of that choice is cosmetic and worth naming: oxlint's native
+  // exhaustive-deps anchors the report at the offending dependency, eslint's
+  // at the dependency array, so the two agree on the defect and differ on the
+  // line. A suppression that stops working is a defect nobody sees; a line
+  // number two lines off is one anybody can follow.
+  //
+  // The type-aware rules need `oxlint --type-aware` and the oxlint-tsgolint
+  // package; the shared job passes that flag.
+
+  "plugins": ["eslint", "typescript", "react"],
+
+  "jsPlugins": [
+    "eslint-plugin-react-refresh",
+    { "name": "react-hooks-js", "specifier": "eslint-plugin-react-hooks" }
+  ],
+
+  "categories": {
+    "correctness": "error"
+  },
+
+  "ignorePatterns": [
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "node_modules/**",
+    "**/*.d.ts"
+  ],
+
   "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-unsafe-argument": "warn",
+    "typescript/no-unsafe-assignment": "warn",
+    "typescript/no-unsafe-call": "warn",
+    "typescript/no-unsafe-member-access": "warn",
+    "typescript/no-unsafe-return": "warn",
+
+    "typescript/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react-hooks-js/static-components": "error",
+    "react-hooks-js/use-memo": "error",
+    "react-hooks-js/preserve-manual-memoization": "error",
+    "react-hooks-js/incompatible-library": "warn",
+    "react-hooks-js/immutability": "error",
+    "react-hooks-js/globals": "error",
+    "react-hooks-js/refs": "error",
+    "react-hooks-js/set-state-in-effect": "error",
+    "react-hooks-js/error-boundaries": "error",
+    "react-hooks-js/purity": "error",
+    "react-hooks-js/set-state-in-render": "error",
+    "react-hooks-js/unsupported-syntax": "warn",
+    "react-hooks-js/config": "error",
+    "react-hooks-js/gating": "error",
+
+    "react-refresh/only-export-components": [
+      "warn",
+      { "allowConstantExport": true }
+    ]
+  },
+
+  "overrides": [
+    {
+      // Config and script files sit outside the typed program, exactly as they
+      // do under tseslint.configs.disableTypeChecked in the eslint config.
+      "files": ["**/*.js", "**/*.mjs", "**/*.cjs", "**/*.config.*"],
+      "rules": {
+        "typescript/no-floating-promises": "off",
+        "typescript/no-misused-promises": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off"
+      }
+    }
+  ]
 }
