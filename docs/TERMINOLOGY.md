@@ -384,3 +384,44 @@ optional ffmpeg/VLC buffer, HDHomeRun-style output for Plex/Jellyfin/Emby.
 Broader IPTV editors/gateways (see their repos). Same niche as Threadfin —
 ingest M3U/Xtream, edit/filter, proxy or export (including `.strm` / Xtream API
 / HDHomeRun) — not FAST provider adapters.
+
+## Versioning
+
+### Release commit
+
+A commit that changed `.version`. The only kind of commit that mints anything
+version-named — the `v<version>` image tag, and any artifact carrying a bare
+version. Every other commit on `main` is built, gated and pullable under
+`build-<run>` and `latest`, and mints nothing.
+
+*The git tag and the GitHub release are not wired here yet; see **Version
+bumps** in `AGENTS.md`.*
+
+### Mid-stream build
+
+A build of any commit that is not a release commit. It stamps a pre-release
+rather than the release version, so a binary or image taken off one cannot be
+mistaken for the release it follows.
+
+### Pre-release stamp
+
+The version a mid-stream build carries: `1.0.1-dev.<sha7>`, a SemVer
+pre-release of the **next patch**. The next patch is a floor rather than a
+guess — whatever the next release turns out to be it is at least `1.0.1` — so
+the stamp sorts above the last release and below every release that could
+follow:
+
+```
+1.0.0  <  1.0.1-dev.abc1234  <  1.0.1-rc.1  <  1.0.1  <  1.1.0  <  2.0.0
+```
+
+Build metadata (`1.0.0+dev.abc`) would be wrong: SemVer ignores it in
+precedence, so such a build compares *equal* to the release it is not. The
+identifier is `dev` rather than `beta` because `-beta.N` and `-rc.N` belong to
+pre-releases a human cuts deliberately.
+
+### `dev` (unstamped)
+
+What `Version` reads in a build nobody stamped — a plain `go build` on a
+workstation. It matches no version anyone could have cut, so it cannot be
+mistaken for a release.

@@ -15,10 +15,26 @@ import "runtime"
 //	-X github.com/j27-aurum/gofast/internal/version.Commit=…
 //	-X github.com/j27-aurum/gofast/internal/version.BuiltAt=…
 //
-// Version is "dev" here and in CI: this repo has no .version file because
-// nothing outside it decides anything from the string (CI_STANDARD Principle
-// 16). Build, Commit and BuiltAt answer "what is this" exactly, which is what
-// provenance is for.
+// Version comes from .version, stamped by the fleet's job-go-build: the bare
+// version on a commit that moved the file, and a SemVer pre-release of the next
+// patch (1.0.1-dev.<sha7>) on every commit between releases.
+//
+// THIS REVERSES WHAT THIS COMMENT SAID. It read "this repo has no .version file
+// because nothing outside it decides anything from the string (CI_STANDARD
+// Principle 16)", and that was wrong on its own terms by the time it was
+// written. This binary serves Current() as JSON from /healthz and /api/status,
+// so every operator reading either was being told "dev" in production. The
+// repo is public and publishes images people pull, and a v<version> image tag
+// is decided from this string by everyone downstream. Principle 16 asks
+// whether anything consumes the version; here two endpoints and a tag do.
+//
+// "dev" remains the default for an UNSTAMPED build, and that is deliberate
+// rather than an oversight. gha-runner-controller and lid-firmware stamp
+// <version>-local for a bench build because each has a build wrapper (a
+// Makefile, PlatformIO) that can read the file; gofast's bench path is plain
+// `go build`, which has nothing to read it with. "dev" sorts below every
+// release and matches no version anyone could have cut, so it cannot be
+// mistaken for one — which is the property the -local suffix buys elsewhere.
 var (
 	Version = "dev"
 	Build   = "local"
