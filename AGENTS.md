@@ -11,6 +11,9 @@ Rules below are additional to it, or state where this repository differs.
 - Product requirements: `docs/SPEC.md`
 - Architecture / build approach: `docs/ARCHITECTURE.md`
 - Terminology: `docs/TERMINOLOGY.md`
+- The version this ships: `.version` — a committed file, and the build stamps
+  what it says. Never a tag first. (Arrives in the release pull request that
+  cuts `1.0.0`; see **Version bumps**.)
 
 When code and these documents disagree, the documents are right and the code is
 a defect — until someone changes the documents, in their own pull request,
@@ -80,6 +83,78 @@ for the Vite dev server.
 3. Do not commit or push with failing tests.
 4. Do not use `--no-verify` to skip hooks.
 
+## Version bumps
+
+**The fleet decides versioning semantics; this repository does not.** Read
+[`standards/ci.md`](https://github.com/aurum-alpha/workflows/blob/main/standards/ci.md),
+"One versioning implementation, and no repo defines its own" — when a release is
+cut, how a build between releases names itself, and what may be emitted are
+stated there and not restated here. What follows is only what is local.
+
+`.version` is the source of truth, and it starts at `1.0.0`.
+
+*The file itself is not in the pull request that wired all this up, and could
+not have been: `job-version-gate` refuses a commit that moves `.version`
+alongside anything but markdown, and the wiring is Go and YAML. It arrives in
+the release pull request immediately after — `.version` and prose, nothing else
+— which is the first thing this repository cuts under the rule and a working
+demonstration of it.*
+
+**A version bump is NOT part of the change. It is its own pull request.**
+`job-version-gate` rejects a pull request that moves `.version` alongside
+anything but markdown, so a commit carrying both is refused by name, with the
+strays listed. Land the code first; cut the release afterwards in a pull request
+touching `.version` and prose and nothing else. It also fails a version that
+repeats, goes backward, malforms, or disappears, and it runs on pull requests
+only — there is no base to compare against on a push — so it is skipped on every
+merge to `main`.
+
+**Main is therefore not versioned at every commit, and that is intended.** Work
+merges without a version. Between releases every green build still publishes
+`build-<run>` and `latest`, still uploads its artifacts, and still runs; the
+binaries stamp a SemVer pre-release of the next patch (`1.0.1-dev.<sha7>`),
+which sorts above the last release and below every release that could come next.
+Those images are runnable. They are simply not minted.
+
+**Two things here are named for a version, and both are gated on the version
+actually having moved.** `version` and `version_changed` come from
+`job-go-build`; nothing re-derives them.
+
+| Emission | Between releases | On a release commit |
+| --- | --- | --- |
+| Image `build-<run>`, `latest` | published | published |
+| Image `v<version>` | **not applied** | applied |
+| Binary `Version` ldflag | `1.0.1-dev.<sha7>` | `1.0.0` |
+
+**An unstamped bench build says `dev`, and that is deliberate.**
+`gha-runner-controller` and `lid-firmware` stamp `<version>-local` because each
+has a build wrapper that can read the version file; this repo's bench path is a
+plain `go build`, which has nothing to read it with. `dev` matches no version
+anyone could have cut, so it cannot be mistaken for a release — the property the
+`-local` suffix buys elsewhere. Do not add a Makefile to change this.
+
+**Minting the tag and the GitHub release is not wired here yet, and nothing
+pretends it is.** `version-gate` stops `.version` moving backward, sideways or
+alongside code, the build stamps correctly on both sides of a release commit,
+and the `v<version>` image tag is applied only on a release commit — but this
+repository cuts no git tag and creates no GitHub release. That half waits on the
+catalog's `job-version-release`
+([aurum-alpha/workflows#223](https://github.com/aurum-alpha/workflows/pull/223)),
+because three repositories want the same rule and a body here would be a fourth
+hand-written copy. When the catalog carries it, `ci.yml` gains a stub calling it.
+
+Version increments follow semantic versioning:
+
+- **PATCH** (`1.0.Y` → `1.0.Y+1`): bug fixes, internal refactors, test-only or
+  doc-only changes, dependency bumps without behaviour change.
+- **MINOR** (`1.X.y` → `1.X+1.0`): new capability — a new provider, endpoint,
+  config key, or anything an operator would notice.
+- **MAJOR** (`X.y.z` → `X+1.0.0`): a breaking change to the API contract, the
+  config shape, or the emitted playlist/guide format.
+
+A release pull request covering several merged issues takes the highest
+applicable bump: one MINOR issue plus three PATCH issues is one MINOR bump.
+
 ## Human approval gate (required)
 
 **Do not merge, deploy, or close a GitHub issue until the human has manually tested and given feedback.**
@@ -124,6 +199,7 @@ it. Each has its own section below:
 | Go style beyond `gofmt` and `vet` | **Idiomatic Go** |
 | Configuration strictly from the environment | **Config (Twelve-Factor)** |
 | Milestone ordering, M0 to M5 | **Milestone order** |
+| How a version is cut, and what a build stamps | **Version bumps** |
 
 ## Product boundaries
 
