@@ -133,15 +133,14 @@ plain `go build`, which has nothing to read it with. `dev` matches no version
 anyone could have cut, so it cannot be mistaken for a release — the property the
 `-local` suffix buys elsewhere. Do not add a Makefile to change this.
 
-**Minting the tag and the GitHub release is not wired here yet, and nothing
-pretends it is.** `version-gate` stops `.version` moving backward, sideways or
-alongside code, the build stamps correctly on both sides of a release commit,
-and the `v<version>` image tag is applied only on a release commit — but this
-repository cuts no git tag and creates no GitHub release. That half waits on the
-catalog's `job-version-release`
-([aurum-alpha/workflows#223](https://github.com/aurum-alpha/workflows/pull/223)),
-because three repositories want the same rule and a body here would be a fourth
-hand-written copy. When the catalog carries it, `ci.yml` gains a stub calling it.
+**Minting is wired through the catalog, not written here.** `ci.yml`'s
+`release` stub calls `job-version-release`, the same implementation
+`lid-firmware` and `gha-runner-controller` call: it cuts the git tag and the
+GitHub release on exactly the commit that moved `.version`, reading `version`
+and `version_changed` from the fastgen build and re-deriving neither. The
+release attaches no binaries — this repository's deliverables are the two
+images, and the versioned artifact is the `v<version>` tag the publish jobs
+apply on the same commit.
 
 Version increments follow semantic versioning:
 
