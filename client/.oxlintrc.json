@@ -67,6 +67,21 @@
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
 
+    // Wave D. Both are error because both describe a defect rather than a
+    // preference. no-useless-assignment finds a value written and never read,
+    // which is usually a line that was meant to do something. prefer-const
+    // finds a binding that never changes, and a `let` that never changes is a
+    // claim about the code that is not true -- the next reader has to prove it
+    // themselves.
+    //
+    // Measured before adopting, not after: 28 findings across the whole fleet,
+    // 16 prefer-const and 12 no-useless-assignment, against a baseline of
+    // 1,244 errors and 4,473 warnings. Four of the nine repos gain nothing at
+    // all. That is what makes these two safe to turn on everywhere at once
+    // rather than one repo at a time.
+    "no-useless-assignment": "error",
+    "prefer-const": "error",
+
     "typescript/no-explicit-any": "warn",
     "typescript/no-unsafe-argument": "warn",
     "typescript/no-unsafe-assignment": "warn",
