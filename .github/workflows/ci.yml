@@ -145,7 +145,7 @@ jobs:
   # the pnpm side.
   #
   # A standard gate, so it hangs off the builds with the rest of them.
-  osv-scanner:
+  osv-scan:
     needs: [server-go-fastgen-build, server-go-fastproxy-build]
     # The catalog wraps it now, and the wrapper picks the upstream workflow by
     # event: a pull request is scanned against its base and blocked by what it
@@ -556,7 +556,7 @@ jobs:
     needs:
       - coverage-upload
       - ci-conformance
-      - osv-scanner
+      - osv-scan
       - server-go-mod
       - server-go-fastgen-build
       - server-go-fastproxy-build
@@ -612,7 +612,7 @@ jobs:
   # because always() also disarms the implicit "only if my dependencies
   # succeeded". No push/main condition at the job level (rule D5) — the
   # shared job verifies on pull requests and suppresses only the publish.
-  release:
+  version-release:
     needs: [ci-ok, server-go-fastgen-build]
     if: >-
       always()
