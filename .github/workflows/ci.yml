@@ -296,9 +296,6 @@ jobs:
     uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@main
     with:
       linter: ineffassign
-      # 1 pre-existing finding(s). Stabilization window, not a mode —
-      # the gate goes hard when the debt is gone.
-      warn_only: true
     secrets: inherit
 
   server-go-lint-unused:
@@ -306,9 +303,6 @@ jobs:
     uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@main
     with:
       linter: unused
-      # 1 pre-existing finding(s). Stabilization window, not a mode —
-      # the gate goes hard when the debt is gone.
-      warn_only: true
     secrets: inherit
 
   # Lifted out of client-manager's tools/checks/govulncheck: a vulnerability
