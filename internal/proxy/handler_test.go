@@ -68,7 +68,7 @@ func TestBeaconPlaylistIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GET stream: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				t.Fatalf("read stream: %v", err)
@@ -85,7 +85,7 @@ func TestBeaconPlaylistIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GET seg: %v", err)
 			}
-			defer segResp.Body.Close()
+			defer func() { _ = segResp.Body.Close() }()
 			segBody, err := io.ReadAll(segResp.Body)
 			if err != nil {
 				t.Fatalf("read seg: %v", err)

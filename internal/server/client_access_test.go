@@ -22,7 +22,7 @@ func TestPlaylistAccessRecords200And304(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer access.Close()
+	defer func() { _ = access.Close() }()
 
 	req := httptest.NewRequest(http.MethodGet, "/playlist.m3u", nil)
 	req.Header.Set("X-Forwarded-For", "203.0.113.10")
@@ -67,7 +67,7 @@ func TestClientAccessAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer access.Close()
+	defer func() { _ = access.Close() }()
 	if err := access.Record("lg.m3u", "10.1.1.1", "TestAgent/1.0", 200, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}

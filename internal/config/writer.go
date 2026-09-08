@@ -261,21 +261,21 @@ func atomicWriteWithBackup(path string, data, prior []byte) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("config: write %s: %w", path, classify(err))
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("config: sync %s: %w", path, classify(err))
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("config: close %s: %w", path, classify(err))
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("config: rename %s: %w", path, classify(err))
 	}
 	return nil
@@ -289,7 +289,7 @@ func ProbeWritable(path string) error {
 		return ErrReadOnly
 	}
 	if f, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
-		f.Close()
+		_ = f.Close()
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return classify(err)
@@ -300,8 +300,8 @@ func ProbeWritable(path string) error {
 		return classify(err)
 	}
 	name := tmp.Name()
-	tmp.Close()
-	os.Remove(name)
+	_ = tmp.Close()
+	_ = os.Remove(name)
 	return nil
 }
 

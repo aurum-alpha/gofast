@@ -82,7 +82,7 @@ func (c *Client) Fetch(ctx context.Context) (provider.Raw, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return nil, fmt.Errorf("lg: %s: %s", resp.Status, strings.TrimSpace(string(body)))

@@ -354,7 +354,7 @@ func (h *Handler) serveSeg(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "segment fetch failed", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		reason := classifyUpstreamErr(nil, resp.StatusCode)
 		logEvent(slog.LevelWarn, EventSegFail,

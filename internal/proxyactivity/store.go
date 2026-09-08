@@ -321,7 +321,7 @@ FROM proxy_event ORDER BY at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanEvents(rows)
 }
 

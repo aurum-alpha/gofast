@@ -44,14 +44,14 @@ func (m *Mailer) Send(cfg config.OpsReport, subject, text, htmlBody string) erro
 	if err != nil {
 		return fmt.Errorf("opsreport: smtp dial: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("opsreport: smtp client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if cfg.SMTP.STARTTLSOrDefault() {
 		if ok, _ := client.Extension("STARTTLS"); ok {

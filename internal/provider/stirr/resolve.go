@@ -119,7 +119,7 @@ func (r *Resolver) fetchPlayable(ctx context.Context, videoID string) (string, e
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("stirr playable HTTP %d", resp.StatusCode)
 	}
@@ -157,7 +157,7 @@ func (r *Resolver) probeMaster(ctx context.Context, playURL string) error {
 	if err != nil {
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 	if resp.StatusCode == http.StatusUnprocessableEntity && isAniviewCON(body) {
 		return ErrDeadSSAI

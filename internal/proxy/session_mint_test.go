@@ -72,7 +72,7 @@ func TestSessionMintIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("status=%d", resp.StatusCode)
@@ -89,7 +89,7 @@ func TestSessionMintIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET2: %v", err)
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp2.Body)
 	if resp2.StatusCode != http.StatusFound || posts != 1 {
 		t.Fatalf("cached status=%d posts=%d", resp2.StatusCode, posts)

@@ -32,7 +32,7 @@ func (c *playlistClient) get(ctx context.Context, rawURL string, headers map[str
 	if err != nil {
 		return "", "", 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return "", "", resp.StatusCode, err

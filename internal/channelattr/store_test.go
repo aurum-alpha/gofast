@@ -69,7 +69,7 @@ func TestLoadCurrentDoesNotRequireHistoryScan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	v, _ := json.Marshal(model.ChannelHealth{Status: model.HealthHealthy})
@@ -83,13 +83,15 @@ func TestLoadCurrentDoesNotRequireHistoryScan(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	store.Close()
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	reopened, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
+	defer func() { _ = reopened.Close() }()
 	if _, ok := reopened.Current(model.ProviderLG, "a", KindHealth); ok {
 		t.Fatal("memory should be empty before LoadCurrent")
 	}

@@ -69,7 +69,7 @@ func NewArtworkClient(timeout time.Duration, hosts map[string]HostPolicy) (*http
 		}
 		conn := tls.Client(raw, cfg)
 		if err := conn.HandshakeContext(ctx); err != nil {
-			raw.Close()
+			_ = raw.Close()
 			return nil, err
 		}
 		return conn, nil

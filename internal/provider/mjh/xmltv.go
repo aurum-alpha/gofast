@@ -14,7 +14,7 @@ func decodeGuide(data []byte, known map[string]struct{}) ([]model.Programme, err
 	if err != nil {
 		return nil, err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	document, err := xmltv.Parse(gz)
 	if err != nil {

@@ -118,7 +118,7 @@ func (c *GenClient) Lookup(ctx context.Context, provider model.ProviderID, norma
 			"duration_ms", time.Since(start).Milliseconds(), "err", err.Error())
 		return ChannelOrigin{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		err = fmt.Errorf("origin: not found")
 		c.storeCache(key, ChannelOrigin{}, err, now)
