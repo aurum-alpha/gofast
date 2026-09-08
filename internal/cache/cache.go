@@ -77,7 +77,7 @@ func (c *Cache) CommitProvider(id model.ProviderID, raw provider.Raw, m3u model.
 	if err != nil {
 		return fmt.Errorf("cache: staging generation: %w", err)
 	}
-	defer os.RemoveAll(stage)
+	defer func() { _ = os.RemoveAll(stage) }()
 
 	metaBytes, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
@@ -173,7 +173,7 @@ func (c *Cache) CommitAggregate(m3u model.M3UFile, xml model.XMLTVFile) error {
 	if err != nil {
 		return fmt.Errorf("cache: staging aggregate generation: %w", err)
 	}
-	defer os.RemoveAll(stage)
+	defer func() { _ = os.RemoveAll(stage) }()
 
 	files := []struct {
 		name string
@@ -1062,21 +1062,21 @@ func atomicWrite(path string, data []byte) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("cache: write %s: %w", path, err)
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("cache: sync %s: %w", path, err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("cache: rename %s: %w", path, err)
 	}
 	return syncDir(dir)
@@ -1088,11 +1088,11 @@ func writeSynced(path string, data []byte) error {
 		return fmt.Errorf("cache: create %s: %w", path, err)
 	}
 	if _, err := file.Write(data); err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("cache: write %s: %w", path, err)
 	}
 	if err := file.Sync(); err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("cache: sync %s: %w", path, err)
 	}
 	if err := file.Close(); err != nil {
@@ -1106,7 +1106,7 @@ func syncDir(path string) error {
 	if err != nil {
 		return fmt.Errorf("cache: open directory %s: %w", path, err)
 	}
-	defer dir.Close()
+	defer func() { _ = dir.Close() }()
 	if err := dir.Sync(); err != nil {
 		return fmt.Errorf("cache: sync directory %s: %w", path, err)
 	}

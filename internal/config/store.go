@@ -189,9 +189,9 @@ func (s *Store) validateCandidate(candidate []byte) error {
 		return fmt.Errorf("config: temp: %w", classify(err))
 	}
 	name := tmp.Name()
-	defer os.Remove(name)
+	defer func() { _ = os.Remove(name) }()
 	if _, err := tmp.Write(candidate); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("config: write candidate: %w", classify(err))
 	}
 	if err := tmp.Close(); err != nil {

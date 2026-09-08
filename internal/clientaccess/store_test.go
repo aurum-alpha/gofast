@@ -16,7 +16,7 @@ func TestRecordSummaryRecentAndPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	now := time.Now().UTC().Truncate(time.Second)
 	old := now.Add(-31 * 24 * time.Hour)
@@ -40,7 +40,7 @@ func TestRecordSummaryRecentAndPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	sum, err := store.Summary()
 	if err != nil {
@@ -122,7 +122,7 @@ func TestOpenCreatesDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	if _, err := os.Stat(filepath.Join(dir, "client_access.db")); err != nil {
 		t.Fatal(err)
 	}

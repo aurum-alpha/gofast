@@ -29,7 +29,7 @@ func TestRangedGetUsesGETWithRangeNotHEAD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RangedGet: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if method.Load() != http.MethodGet {

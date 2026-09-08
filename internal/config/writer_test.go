@@ -208,7 +208,7 @@ func TestStoreSaveReadOnlyDir(t *testing.T) {
 	if err := os.Chmod(dir, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	_, err := store.Save(context.Background(), "", []PathOp{{Path: "cache_logos", Value: false}})
 	if err == nil {

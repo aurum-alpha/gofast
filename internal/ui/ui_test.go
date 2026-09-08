@@ -31,7 +31,7 @@ func get(t *testing.T, path string) (*http.Response, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { resp.Body.Close() })
+	t.Cleanup(func() { _ = resp.Body.Close() })
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)

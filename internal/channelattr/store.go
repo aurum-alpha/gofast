@@ -317,7 +317,7 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	if err != nil {
 		return out, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var kind string
 		var n int
@@ -481,7 +481,7 @@ WHERE kind IN (` + strings.Join(placeholders, ",") + `) AND at >= ?`
 	if err != nil {
 		return nil, fmt.Errorf("channelattr: events since: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []TimelineEvent
 	for rows.Next() {
@@ -525,7 +525,7 @@ LIMIT ?`, string(provider), channelID, string(kind), limit)
 	if err != nil {
 		return nil, fmt.Errorf("channelattr: history: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []HistoryEvent
 	for rows.Next() {
@@ -556,7 +556,7 @@ func (s *Store) LoadCurrent() error {
 	if err != nil {
 		return fmt.Errorf("channelattr: load current: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	next := make(map[string]entry)
 	for rows.Next() {

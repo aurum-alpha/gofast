@@ -49,21 +49,21 @@ func main() {
 		slog.Error("clientaccess open", "err", err)
 		os.Exit(1)
 	}
-	defer access.Close()
+	defer func() { _ = access.Close() }()
 
 	proxyAct, err := proxyactivity.Open(cacheDir)
 	if err != nil {
 		slog.Error("proxyactivity open", "err", err)
 		os.Exit(1)
 	}
-	defer proxyAct.Close()
+	defer func() { _ = proxyAct.Close() }()
 
 	attrs, err := channelattr.Open(cfg.DataDir)
 	if err != nil {
 		slog.Error("channelattr open", "err", err)
 		os.Exit(1)
 	}
-	defer attrs.Close()
+	defer func() { _ = attrs.Close() }()
 	if err := attrs.LoadCurrent(); err != nil {
 		slog.Error("channelattr load current", "err", err)
 		os.Exit(1)

@@ -247,8 +247,8 @@ func TestArtworkClientInsecureHostOnly(t *testing.T) {
 		_, _ = io.WriteString(w, "ok")
 	})
 	srv := &http.Server{Handler: mux}
-	go srv.Serve(tlsLn)
-	t.Cleanup(func() { srv.Close() })
+	go func() { _ = srv.Serve(tlsLn) }()
+	t.Cleanup(func() { _ = srv.Close() })
 
 	addr := ln.Addr().String()
 	_, port, _ := net.SplitHostPort(addr)
@@ -269,7 +269,7 @@ func TestArtworkClientInsecureHostOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insecure host client: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	strict, err := NewArtworkClient(2*time.Second, map[string]HostPolicy{
 		"logos.example": {CAPem: string(caPEM)},

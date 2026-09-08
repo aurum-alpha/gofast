@@ -211,7 +211,7 @@ func (c *Client) fetchPlaylist(ctx context.Context, rawURL string, headers map[s
 	if err != nil {
 		return nil, rawURL, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 && resp.StatusCode != 206 {
 		return nil, rawURL, fmt.Errorf("playlist HTTP %s", resp.Status)
 	}

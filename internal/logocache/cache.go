@@ -300,7 +300,7 @@ func (c *Cache) fetch(ctx context.Context, ch model.Channel, meta fileMeta, cond
 	if err != nil {
 		return nil, "", fileMeta{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	out.SourceURL = ch.LogoURL
 	out.ETag = resp.Header.Get("ETag")

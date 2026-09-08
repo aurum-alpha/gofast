@@ -184,7 +184,7 @@ ORDER BY e.file
 	if err != nil {
 		return nil, fmt.Errorf("clientaccess: summary: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []FileSummary
 	for rows.Next() {
@@ -240,7 +240,7 @@ func (s *Store) Recent(q Query) ([]Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("clientaccess: recent: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []Event
 	for rows.Next() {

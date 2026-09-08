@@ -279,7 +279,7 @@ func doGET(ctx context.Context, client *httpx.Client, rawURL string, headers map
 	if err != nil {
 		return getResult{FinalURL: rawURL, Err: fmt.Errorf("GET %s: %w", detailURL(rawURL), err)}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	limit := end + 1
 	if !withRange || end < 0 {
 		limit = playlistRangeEnd + 1
