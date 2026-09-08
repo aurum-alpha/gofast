@@ -68,13 +68,12 @@ func run(ctx context.Context, r Refresher, kick <-chan struct{}) {
 	heartbeat := time.NewTicker(scheduleHeartbeat)
 	defer heartbeat.Stop()
 
-	refreshing := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case now := <-heartbeat.C:
-			logRefreshSchedule(r.ID(), now, nextRefreshAt, refreshing)
+			logRefreshSchedule(r.ID(), now, nextRefreshAt)
 			warnIfGuideExhausted(r)
 		case <-kick:
 			interval = applyRefreshClamp(r)
@@ -93,10 +92,8 @@ func run(ctx context.Context, r Refresher, kick <-chan struct{}) {
 				"interval", interval.String(),
 			)
 		case <-t.C:
-			refreshing = true
 			start := time.Now()
 			err := r.Refresh(ctx)
-			refreshing = false
 			if err != nil {
 				if errors.Is(err, ErrRefreshInFlight) {
 					slog.Info("scheduled refresh skipped; already in progress",
@@ -164,16 +161,7 @@ func warnIfGuideExhausted(r Refresher) {
 	}
 }
 
-func logRefreshSchedule(id model.ProviderID, now, nextRefreshAt time.Time, refreshing bool) {
-	if refreshing {
-		slog.Info("refresh schedule",
-			"provider", id,
-			"now", now.UTC(),
-			"refresh_in", time.Duration(0),
-			"refresh_state", "in_progress",
-		)
-		return
-	}
+func logRefreshSchedule(id model.ProviderID, now, nextRefreshAt time.Time) {
 	remaining := nextRefreshAt.Sub(now)
 	if remaining < 0 {
 		remaining = 0

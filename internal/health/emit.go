@@ -102,13 +102,6 @@ func (e *Emitter) SetConsecutiveFailures(n int) {
 	e.ConsecutiveFailures = n
 }
 
-// failN returns the effective N for DOWN (default 3).
-func (e *Emitter) failN() int {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.failNLocked()
-}
-
 func (e *Emitter) failNLocked() int {
 	if e.ConsecutiveFailures < 1 {
 		return 3
