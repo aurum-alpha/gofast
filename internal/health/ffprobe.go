@@ -40,10 +40,7 @@ func (p *FFProbe) Check(ctx context.Context, ch model.Channel) model.HealthCheck
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	var pub, internal string
-	if p != nil {
-		pub, internal = p.ProxyPublicBase, p.ProxyInternalBase
-	}
+	pub, internal := p.ProxyPublicBase, p.ProxyInternalBase
 	streamURL := RewriteProxyProbeURL(ProbeURL(ch), pub, internal)
 	if streamURL == "" {
 		return finishCheck(failCheck(check, "no_url", "channel has no stream_url or emitted_url"), start)

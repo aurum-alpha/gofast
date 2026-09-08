@@ -28,8 +28,8 @@ func TestNormalizeIDStableAndHostile(t *testing.T) {
 		if got := NormalizeID(tt.in); got != tt.want {
 			t.Errorf("NormalizeID(%q)=%q want %q", tt.in, got, tt.want)
 		}
-		if NormalizeID(tt.in) != NormalizeID(tt.in) {
-			t.Errorf("unstable for %q", tt.in)
+		if got := NormalizeID(tt.want); got != tt.want {
+			t.Errorf("NormalizeID not idempotent for %q: %q", tt.want, got)
 		}
 	}
 }

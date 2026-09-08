@@ -65,9 +65,7 @@ func (p *SegmentProber) Check(ctx context.Context, ch model.Channel) model.Healt
 		}
 		last = p.checkOnce(ctx, check, streamURL, ch.RequestHeaders)
 		if last.Result == model.HealthCheckSuccess {
-			if attempt > 0 {
-				// Keep success; duration covers all attempts via finishCheck.
-			}
+			// Keep success; duration covers all attempts via finishCheck.
 			return finishCheck(last, start)
 		}
 		if !isSoftFailure(last) || attempt == retries {

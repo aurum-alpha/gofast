@@ -240,10 +240,7 @@ func (h *Handler) serveDemuxStable(w http.ResponseWriter, r *http.Request) {
 	restarts := 0
 	restartWindowStart := time.Now()
 
-	for {
-		if ctx.Err() != nil {
-			break
-		}
+	for ctx.Err() == nil {
 		enc, startErr := h.startDemuxEncode(ctx, slot, provider, id, ffArgs)
 		if startErr != nil {
 			if !headersSent {
@@ -262,7 +259,7 @@ func (h *Handler) serveDemuxStable(w http.ResponseWriter, r *http.Request) {
 			}
 			headersSent = true
 		}
-		n, copyErr, waitErr, stderrMsg := enc.copyAndWait(cw)
+		n, stderrMsg, copyErr, waitErr := enc.copyAndWait(cw)
 		totalBytes += n
 		lastCopyErr, lastWaitErr, lastStderr = copyErr, waitErr, stderrMsg
 
@@ -375,7 +372,7 @@ func (h *Handler) startDemuxEncode(ctx context.Context, slot *demuxStableSlot, p
 	return &demuxEncodeProc{cmd: cmd, stdout: stdout, stderrCh: stderrCh, stallStop: stallStop}, nil
 }
 
-func (p *demuxEncodeProc) copyAndWait(out io.Writer) (n int64, copyErr, waitErr error, stderrMsg string) {
+func (p *demuxEncodeProc) copyAndWait(out io.Writer) (n int64, stderrMsg string, copyErr, waitErr error) {
 	n, copyErr = io.Copy(out, p.stdout)
 	close(p.stallStop)
 	if p.cmd.Process != nil {
@@ -386,7 +383,7 @@ func (p *demuxEncodeProc) copyAndWait(out io.Writer) (n int64, copyErr, waitErr 
 	case stderrMsg = <-p.stderrCh:
 	case <-time.After(500 * time.Millisecond):
 	}
-	return n, copyErr, waitErr, stderrMsg
+	return n, stderrMsg, copyErr, waitErr
 }
 
 // watchDemuxStall kills ffmpeg when no bytes flow for demuxStallQuietFor so the

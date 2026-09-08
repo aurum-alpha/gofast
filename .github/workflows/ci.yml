@@ -283,9 +283,6 @@ jobs:
     uses: aurum-alpha/workflows/.github/workflows/job-go-lint.yml@main
     with:
       linter: staticcheck
-      # 17 pre-existing finding(s). Stabilization window, not a mode —
-      # the gate goes hard when the debt is gone.
-      warn_only: true
     secrets: inherit
 
   server-go-lint-ineffassign:

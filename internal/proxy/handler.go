@@ -228,9 +228,10 @@ func (h *Handler) serveSessionMint(w http.ResponseWriter, r *http.Request, provi
 	manifest, status, err := h.mint.mint(r.Context(), eventID, origin.RequestHeaders)
 	if err != nil {
 		reason := classifyUpstreamErr(err, status)
-		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		switch status {
+		case http.StatusUnauthorized, http.StatusForbidden:
 			reason = ReasonSessionMintAuth
-		} else if status == http.StatusNotFound {
+		case http.StatusNotFound:
 			// Dead/disabled DAI asset — not a missing HMAC (auth is 401).
 			reason = ReasonSessionMintBadURL
 		}

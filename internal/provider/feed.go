@@ -259,7 +259,7 @@ func (f *Feed) Stats() Stats {
 		}
 	}
 	if !stats.GuideEnd.IsZero() {
-		hours := stats.GuideEnd.Sub(time.Now()).Hours()
+		hours := time.Until(stats.GuideEnd).Hours()
 		if hours < 0 {
 			hours = 0
 		}

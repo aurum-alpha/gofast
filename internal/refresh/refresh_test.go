@@ -916,13 +916,14 @@ func TestNextRefreshHeartbeat(t *testing.T) {
 	}()
 
 	deadline := time.Now().Add(500 * time.Millisecond)
-	for {
-		if strings.Contains(buf.String(), `"msg":"refresh schedule"`) &&
-			strings.Contains(buf.String(), `"provider":"lg"`) &&
-			strings.Contains(buf.String(), `"next_refresh_at"`) &&
-			strings.Contains(buf.String(), `"refresh_in"`) {
-			break
-		}
+	logged := func() bool {
+		s := buf.String()
+		return strings.Contains(s, `"msg":"refresh schedule"`) &&
+			strings.Contains(s, `"provider":"lg"`) &&
+			strings.Contains(s, `"next_refresh_at"`) &&
+			strings.Contains(s, `"refresh_in"`)
+	}
+	for !logged() {
 		if time.Now().After(deadline) {
 			t.Fatalf("missing schedule log: %s", buf.String())
 		}
