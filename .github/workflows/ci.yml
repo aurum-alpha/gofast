@@ -264,11 +264,6 @@ jobs:
       dir: "."
     secrets: inherit
 
-  # BLOCKING, with no warn_only, because this unit measures zero unused
-  # dependencies today. The seven Replit-derived repositories adopt the same
-  # job warn-only against 20-40 findings each; running it open here as well
-  # would mean the gate has never failed anywhere, which is a gate nobody has
-  # tested.
   client-ts-react-depcheck:
     needs: client-ts-react-build
     uses: aurum-alpha/workflows/.github/workflows/job-depcheck-js-knip.yml@main
