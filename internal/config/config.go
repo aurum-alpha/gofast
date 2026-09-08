@@ -179,10 +179,10 @@ func (h *Health) UnmarshalYAML(value *yaml.Node) error {
 	if raw.L3Enabled != nil && raw.L2Enabled == nil {
 		h.L2Enabled = raw.L3Enabled
 	}
-	if raw.L3Interval != nil && !(newL1Set && raw.L2Interval != nil) {
+	if raw.L3Interval != nil && (!newL1Set || raw.L2Interval == nil) {
 		h.L2Interval = *raw.L3Interval
 	}
-	if raw.L3Workers != nil && !(newL1Set && raw.L2Workers != nil) {
+	if raw.L3Workers != nil && (!newL1Set || raw.L2Workers == nil) {
 		h.L2Workers = *raw.L3Workers
 	}
 	if raw.L3Timeout != nil && raw.L2Timeout == nil {

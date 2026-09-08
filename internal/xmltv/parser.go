@@ -157,11 +157,15 @@ func validEntity(entity []byte) bool {
 		if base == 10 && (digit < '0' || digit > '9') {
 			return false
 		}
-		if base == 16 && !((digit >= '0' && digit <= '9') || (digit >= 'a' && digit <= 'f') || (digit >= 'A' && digit <= 'F')) {
+		if base == 16 && !isHexDigit(digit) {
 			return false
 		}
 	}
 	return true
+}
+
+func isHexDigit(r rune) bool {
+	return (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
 }
 
 func attribute(attributes []xml.Attr, name string) string {

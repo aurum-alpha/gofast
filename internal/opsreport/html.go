@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html"
+	"strconv"
 	"strings"
 )
 
@@ -285,7 +286,7 @@ func writeSubsectionTitle(b *bytes.Buffer, title string, count int) {
 	b.WriteString(` <span style="color:`)
 	b.WriteString(colorMuted)
 	b.WriteString(`;font-weight:400;">(`)
-	b.WriteString(fmt.Sprintf("%d", count))
+	b.WriteString(strconv.Itoa(count))
 	b.WriteString(`)</span></div>`)
 }
 

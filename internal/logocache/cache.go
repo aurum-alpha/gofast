@@ -261,9 +261,6 @@ func (c *Cache) fetchToDisk(ctx context.Context, provider model.ProviderID, file
 		if _, err := c.store.StatLogo(provider, file); err != nil {
 			return fmt.Errorf("304 without local file")
 		}
-	} else {
-		// 304: touch mtime by rewriting meta; bump freshness via WriteLogoMeta only.
-		// Stat mtime won't change — update a FetchedAt in meta for age checks.
 	}
 	newMeta.SourceURL = sourceURL
 	newMeta.FetchedAt = time.Now().UTC()
