@@ -57,11 +57,18 @@ go build ./...                                                   # compiles
 Client, from `client/`:
 
 ```sh
-pnpm exec tsc -b --noEmit                       # typecheck
-pnpm exec oxlint . --type-aware --deny-warnings  # lint
-pnpm exec vitest run                            # unit tests
-pnpm exec vite build                            # build
+pnpm typecheck                                  # tsc -b --noEmit
+pnpm lint                                       # oxlint, --deny-warnings
+pnpm test:unit                                  # vitest run, with coverage
+pnpm build                                      # vite build
+pnpm dev:client                                 # the Vite dev server
 ```
+
+These are the canonical names from the fleet's
+[developer-commands standard](https://github.com/aurum-alpha/workflows/blob/main/standards/015-commands.md),
+and each script's body is the invocation the matching catalog job runs.
+`check-package-scripts` fails the build if the two drift apart, so the script
+name is what to quote here rather than the tool it wraps.
 
 One linter now. eslint has been retired: `.oxlintrc.json` was written as a
 translation of the eslint config it replaced, at the same rules and severities,
@@ -74,8 +81,10 @@ the ordinary one: lint passes before you commit. `--deny-warnings` is part of
 the command because the job runs it that way, and a warning nobody must fix is
 a warning nobody reads.
 
-Local development: `docker compose up` from the root; `pnpm dev` in `client/`
-for the Vite dev server.
+Local development: `docker compose up` from the root; `pnpm dev:client` in
+`client/` for the Vite dev server. There is no `pnpm dev` here: `dev` means
+bring up the whole local stack, and in this repository that is compose, not a
+`package.json` script.
 
 ## Quality gates (before commit and before push)
 

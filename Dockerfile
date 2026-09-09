@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
 COPY --from=build /out/fastgen /fastgen
 # The React app ships as files served by fastgen, not compiled into it.
-COPY --from=web /src/client/dist/ /srv/gofast/ui/
+COPY --from=web /src/web/dist/ /srv/gofast/ui/
 USER nonroot:nonroot
 EXPOSE 8180
 ENV PORT=8180
