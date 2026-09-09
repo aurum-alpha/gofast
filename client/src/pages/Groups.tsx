@@ -76,7 +76,8 @@ export function GroupsPage() {
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err))
       })
     return () => {
       cancelled = true
@@ -94,7 +95,10 @@ export function GroupsPage() {
     return m
   }, [merges])
 
-  const disabledSet = useMemo(() => new Set(disabled.map((d) => norm(d))), [disabled])
+  const disabledSet = useMemo(
+    () => new Set(disabled.map((d) => norm(d))),
+    [disabled],
+  )
 
   function isGloballyDisabled(name: string): boolean {
     return disabledSet.has(norm(name))
@@ -118,8 +122,9 @@ export function GroupsPage() {
     }
     for (const g of discovered) {
       const canonical = assignment.get(norm(g.name))
-      const key = enabled ? canonical ?? g.name : g.name
-      const globallyOff = enabled && (isGloballyDisabled(g.name) || isMergeDisabled(g.name))
+      const key = enabled ? (canonical ?? g.name) : g.name
+      const globallyOff =
+        enabled && (isGloballyDisabled(g.name) || isMergeDisabled(g.name))
       for (const p of g.providers) {
         const perProviderOff =
           enabled && disabledSet.has(norm(providerSelector(p.id, g.name)))
@@ -172,7 +177,12 @@ export function GroupsPage() {
       prev.map((g) =>
         g.name === groupName
           ? g
-          : { ...g, members: g.members.filter((mem) => !names.some((n) => norm(n) === norm(mem))) },
+          : {
+              ...g,
+              members: g.members.filter(
+                (mem) => !names.some((n) => norm(n) === norm(mem)),
+              ),
+            },
       ),
     )
     setSelected(new Set())
@@ -190,7 +200,9 @@ export function GroupsPage() {
     setMerges((prev) => [
       ...prev.map((g) => ({
         ...g,
-        members: g.members.filter((mem) => !members.some((n) => norm(n) === norm(mem))),
+        members: g.members.filter(
+          (mem) => !members.some((n) => norm(n) === norm(mem)),
+        ),
       })),
       { name, members, enabled: true },
     ])
@@ -209,12 +221,16 @@ export function GroupsPage() {
   }
 
   function renameGroup(oldName: string, next: string) {
-    setMerges((prev) => prev.map((g) => (g.name === oldName ? { ...g, name: next } : g)))
+    setMerges((prev) =>
+      prev.map((g) => (g.name === oldName ? { ...g, name: next } : g)),
+    )
   }
 
   function toggleGroupEnabled(groupName: string) {
     setMerges((prev) =>
-      prev.map((g) => (g.name === groupName ? { ...g, enabled: !g.enabled } : g)),
+      prev.map((g) =>
+        g.name === groupName ? { ...g, enabled: !g.enabled } : g,
+      ),
     )
   }
 
@@ -282,10 +298,10 @@ export function GroupsPage() {
       <h1>Groups</h1>
       <p className="lead">
         Merge providers' upstream groups into your own named folders and disable
-        the ones you don't want. Identical upstream names are auto-merged. Saving
-        writes the <code>groups</code> block to <code>config.yaml</code> and
-        applies live — <Link to="/channels">channels</Link> re-emit without a
-        restart.
+        the ones you don't want. Identical upstream names are auto-merged.
+        Saving writes the <code>groups</code> block to <code>config.yaml</code>{' '}
+        and applies live — <Link to="/channels">channels</Link> re-emit without
+        a restart.
       </p>
 
       {server.read_only ? (
@@ -304,7 +320,11 @@ export function GroupsPage() {
           />{' '}
           Enable group taxonomy
         </label>
-        <button type="button" onClick={() => void save()} disabled={saving || server.read_only}>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving || server.read_only}
+        >
           {saving ? 'Saving…' : 'Save & apply'}
         </button>
         {toast ? (
@@ -332,7 +352,11 @@ export function GroupsPage() {
               placeholder="New group name…"
               onChange={(e) => setNewName(e.target.value)}
             />
-            <button type="button" onClick={createGroup} disabled={!newName.trim()}>
+            <button
+              type="button"
+              onClick={createGroup}
+              disabled={!newName.trim()}
+            >
               Create{selected.size > 0 ? ` from ${selected.size}` : ''}
             </button>
             {groupNames.length > 0 ? (
@@ -357,7 +381,8 @@ export function GroupsPage() {
             {discovered.map((g) => {
               const assignedTo = assignment.get(norm(g.name))
               const cardDisabled =
-                enabled && (isGloballyDisabled(g.name) || isMergeDisabled(g.name))
+                enabled &&
+                (isGloballyDisabled(g.name) || isMergeDisabled(g.name))
               const isOpen = expanded.has(g.name)
               return (
                 <li
@@ -380,7 +405,11 @@ export function GroupsPage() {
                   </div>
                   <div className="pool-card-badges">
                     {g.providers.map((p) => (
-                      <span key={p.id} className="badge badge-beacon" title={p.label}>
+                      <span
+                        key={p.id}
+                        className="badge badge-beacon"
+                        title={p.label}
+                      >
                         {p.id} {p.count}
                       </span>
                     ))}
@@ -451,7 +480,10 @@ export function GroupsPage() {
           ) : null}
           <ul className="groups-list">
             {merges.map((g) => (
-              <li key={g.name} className={`group-bucket${g.enabled ? '' : ' disabled'}`}>
+              <li
+                key={g.name}
+                className={`group-bucket${g.enabled ? '' : ' disabled'}`}
+              >
                 <div className="group-bucket-head">
                   <input
                     className="group-name-input"
@@ -516,7 +548,9 @@ export function GroupsPage() {
                 ) : null}
               </li>
             ))}
-            {preview.length === 0 ? <li className="meta">Nothing to emit yet.</li> : null}
+            {preview.length === 0 ? (
+              <li className="meta">Nothing to emit yet.</li>
+            ) : null}
           </ul>
         </section>
       </div>

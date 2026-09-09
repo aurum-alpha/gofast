@@ -51,15 +51,16 @@ function HostTreeRows({
                   aria-expanded={open}
                   onClick={() => toggle(key)}
                 >
-                  {open ? '▾' : '▸'}{' '}
-                  <code>{displayLabel(n.label)}</code>
+                  {open ? '▾' : '▸'} <code>{displayLabel(n.label)}</code>
                 </button>
               ) : (
                 <span className="host-leaf">
                   <code>{displayLabel(n.label)}</code>
                 </span>
               )}
-              <span className="host-tree-count">{n.count.toLocaleString()}</span>
+              <span className="host-tree-count">
+                {n.count.toLocaleString()}
+              </span>
             </div>
             {hasKids && open ? (
               <HostTreeRows
@@ -115,8 +116,8 @@ export function HostsPage() {
       <h1>Hosts</h1>
       <p className="lead">
         Live lineup rollup as a reverse-DNS tree: TLD first, then expand into
-        domains and subdomains. Counts recompute on each load from the
-        in-memory channel list.
+        domains and subdomains. Counts recompute on each load from the in-memory
+        channel list.
       </p>
 
       {error && (

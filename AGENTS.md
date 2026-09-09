@@ -59,6 +59,7 @@ Client, from `client/`:
 ```sh
 pnpm typecheck                                  # tsc -b --noEmit
 pnpm lint                                       # oxlint, --deny-warnings
+pnpm format                                     # prettier --check .
 pnpm test:unit                                  # vitest run, with coverage
 pnpm build                                      # vite build
 pnpm dev:client                                 # the Vite dev server
@@ -69,6 +70,11 @@ These are the canonical names from the fleet's
 and each script's body is the invocation the matching catalog job runs.
 `check-package-scripts` fails the build if the two drift apart, so the script
 name is what to quote here rather than the tool it wraps.
+
+`pnpm format` checks. `pnpm exec prettier --write .` fixes, and it is
+deliberately not a script: no gate runs it, so it gets no canonical name. The
+formatting job is blocking with no window, because the reformat that made the
+tree clean is in the same change that added the gate.
 
 One linter now. eslint has been retired: `.oxlintrc.json` was written as a
 translation of the eslint config it replaced, at the same rules and severities,

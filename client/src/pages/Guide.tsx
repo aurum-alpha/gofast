@@ -17,10 +17,7 @@ import {
   writeStoredGuideFilters,
   type TimePreset,
 } from '../lib/guideFilters'
-import {
-  categorySlug,
-  categoryStyle,
-} from '../lib/categoryStyle'
+import { categorySlug, categoryStyle } from '../lib/categoryStyle'
 import {
   enabledProviderIds,
   loadProviderGuides,
@@ -74,14 +71,25 @@ function ceilHour(ms: number): number {
 function tickLabel(ms: number): string {
   const d = new Date(ms)
   if (d.getHours() === 0) {
-    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+    return d.toLocaleDateString([], {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    })
   }
   return d.toLocaleTimeString([], { hour: 'numeric' })
 }
 
 function fmtRange(start: Date, stop: Date): string {
-  const day = start.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
-  const st = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const day = start.toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
+  const st = start.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
   const et = stop.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return `${day} ${st}–${et}`
 }
@@ -115,7 +123,12 @@ function timeBounds(
   }
 }
 
-function overlaps(start: number, stop: number, winStart: number, winEnd: number): boolean {
+function overlaps(
+  start: number,
+  stop: number,
+  winStart: number,
+  winEnd: number,
+): boolean {
   return stop > winStart && start < winEnd
 }
 
@@ -152,7 +165,10 @@ export function GuidePage() {
     }
   }, [searchParams, setSearchParams])
 
-  const filters = useMemo(() => guideFiltersFromSearch(searchParams), [searchParams])
+  const filters = useMemo(
+    () => guideFiltersFromSearch(searchParams),
+    [searchParams],
+  )
   const providerFilter = filters.provider
   const groupFilter = filters.group
   const regionFilter = filters.region
@@ -180,7 +196,9 @@ export function GuidePage() {
   }
 
   const [channels, setChannels] = useState<ChannelMeta[] | null>(null)
-  const [rowsById, setRowsById] = useState<Map<string, GuideRow>>(() => new Map())
+  const [rowsById, setRowsById] = useState<Map<string, GuideRow>>(
+    () => new Map(),
+  )
   const [statuses, setStatuses] = useState<ProviderStatus[]>([])
   const [bootError, setBootError] = useState<string | null>(null)
   const [booting, setBooting] = useState(true)
@@ -241,7 +259,11 @@ export function GuidePage() {
           },
         })
       } catch (err) {
-        if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return
+        if (
+          cancelled ||
+          (err instanceof DOMException && err.name === 'AbortError')
+        )
+          return
         setBootError(err instanceof Error ? err.message : String(err))
         setBooting(false)
       }
@@ -253,7 +275,10 @@ export function GuidePage() {
     }
   }, [providerFilter])
 
-  const allRows = useMemo(() => sortGuideRows([...rowsById.values()]), [rowsById])
+  const allRows = useMemo(
+    () => sortGuideRows([...rowsById.values()]),
+    [rowsById],
+  )
 
   const providers = useMemo(() => {
     const fromChannels = channels?.map((c) => c.provider) ?? []
@@ -270,9 +295,7 @@ export function GuidePage() {
     const src = channels ?? allRows.map((r) => ({ region: r.region }))
     return [
       ...new Set(
-        src
-          .map((c) => ('region' in c ? c.region : '') || '')
-          .filter(Boolean),
+        src.map((c) => ('region' in c ? c.region : '') || '').filter(Boolean),
       ),
     ].sort()
   }, [channels, allRows])
@@ -310,11 +333,16 @@ export function GuidePage() {
     const progNeedle = programmeQ.trim().toLowerCase()
     return allRows
       .filter((r) => {
-        if (providerFilter !== 'all' && r.provider !== providerFilter) return false
+        if (providerFilter !== 'all' && r.provider !== providerFilter)
+          return false
         if (hideExcluded && r.excluded) return false
         if (groupFilter !== 'all' && r.group !== groupFilter) return false
-        if (regionFilter !== 'all' && (r.region || '') !== regionFilter) return false
-        if (classFilter !== 'all' && canonicalClassification(r.classification) !== classFilter)
+        if (regionFilter !== 'all' && (r.region || '') !== regionFilter)
+          return false
+        if (
+          classFilter !== 'all' &&
+          canonicalClassification(r.classification) !== classFilter
+        )
           return false
         if (channelNeedle) {
           const hit =
@@ -330,7 +358,12 @@ export function GuidePage() {
       })
       .map((r) => {
         let programmes = r.programmes.filter((p) =>
-          overlaps(p.start.getTime(), p.stop.getTime(), timeWindow.start, timeWindow.end),
+          overlaps(
+            p.start.getTime(),
+            p.stop.getTime(),
+            timeWindow.start,
+            timeWindow.end,
+          ),
         )
         if (progNeedle) {
           programmes = programmes.filter((p) =>
@@ -373,9 +406,14 @@ export function GuidePage() {
       : null
 
   const loadSummary = summarizeLoad(statuses)
-  const loading = booting || statuses.some((s) =>
-    s.phase === 'pending' || s.phase === 'fetching' || s.phase === 'parsing',
-  )
+  const loading =
+    booting ||
+    statuses.some(
+      (s) =>
+        s.phase === 'pending' ||
+        s.phase === 'fetching' ||
+        s.phase === 'parsing',
+    )
   const hasPaint = allRows.length > 0
   const filtersDirty = guideFiltersActive(filters)
 
@@ -558,7 +596,11 @@ export function GuidePage() {
               >
                 <option value="all">all</option>
                 {CLASS_FILTERS.map((c) => (
-                  <option key={c} value={c} disabled={hideExcluded && c === 'DRM'}>
+                  <option
+                    key={c}
+                    value={c}
+                    disabled={hideExcluded && c === 'DRM'}
+                  >
                     {classBadge(c).label}
                   </option>
                 ))}
@@ -583,7 +625,9 @@ export function GuidePage() {
               <input
                 type="checkbox"
                 checked={hideExcluded}
-                onChange={(e) => patchFilters({ hideExcluded: e.target.checked })}
+                onChange={(e) =>
+                  patchFilters({ hideExcluded: e.target.checked })
+                }
               />
               Hide excluded
             </label>
@@ -659,7 +703,11 @@ export function GuidePage() {
                 )}
 
                 {topSpacer > 0 && (
-                  <div className="epg-spacer" style={{ height: topSpacer }} aria-hidden />
+                  <div
+                    className="epg-spacer"
+                    style={{ height: topSpacer }}
+                    aria-hidden
+                  />
                 )}
 
                 {visibleRows.map((r) => (
@@ -696,7 +744,8 @@ export function GuidePage() {
                       {r.programmes.map((p, i) => {
                         const s = p.start.getTime()
                         const e = p.stop.getTime()
-                        let left = ((s - timeWindow.start) / 60_000) * PX_PER_MIN
+                        let left =
+                          ((s - timeWindow.start) / 60_000) * PX_PER_MIN
                         let width = ((e - s) / 60_000) * PX_PER_MIN
                         if (left < 0) {
                           width += left
@@ -706,7 +755,8 @@ export function GuidePage() {
                           width = timelineW - left
                         }
                         if (width < 1) return null
-                        if (left + width < viewLeft || left > viewRight) return null
+                        if (left + width < viewLeft || left > viewRight)
+                          return null
                         const onNow = s <= now && now < e
                         const firstCat = p.categories[0]
                         const catClass = firstCat
@@ -728,19 +778,36 @@ export function GuidePage() {
                             }}
                             onMouseEnter={(e) => {
                               if (detail?.pinned) return
-                              showProgrammeDetail(e.currentTarget, r.name, p, false)
+                              showProgrammeDetail(
+                                e.currentTarget,
+                                r.name,
+                                p,
+                                false,
+                              )
                             }}
                             onMouseLeave={() => {
-                              setDetail((cur) => (cur && !cur.pinned ? null : cur))
+                              setDetail((cur) =>
+                                cur && !cur.pinned ? null : cur,
+                              )
                             }}
                             onClick={(e) => {
                               e.stopPropagation()
-                              showProgrammeDetail(e.currentTarget, r.name, p, true)
+                              showProgrammeDetail(
+                                e.currentTarget,
+                                r.name,
+                                p,
+                                true,
+                              )
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault()
-                                showProgrammeDetail(e.currentTarget, r.name, p, true)
+                                showProgrammeDetail(
+                                  e.currentTarget,
+                                  r.name,
+                                  p,
+                                  true,
+                                )
                               }
                             }}
                           >
@@ -774,7 +841,9 @@ export function GuidePage() {
         >
           <div className="epg-detail-channel">{detail.channelName}</div>
           <div className="epg-detail-title">{detail.title}</div>
-          <div className="epg-detail-time">{fmtRange(detail.start, detail.stop)}</div>
+          <div className="epg-detail-time">
+            {fmtRange(detail.start, detail.stop)}
+          </div>
           {detail.categories.length > 0 ? (
             <div className="epg-detail-cats">
               {detail.categories.map((c) => (
@@ -784,7 +853,9 @@ export function GuidePage() {
               ))}
             </div>
           ) : null}
-          {detail.desc ? <p className="epg-detail-desc">{detail.desc}</p> : null}
+          {detail.desc ? (
+            <p className="epg-detail-desc">{detail.desc}</p>
+          ) : null}
           {detail.pinned ? (
             <button
               type="button"

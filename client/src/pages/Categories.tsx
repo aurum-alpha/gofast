@@ -64,7 +64,8 @@ export function CategoriesPage() {
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err))
       })
     return () => {
       cancelled = true
@@ -86,7 +87,7 @@ export function CategoriesPage() {
     const buckets = new Map<string, number>()
     for (const g of discovered) {
       const canonical = assignment.get(norm(g.name))
-      const key = enabled ? canonical ?? g.name : g.name
+      const key = enabled ? (canonical ?? g.name) : g.name
       buckets.set(key, (buckets.get(key) ?? 0) + g.total)
     }
     return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]))
@@ -108,7 +109,9 @@ export function CategoriesPage() {
         if (g.name !== mergeName) {
           return {
             ...g,
-            members: g.members.filter((mem) => !names.some((n) => norm(n) === norm(mem))),
+            members: g.members.filter(
+              (mem) => !names.some((n) => norm(n) === norm(mem)),
+            ),
           }
         }
         const have = new Set(g.members.map(norm))
@@ -130,7 +133,9 @@ export function CategoriesPage() {
     setMerges((prev) => [
       ...prev.map((g) => ({
         ...g,
-        members: g.members.filter((mem) => !members.some((n) => norm(n) === norm(mem))),
+        members: g.members.filter(
+          (mem) => !members.some((n) => norm(n) === norm(mem)),
+        ),
       })),
       { name, members },
     ])
@@ -149,7 +154,9 @@ export function CategoriesPage() {
   }
 
   function renameMerge(oldName: string, next: string) {
-    setMerges((prev) => prev.map((g) => (g.name === oldName ? { ...g, name: next } : g)))
+    setMerges((prev) =>
+      prev.map((g) => (g.name === oldName ? { ...g, name: next } : g)),
+    )
   }
 
   function deleteMerge(mergeName: string) {
@@ -237,7 +244,11 @@ export function CategoriesPage() {
           />{' '}
           Enable category taxonomy
         </label>
-        <button type="button" onClick={() => void save()} disabled={saving || server.read_only}>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving || server.read_only}
+        >
           {saving ? 'Saving…' : 'Save & apply'}
         </button>
         {toast ? (
@@ -249,8 +260,8 @@ export function CategoriesPage() {
 
       {!enabled ? (
         <p className="meta">
-          Taxonomy is off: Guide and XMLTV keep each provider&apos;s raw category
-          strings. Turn it on to merge labels.
+          Taxonomy is off: Guide and XMLTV keep each provider&apos;s raw
+          category strings. Turn it on to merge labels.
         </p>
       ) : null}
 
@@ -264,7 +275,11 @@ export function CategoriesPage() {
               placeholder="New category name…"
               onChange={(e) => setNewName(e.target.value)}
             />
-            <button type="button" onClick={createMerge} disabled={!newName.trim()}>
+            <button
+              type="button"
+              onClick={createMerge}
+              disabled={!newName.trim()}
+            >
               Create{selected.size > 0 ? ` from ${selected.size}` : ''}
             </button>
             {mergeNames.length > 0 ? (
@@ -307,7 +322,11 @@ export function CategoriesPage() {
                   </div>
                   <div className="pool-card-badges">
                     {g.providers.map((p) => (
-                      <span key={p.id} className="badge badge-beacon" title={p.label}>
+                      <span
+                        key={p.id}
+                        className="badge badge-beacon"
+                        title={p.label}
+                      >
                         {p.id} {p.count}
                       </span>
                     ))}

@@ -88,7 +88,10 @@ export async function fetchConfig(): Promise<ConfigResponse> {
   return (await res.json()) as ConfigResponse
 }
 
-export async function saveConfig(revision: string, ops: PathOp[]): Promise<SaveResponse> {
+export async function saveConfig(
+  revision: string,
+  ops: PathOp[],
+): Promise<SaveResponse> {
   const res = await fetch('/api/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -96,17 +99,26 @@ export async function saveConfig(revision: string, ops: PathOp[]): Promise<SaveR
   })
   if (!res.ok) {
     const text = (await res.text()).trim()
-    throw new ConfigSaveError(res.status, text || `${res.status} ${res.statusText}`)
+    throw new ConfigSaveError(
+      res.status,
+      text || `${res.status} ${res.statusText}`,
+    )
   }
   return (await res.json()) as SaveResponse
 }
 
 /** Human summary of a save's reload report ("applied live" vs failures). */
-export function reloadSummary(reloads: ReloadResult[]): { ok: boolean; message: string } {
+export function reloadSummary(reloads: ReloadResult[]): {
+  ok: boolean
+  message: string
+} {
   const failed = reloads.filter((r) => r.error)
   if (failed.length === 0) {
     return { ok: true, message: 'Saved and applied live — no restart needed.' }
   }
   const detail = failed.map((r) => `${r.name}: ${r.error}`).join('; ')
-  return { ok: false, message: `Saved, but some subsystems failed to reload — ${detail}` }
+  return {
+    ok: false,
+    message: `Saved, but some subsystems failed to reload — ${detail}`,
+  }
 }

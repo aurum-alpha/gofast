@@ -50,8 +50,11 @@ export async function sendOpsPreview(): Promise<OpsReportArchiveMeta> {
 }
 
 export async function resendOpsArchive(id: string): Promise<void> {
-  const res = await fetch(`/api/ops-report/archives/${encodeURIComponent(id)}/resend`, {
-    method: 'POST',
-  })
+  const res = await fetch(
+    `/api/ops-report/archives/${encodeURIComponent(id)}/resend`,
+    {
+      method: 'POST',
+    },
+  )
   if (!res.ok) throw new Error(await readError(res))
 }

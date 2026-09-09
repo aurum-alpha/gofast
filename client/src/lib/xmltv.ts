@@ -38,14 +38,14 @@ export function parseXMLTV(text: string): Xmltv {
   if (doc.querySelector('parsererror')) {
     throw new Error('invalid XMLTV document')
   }
-  const channels: XmltvChannel[] = [...doc.querySelectorAll('tv > channel')].map(
-    (el) => ({
-      id: el.getAttribute('id') ?? '',
-      displayName: el.querySelector('display-name')?.textContent?.trim() ?? '',
-      number: Number(el.querySelector('lcn')?.textContent?.trim() ?? '') || 0,
-      logo: el.querySelector('icon')?.getAttribute('src') ?? '',
-    }),
-  )
+  const channels: XmltvChannel[] = [
+    ...doc.querySelectorAll('tv > channel'),
+  ].map((el) => ({
+    id: el.getAttribute('id') ?? '',
+    displayName: el.querySelector('display-name')?.textContent?.trim() ?? '',
+    number: Number(el.querySelector('lcn')?.textContent?.trim() ?? '') || 0,
+    logo: el.querySelector('icon')?.getAttribute('src') ?? '',
+  }))
   const programmes: XmltvProgramme[] = [
     ...doc.querySelectorAll('tv > programme'),
   ].map((el) => ({

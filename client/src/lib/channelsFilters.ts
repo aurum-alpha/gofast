@@ -73,7 +73,15 @@ const SORT_KEY_SET = new Set<string>([
   'status',
 ])
 
-const FILTER_KEYS = ['provider', 'group', 'region', 'class', 'status', 'health', 'q'] as const
+const FILTER_KEYS = [
+  'provider',
+  'group',
+  'region',
+  'class',
+  'status',
+  'health',
+  'q',
+] as const
 const LIST_KEYS = [...FILTER_KEYS, 'sort', 'dir'] as const
 
 const HEALTH_RANK: Record<string, number> = {
@@ -103,7 +111,10 @@ export function channelsSortActive(s: ChannelsSort): boolean {
   return s.key !== ''
 }
 
-export function channelsListDirty(f: ChannelsFilters, s: ChannelsSort): boolean {
+export function channelsListDirty(
+  f: ChannelsFilters,
+  s: ChannelsSort,
+): boolean {
   return channelsFiltersActive(f) || channelsSortActive(s)
 }
 
@@ -115,7 +126,9 @@ export function searchHasChannelsListState(params: URLSearchParams): boolean {
   return LIST_KEYS.some((k) => params.has(k))
 }
 
-export function channelsFiltersFromSearch(params: URLSearchParams): ChannelsFilters {
+export function channelsFiltersFromSearch(
+  params: URLSearchParams,
+): ChannelsFilters {
   const provider = params.get('provider') || 'all'
   const group = params.get('group') || 'all'
   const region = params.get('region') || 'all'
@@ -131,9 +144,13 @@ export function channelsFiltersFromSearch(params: URLSearchParams): ChannelsFilt
         : classRaw
       : 'all'
   const statusFilter =
-    statusRaw === 'all' || STATUS_SET.has(statusRaw as LineupStatusKind) ? statusRaw : 'all'
+    statusRaw === 'all' || STATUS_SET.has(statusRaw as LineupStatusKind)
+      ? statusRaw
+      : 'all'
   const healthFilter =
-    healthRaw === 'all' || HEALTH_SET.has(healthRaw as HealthFilterValue) ? healthRaw : 'all'
+    healthRaw === 'all' || HEALTH_SET.has(healthRaw as HealthFilterValue)
+      ? healthRaw
+      : 'all'
 
   return {
     provider: provider || 'all',
@@ -231,7 +248,10 @@ export function writeStoredChannelsFilters(f: ChannelsFilters): void {
   writeStoredChannelsList(f, DEFAULT_CHANNELS_SORT)
 }
 
-export function writeStoredChannelsList(f: ChannelsFilters, s: ChannelsSort): void {
+export function writeStoredChannelsList(
+  f: ChannelsFilters,
+  s: ChannelsSort,
+): void {
   try {
     if (!channelsListDirty(f, s)) {
       sessionStorage.removeItem(STORAGE_KEY)
@@ -277,7 +297,11 @@ function numberSortKey(n: number): number {
 }
 
 /** Compare two channels under the active sort (default = export # / provider / id). */
-export function compareChannels(a: Channel, b: Channel, sort: ChannelsSort): number {
+export function compareChannels(
+  a: Channel,
+  b: Channel,
+  sort: ChannelsSort,
+): number {
   const mul = sort.key && sort.dir === 'desc' ? -1 : 1
   let cmp = 0
 
@@ -313,11 +337,14 @@ export function compareChannels(a: Channel, b: Channel, sort: ChannelsSort): num
       )
       break
     case 'health':
-      cmp = (HEALTH_RANK[healthStatus(a)] ?? 99) - (HEALTH_RANK[healthStatus(b)] ?? 99)
+      cmp =
+        (HEALTH_RANK[healthStatus(a)] ?? 99) -
+        (HEALTH_RANK[healthStatus(b)] ?? 99)
       break
     case 'status':
       cmp =
-        (STATUS_RANK[lineupStatus(a)] ?? 99) - (STATUS_RANK[lineupStatus(b)] ?? 99)
+        (STATUS_RANK[lineupStatus(a)] ?? 99) -
+        (STATUS_RANK[lineupStatus(b)] ?? 99)
       break
   }
 

@@ -165,8 +165,8 @@ export function CachePage() {
         <div>
           <h1>Cache</h1>
           <p className="lead">
-            On-disk generations, logos, and channel-attribute history. Soft purge
-            keeps the serving generation until refresh commits a new one.
+            On-disk generations, logos, and channel-attribute history. Soft
+            purge keeps the serving generation until refresh commits a new one.
           </p>
         </div>
       </div>
@@ -259,7 +259,9 @@ export function CachePage() {
                 const genBytes = p.generations
                   .filter((g) => !g.is_staging)
                   .reduce((sum, g) => sum + g.bytes, 0)
-                const genCount = p.generations.filter((g) => !g.is_staging).length
+                const genCount = p.generations.filter(
+                  (g) => !g.is_staging,
+                ).length
                 const isAgg = p.id === 'aggregate'
                 return (
                   <tr key={p.id}>

@@ -51,7 +51,9 @@ function notesFor(p: ProviderRow): string {
 function validDate(value?: string): Date | null {
   if (!value) return null
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) || date.getUTCFullYear() <= 1 ? null : date
+  return Number.isNaN(date.getTime()) || date.getUTCFullYear() <= 1
+    ? null
+    : date
 }
 
 function relativeTime(value?: string): string {
@@ -106,7 +108,8 @@ export function ProvidersPage() {
       try {
         await load()
       } catch (err: unknown) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err))
       }
     })()
     return () => {
@@ -119,9 +122,12 @@ export function ProvidersPage() {
     setRefreshNote(null)
     setBusyId(id)
     try {
-      const res = await fetch(`/api/providers/${encodeURIComponent(id)}/refresh`, {
-        method: 'POST',
-      })
+      const res = await fetch(
+        `/api/providers/${encodeURIComponent(id)}/refresh`,
+        {
+          method: 'POST',
+        },
+      )
       if (res.status === 409) {
         setRefreshError(`${id}: refresh already in progress`)
         return
@@ -194,7 +200,10 @@ export function ProvidersPage() {
                 <th>ID</th>
                 <th>Enabled</th>
                 <th>Label</th>
-                <th className="number-cell" title="Upstream catalog size (before Dedupes / export filters)">
+                <th
+                  className="number-cell"
+                  title="Upstream catalog size (before Dedupes / export filters)"
+                >
                   Catalog
                 </th>
                 <th className="number-cell" title="In the emitted M3U/XMLTV">
@@ -246,7 +255,10 @@ export function ProvidersPage() {
                       </td>
                       <td>
                         {stale ? (
-                          <span className="badge badge-drm" title={p.stats?.last_error}>
+                          <span
+                            className="badge badge-drm"
+                            title={p.stats?.last_error}
+                          >
                             stale
                           </span>
                         ) : (
@@ -287,7 +299,9 @@ export function ProvidersPage() {
                           >
                             {busy ? 'Starting…' : 'Refresh'}
                           </button>
-                          <Link to={`/config/providers/${encodeURIComponent(p.id)}`}>
+                          <Link
+                            to={`/config/providers/${encodeURIComponent(p.id)}`}
+                          >
                             Settings
                           </Link>
                         </span>

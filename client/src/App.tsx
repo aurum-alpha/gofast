@@ -60,7 +60,10 @@ export default function App() {
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/dedupes" element={<DedupesPage />} />
           <Route path="/config" element={<ConfigPage />} />
-          <Route path="/config/providers/:id" element={<ConfigProviderPage />} />
+          <Route
+            path="/config/providers/:id"
+            element={<ConfigProviderPage />}
+          />
         </Routes>
       </main>
     </div>

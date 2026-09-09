@@ -1,0 +1,17 @@
+# Generated, and not ours to format.
+#
+# pnpm-lock.yaml is the sharpest case: prettier reformats it happily, and the
+# next `pnpm install` writes it back in pnpm's own shape. That is a formatting
+# gate which goes red on a routine dependency bump, with no source change to
+# blame it on.
+dist
+node_modules
+coverage
+pnpm-lock.yaml
+
+# Vendored from aurum-alpha/workflows and held BYTE-identical by
+# tools/check-lint-configs. Neither is prettier-shaped today, and if the catalog
+# copy ever became so, formatting it here would fail the identity check -- two
+# gates each demanding what the other forbids.
+.oxlintrc.json
+.prettierrc.yaml

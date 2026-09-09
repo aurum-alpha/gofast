@@ -5,13 +5,14 @@
   "type": "module",
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "dev:client": "vite dev",
     "build": "vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit",
+    "dev:client": "vite dev",
+    "format": "prettier --check .",
     "lint": "oxlint . --type-aware --deny-warnings",
+    "preview": "vite preview",
     "test:unit": "vitest run --passWithNoTests --coverage",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "hls.js": "1.7.0",
@@ -29,6 +30,7 @@
     "eslint-plugin-react-refresh": "0.5.4",
     "oxlint": "1.78.0",
     "oxlint-tsgolint": "7.0.2001",
+    "prettier": "3.9.6",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11"

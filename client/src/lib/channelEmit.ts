@@ -32,7 +32,10 @@ export async function saveChannelEmit(
   })
   if (!res.ok) {
     const text = (await res.text()).trim()
-    throw new ConfigSaveError(res.status, text || `${res.status} ${res.statusText}`)
+    throw new ConfigSaveError(
+      res.status,
+      text || `${res.status} ${res.statusText}`,
+    )
   }
   return (await res.json()) as ChannelEmitResponse
 }
