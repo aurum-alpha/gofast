@@ -102,11 +102,13 @@ export function ProvidersPage() {
 
   useEffect(() => {
     let cancelled = false
-    load().catch((err: unknown) => {
-      if (!cancelled) {
-        setError(err instanceof Error ? err.message : String(err))
+    void (async () => {
+      try {
+        await load()
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
       }
-    })
+    })()
     return () => {
       cancelled = true
     }

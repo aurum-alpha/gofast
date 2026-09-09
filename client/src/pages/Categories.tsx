@@ -71,7 +71,7 @@ export function CategoriesPage() {
     }
   }, [])
 
-  const discovered = server?.discovered ?? []
+  const discovered = useMemo(() => server?.discovered ?? [], [server])
 
   const assignment = useMemo(() => {
     const m = new Map<string, string>()
@@ -237,7 +237,7 @@ export function CategoriesPage() {
           />{' '}
           Enable category taxonomy
         </label>
-        <button type="button" onClick={save} disabled={saving || server.read_only}>
+        <button type="button" onClick={() => void save()} disabled={saving || server.read_only}>
           {saving ? 'Saving…' : 'Save & apply'}
         </button>
         {toast ? (

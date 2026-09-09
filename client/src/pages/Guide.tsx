@@ -39,6 +39,8 @@ const ROW_H = 48
 const TIMEBAR_H = 30
 const MIN_PROG_W = 40
 const HOUR_MS = 3_600_000
+/** How often the "now" marker advances. */
+const NOW_TICK_MS = 30_000
 const ROW_OVERSCAN = 10
 const PROG_PAD_PX = 240
 
@@ -199,7 +201,7 @@ export function GuidePage() {
     const ac = new AbortController()
     let cancelled = false
 
-    ;(async () => {
+    void (async () => {
       setBooting(true)
       setBootError(null)
       try {
@@ -289,12 +291,19 @@ export function GuidePage() {
     return { min, max }
   }, [allRows])
 
-  const timeWindow = useMemo(() => {
-    const bounds = timeBounds(timePreset, Date.now(), dataExtent.min, dataExtent.max)
-    return { start: floorHour(bounds.start), end: ceilHour(bounds.end) }
-  }, [timePreset, dataExtent.min, dataExtent.max])
+  // "Now" moves the marker line and the on-air highlight, so it ticks on its
+  // own rather than being read during render: a Date.now() read only advances
+  // when something else happens to re-render the page.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(Date.now()), NOW_TICK_MS)
+    return () => window.clearInterval(tick)
+  }, [])
 
-  const now = Date.now()
+  const timeWindow = useMemo(() => {
+    const bounds = timeBounds(timePreset, now, dataExtent.min, dataExtent.max)
+    return { start: floorHour(bounds.start), end: ceilHour(bounds.end) }
+  }, [timePreset, now, dataExtent.min, dataExtent.max])
 
   const rows = useMemo(() => {
     const channelNeedle = channelQ.trim().toLowerCase()

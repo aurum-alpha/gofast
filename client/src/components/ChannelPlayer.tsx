@@ -23,10 +23,43 @@ function supportsNativeHLS(video: HTMLVideoElement): boolean {
 export function ChannelPlayer({ channel }: Props) {
   const urls = previewURLs(channel)
   const canToggle = showPreviewSourceToggle(urls)
-  const [source, setSource] = useState<PreviewSource>(() => defaultPreviewSource(urls))
+  // The chosen source is a preference rather than stored state: it survives a
+  // channel change when the new channel still offers it, and otherwise falls
+  // back to that channel's default. Derived here, so nothing has to correct it
+  // afterwards. Playback state is stamped with the channel it belongs to for
+  // the same reason.
+  const channelKey = [
+    channel.provider,
+    channel.normalized_id,
+    channel.stream_url,
+    channel.emitted_url,
+    channel.excluded,
+  ].join('\u0000')
+  const [sourcePref, setSource] = useState<PreviewSource | null>(null)
+  const source: PreviewSource =
+    (sourcePref === 'emitted' && urls.emitted) || (sourcePref === 'raw' && urls.raw)
+      ? sourcePref
+      : defaultPreviewSource(urls)
   const [proxyBaseURL, setProxyBaseURL] = useState<string | undefined>()
-  const [playing, setPlaying] = useState(false)
-  const [error, setError] = useState('')
+  const [playback, setPlayback] = useState<{ key: string; playing: boolean; error: string }>({
+    key: '',
+    playing: false,
+    error: '',
+  })
+  const playing = playback.key === channelKey ? playback.playing : false
+  const error = playback.key === channelKey ? playback.error : ''
+  const setPlaying = (next: boolean) =>
+    setPlayback((prev) => ({
+      key: channelKey,
+      playing: next,
+      error: prev.key === channelKey ? prev.error : '',
+    }))
+  const setError = (next: string) =>
+    setPlayback((prev) => ({
+      key: channelKey,
+      playing: prev.key === channelKey ? prev.playing : false,
+      error: next,
+    }))
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const hlsRef = useRef<HlsType | null>(null)
 
@@ -65,14 +98,10 @@ export function ChannelPlayer({ channel }: Props) {
     setError('')
   }
 
-  // Keep source valid and tear down playback when the channel identity changes.
+  // Tear down the previous channel's playback when the identity changes. The
+  // state that used to be reset alongside it is derived above; unmount teardown
+  // is the effect below.
   useEffect(() => {
-    const next = previewURLs(channel)
-    setSource((prev) => {
-      if (prev === 'emitted' && next.emitted) return 'emitted'
-      if (prev === 'raw' && next.raw) return 'raw'
-      return defaultPreviewSource(next)
-    })
     if (hlsRef.current) {
       hlsRef.current.destroy()
       hlsRef.current = null
@@ -83,15 +112,7 @@ export function ChannelPlayer({ channel }: Props) {
       video.removeAttribute('src')
       video.load()
     }
-    setPlaying(false)
-    setError('')
-  }, [
-    channel.provider,
-    channel.normalized_id,
-    channel.stream_url,
-    channel.emitted_url,
-    channel.excluded,
-  ])
+  }, [channelKey])
 
   useEffect(() => {
     return () => {

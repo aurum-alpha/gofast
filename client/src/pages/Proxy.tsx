@@ -186,12 +186,12 @@ export function ProxyPage() {
   const failures = searchParams.get('failures') === '1'
   const sortKey = (searchParams.get('sort') as SortKey | null) ?? 'at'
   const sortDir = (searchParams.get('dir') as SortDir | null) ?? 'desc'
-  const sort: Sort = {
+  const sort: Sort = useMemo(() => ({
     key: ['at', 'kind', 'provider', 'reason', 'status', 'duration_ms'].includes(sortKey)
       ? sortKey
       : 'at',
     dir: sortDir === 'asc' ? 'asc' : 'desc',
-  }
+  }), [sortKey, sortDir])
 
   useEffect(() => {
     let cancelled = false

@@ -209,38 +209,15 @@ jobs:
 
   # The id names the codebase it acts on: this lints the React app, not the Go
   # code. A bare `lint` would read as the Go linter it is not.
-  # Two linters, named the way the Go side already names its four: the id says
-  # which tool, so a red check points at a tool rather than at "lint".
-  #
-  # This runs the shared client/.oxlintrc.json, which is a translation of the
-  # shared eslint config, so the two jobs are meant to report the same findings
-  # and a disagreement between them is the signal worth having. oxlint is not
-  # the "fast subset" this comment used to claim: with --type-aware it reports
-  # all 22 findings the eslint job reports, plus 8 more, in about half the time
-  # (CI_STANDARD "Two linters, on purpose, for now").
+  # The id says which tool, the way the Go side names its four, so a red check
+  # points at a tool rather than at "lint". This runs the shared
+  # client/.oxlintrc.json with --type-aware.
   client-ts-react-lint-oxlint:
     needs: client-ts-react-build
     uses: aurum-alpha/workflows/.github/workflows/job-lint-js-oxlint.yml@main
     with:
       workdir: client
       dir: "."
-      # 30 findings, 25 errors and 5 warnings, re-measured with the command
-      # this job runs: 9 set-state-in-effect, 5 no-redundant-type-constituents,
-      # 5 no-misused-promises, 4 exhaustive-deps, 3 no-base-to-string,
-      # 2 purity, 1 no-unsafe-argument, 1 no-floating-promises.
-      #
-      # The old text counted these against "the same 22 the eslint job
-      # reports". There is no eslint job; oxlint is the only JS linter here,
-      # and a count that describes itself by reference to a deleted job cannot
-      # be checked by anyone reading it.
-      #
-      # warn_only stays on because of those 30 findings, and for no other
-      # reason. It used to say the gate was open while oxlint's JS plugin API
-      # was alpha and its type-aware path rode on typescript-go -- which read
-      # as distrust of the tool the fleet had standardised on, and outlived
-      # its own premise. Stabilization window, not a mode: it closes when the
-      # count reaches zero, not when anyone's opinion of oxlint changes.
-      warn_only: true
     secrets: inherit
 
 

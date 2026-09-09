@@ -167,11 +167,6 @@ export function DedupesPage() {
 
   const selected = clusters.find((c) => c.key === selectedKey) ?? visible[0] ?? null
 
-  useEffect(() => {
-    if (selected && selected.key !== selectedKey) setSelectedKey(selected.key)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible])
-
   const pendingCount = actions.length
 
   function queueActions(next: PendingAction[]) {
@@ -401,7 +396,7 @@ export function DedupesPage() {
           <button
             type="button"
             className="btn primary"
-            onClick={apply}
+            onClick={() => void apply()}
             disabled={
               server.read_only ||
               saving ||
