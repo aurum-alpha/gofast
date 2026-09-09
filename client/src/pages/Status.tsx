@@ -111,7 +111,9 @@ type PresenceSummary = {
 function validDate(value?: string): Date | null {
   if (!value) return null
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) || date.getUTCFullYear() <= 1 ? null : date
+  return Number.isNaN(date.getTime()) || date.getUTCFullYear() <= 1
+    ? null
+    : date
 }
 
 function formatWhen(value?: string): string {
@@ -155,7 +157,9 @@ export function StatusPage() {
   const [channels, setChannels] = useState<Channel[] | null>(null)
   const [schedule, setSchedule] = useState<HealthSchedule | null>(null)
   const [access, setAccess] = useState<ClientAccessResponse | null>(null)
-  const [proxyStatus, setProxyStatus] = useState<ProxyStatusResponse | null>(null)
+  const [proxyStatus, setProxyStatus] = useState<ProxyStatusResponse | null>(
+    null,
+  )
   const [presence, setPresence] = useState<PresenceSummary | null>(null)
   const [opsReport, setOpsReport] = useState<OpsReportSchedule | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -301,7 +305,10 @@ export function StatusPage() {
               value={`${staleCount} / ${providers.length}`}
               warn={staleCount > 0}
             />
-            <Metric label="Channels in memory" value={rollups.total.toLocaleString()} />
+            <Metric
+              label="Channels in memory"
+              value={rollups.total.toLocaleString()}
+            />
             {opsReport?.enabled ? (
               <Metric
                 label="Ops report"
@@ -311,7 +318,9 @@ export function StatusPage() {
                     : `next ${formatWhen(opsReport.next_at)}`
                 }
                 title={`Next ${formatWhen(opsReport.next_at)} · ${opsReport.timezone} ${opsReport.send_at}${
-                  opsReport.last_error ? ` · error: ${opsReport.last_error}` : ''
+                  opsReport.last_error
+                    ? ` · error: ${opsReport.last_error}`
+                    : ''
                 }`}
                 warn={Boolean(opsReport.last_error)}
               />
@@ -378,7 +387,9 @@ export function StatusPage() {
             <Metric
               label="Absent now"
               value={(
-                presence?.absent_now ?? rollups.lineup.absent ?? 0
+                presence?.absent_now ??
+                rollups.lineup.absent ??
+                0
               ).toLocaleString()}
               warn={(presence?.absent_now ?? rollups.lineup.absent ?? 0) > 0}
               title="Channels dropped from a provider catalog (still listed so you can open history)"
@@ -397,14 +408,20 @@ export function StatusPage() {
 
           <h2 className="status-section-title">Dialects</h2>
           <div className="stat-grid">
-            <Metric label="NATIVE" value={rollups.dialect.NATIVE.toLocaleString()} />
+            <Metric
+              label="NATIVE"
+              value={rollups.dialect.NATIVE.toLocaleString()}
+            />
             <Metric
               label="Amagi SSAI"
               value={rollups.dialect.AMAGI_SSAI.toLocaleString()}
               warn={rollups.dialect.AMAGI_SSAI > 0}
               title="Usually need FASTProxy for playback"
             />
-            <Metric label="SESSION" value={rollups.dialect.SESSION.toLocaleString()} />
+            <Metric
+              label="SESSION"
+              value={rollups.dialect.SESSION.toLocaleString()}
+            />
             <Metric
               label="Distro resolve"
               value={rollups.dialect.DISTRO_RESOLVE.toLocaleString()}
@@ -414,7 +431,11 @@ export function StatusPage() {
               label="Xumo SSAI"
               value={rollups.dialect.XUMO_SSAI.toLocaleString()}
             />
-            <Metric label="DRM" value={rollups.dialect.DRM.toLocaleString()} warn={rollups.dialect.DRM > 0} />
+            <Metric
+              label="DRM"
+              value={rollups.dialect.DRM.toLocaleString()}
+              warn={rollups.dialect.DRM > 0}
+            />
           </div>
 
           <h2 className="status-section-title">Health probes</h2>
@@ -457,7 +478,8 @@ export function StatusPage() {
             <code>source=playback</code>).
           </p>
           {!proxyStatus ||
-          (!proxyStatus.snapshot && (proxyStatus.heartbeat_count ?? 0) === 0) ? (
+          (!proxyStatus.snapshot &&
+            (proxyStatus.heartbeat_count ?? 0) === 0) ? (
             <div className="empty-panel" role="status">
               <p>
                 No proxy heartbeat yet. Enable the compose proxy profile and set
@@ -543,8 +565,8 @@ export function StatusPage() {
 
           <h2 className="status-section-title">Providers</h2>
           <p className="meta">
-            Compact refresh health. Open Providers for programmes, guide horizon,
-            intervals, and Refresh now.
+            Compact refresh health. Open Providers for programmes, guide
+            horizon, intervals, and Refresh now.
           </p>
           {providers.length === 0 ? (
             <div className="empty-panel" role="status">

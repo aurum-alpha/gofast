@@ -128,7 +128,11 @@ function SortTh({
   onSort: (key: SortKey) => void
 }) {
   const active = sort.key === col
-  const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
+  const ariaSort = active
+    ? sort.dir === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : 'none'
   return (
     <th scope="col" aria-sort={ariaSort}>
       <button
@@ -186,12 +190,22 @@ export function ProxyPage() {
   const failures = searchParams.get('failures') === '1'
   const sortKey = (searchParams.get('sort') as SortKey | null) ?? 'at'
   const sortDir = (searchParams.get('dir') as SortDir | null) ?? 'desc'
-  const sort: Sort = useMemo(() => ({
-    key: ['at', 'kind', 'provider', 'reason', 'status', 'duration_ms'].includes(sortKey)
-      ? sortKey
-      : 'at',
-    dir: sortDir === 'asc' ? 'asc' : 'desc',
-  }), [sortKey, sortDir])
+  const sort: Sort = useMemo(
+    () => ({
+      key: [
+        'at',
+        'kind',
+        'provider',
+        'reason',
+        'status',
+        'duration_ms',
+      ].includes(sortKey)
+        ? sortKey
+        : 'at',
+      dir: sortDir === 'asc' ? 'asc' : 'desc',
+    }),
+    [sortKey, sortDir],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -296,10 +310,10 @@ export function ProxyPage() {
 
   const filtersDirty = Boolean(
     kind ||
-      provider.trim() ||
-      failures ||
-      sort.key !== 'at' ||
-      sort.dir !== 'desc',
+    provider.trim() ||
+    failures ||
+    sort.key !== 'at' ||
+    sort.dir !== 'desc',
   )
   const empty =
     !status?.snapshot &&
@@ -312,8 +326,8 @@ export function ProxyPage() {
       <h1>Proxy</h1>
       <p className="lead">
         FASTProxy activity glass (gen is source of truth). Glance metrics on{' '}
-        <Link to="/status">Status</Link>. Playlist/origin failures update channel
-        health with source <code>playback</code>.
+        <Link to="/status">Status</Link>. Playlist/origin failures update
+        channel health with source <code>playback</code>.
       </p>
 
       {error ? (
@@ -326,7 +340,8 @@ export function ProxyPage() {
         <div className="empty-panel" role="status">
           <p>
             No proxy heartbeat yet. Enable compose <code>--profile proxy</code>{' '}
-            and set <code>proxy_base_url</code> / <code>FASTPROXY_GEN_URL</code>.
+            and set <code>proxy_base_url</code> / <code>FASTPROXY_GEN_URL</code>
+            .
           </p>
         </div>
       ) : (
@@ -477,7 +492,11 @@ export function ProxyPage() {
                 <option value="failures">failures only</option>
               </select>
             </label>
-            <button type="button" onClick={resetFilters} disabled={!filtersDirty}>
+            <button
+              type="button"
+              onClick={resetFilters}
+              disabled={!filtersDirty}
+            >
               Reset
             </button>
             <span className="meta">
@@ -497,7 +516,12 @@ export function ProxyPage() {
                 <thead>
                   <tr>
                     <SortTh label="When" col="at" sort={sort} onSort={onSort} />
-                    <SortTh label="Kind" col="kind" sort={sort} onSort={onSort} />
+                    <SortTh
+                      label="Kind"
+                      col="kind"
+                      sort={sort}
+                      onSort={onSort}
+                    />
                     <SortTh
                       label="Channel"
                       col="provider"
@@ -539,7 +563,11 @@ export function ProxyPage() {
                       </td>
                       <td>{ev.reason || '—'}</td>
                       <td>{ev.status ? ev.status : '—'}</td>
-                      <td>{ev.duration_ms != null && ev.duration_ms > 0 ? ev.duration_ms : '—'}</td>
+                      <td>
+                        {ev.duration_ms != null && ev.duration_ms > 0
+                          ? ev.duration_ms
+                          : '—'}
+                      </td>
                       <td title={ev.message}>{ev.message || '—'}</td>
                     </tr>
                   ))}

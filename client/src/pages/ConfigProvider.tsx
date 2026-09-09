@@ -88,8 +88,16 @@ function parseOptionalInt(raw: string): number | null {
 
 // Optional adapter fields keyed by field_support names, with control metadata.
 // Region is system-wide (Config → Regions); not edited per provider.
-const OPTIONAL_FIELDS: Array<{ key: keyof Draft; label: string; hint?: string }> = [
-  { key: 'slug_template', label: 'Slug template', hint: 'Stream slug override (e.g. plu-{id}.m3u8)' },
+const OPTIONAL_FIELDS: Array<{
+  key: keyof Draft
+  label: string
+  hint?: string
+}> = [
+  {
+    key: 'slug_template',
+    label: 'Slug template',
+    hint: 'Stream slug override (e.g. plu-{id}.m3u8)',
+  },
   { key: 'channels_url', label: 'Channels URL' },
   { key: 'epg_url', label: 'EPG URL' },
   { key: 'm3u_url', label: 'M3U URL' },
@@ -102,7 +110,9 @@ export function ConfigProviderPage() {
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<{ ok: boolean; message: string } | null>(null)
+  const [toast, setToast] = useState<{ ok: boolean; message: string } | null>(
+    null,
+  )
 
   const load = useCallback(async () => {
     const body = await fetchConfig()
@@ -119,7 +129,8 @@ export function ConfigProviderPage() {
       try {
         await load()
       } catch (err: unknown) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err))
       }
     })()
     return () => {
@@ -136,7 +147,9 @@ export function ConfigProviderPage() {
 
   const dirty = useMemo(() => {
     if (!draft || !original) return []
-    return (Object.keys(draft) as Array<keyof Draft>).filter((k) => draft[k] !== original[k])
+    return (Object.keys(draft) as Array<keyof Draft>).filter(
+      (k) => draft[k] !== original[k],
+    )
   }, [draft, original])
 
   async function save() {
@@ -150,24 +163,38 @@ export function ConfigProviderPage() {
       // it would default the provider to enabled.
       ops.push({ path: `${prefix}enabled`, value: draft.enabled })
       const pushText = (key: keyof Draft) => {
-        if (draft[key] !== original[key]) ops.push({ path: prefix + key, value: draft[key] })
+        if (draft[key] !== original[key])
+          ops.push({ path: prefix + key, value: draft[key] })
       }
       const pushOptionalInt = (key: keyof Draft, label: string): boolean => {
         if (draft[key] === original[key]) return true
         const n = parseOptionalInt(String(draft[key]))
         if (n === null) {
-          setToast({ ok: false, message: `${label}: must be an integer (blank = 0 / off)` })
+          setToast({
+            ok: false,
+            message: `${label}: must be an integer (blank = 0 / off)`,
+          })
           return false
         }
         ops.push({ path: prefix + key, value: n })
         return true
       }
-      if (!pushOptionalInt('channel_number_offset', 'Channel number offset')) return
-      if (!pushOptionalInt('synthesize_channel_numbers', 'Synthesize channel numbers')) return
+      if (!pushOptionalInt('channel_number_offset', 'Channel number offset'))
+        return
+      if (
+        !pushOptionalInt(
+          'synthesize_channel_numbers',
+          'Synthesize channel numbers',
+        )
+      )
+        return
       if (draft.min_channels !== original.min_channels) {
         const n = parseIntStrict(String(draft.min_channels))
         if (n === null || n < 1) {
-          setToast({ ok: false, message: 'Min channels: must be an integer ≥ 1' })
+          setToast({
+            ok: false,
+            message: 'Min channels: must be an integer ≥ 1',
+          })
           setSaving(false)
           return
         }
@@ -177,12 +204,18 @@ export function ConfigProviderPage() {
       pushText('refresh_interval')
       for (const f of OPTIONAL_FIELDS) pushText(f.key)
       if (draft.exclusions !== original.exclusions) {
-        ops.push({ path: `${prefix}exclusions`, value: parseLines(draft.exclusions) })
+        ops.push({
+          path: `${prefix}exclusions`,
+          value: parseLines(draft.exclusions),
+        })
       }
       if (draft.headers !== original.headers) {
         const headers = parseHeaders(draft.headers)
         if (headers === null) {
-          setToast({ ok: false, message: 'Headers: use one "Name: value" per line' })
+          setToast({
+            ok: false,
+            message: 'Headers: use one "Name: value" per line',
+          })
           return
         }
         ops.push({ path: `${prefix}headers`, value: headers })
@@ -195,10 +228,14 @@ export function ConfigProviderPage() {
         await load().catch(() => {})
         setToast({
           ok: false,
-          message: 'Config changed elsewhere — reloaded the latest values; re-apply your edits.',
+          message:
+            'Config changed elsewhere — reloaded the latest values; re-apply your edits.',
         })
       } else {
-        setToast({ ok: false, message: err instanceof Error ? err.message : String(err) })
+        setToast({
+          ok: false,
+          message: err instanceof Error ? err.message : String(err),
+        })
       }
     } finally {
       setSaving(false)
@@ -230,7 +267,8 @@ export function ConfigProviderPage() {
       <>
         <h1>Provider settings</h1>
         <div className="empty-panel" role="alert">
-          Unknown provider <code>{id}</code>. <Link to="/config">Back to settings</Link>
+          Unknown provider <code>{id}</code>.{' '}
+          <Link to="/config">Back to settings</Link>
         </div>
       </>
     )
@@ -240,11 +278,7 @@ export function ConfigProviderPage() {
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev))
 
-  const textField = (
-    key: keyof Draft,
-    label: string,
-    hint?: string,
-  ) => (
+  const textField = (key: keyof Draft, label: string, hint?: string) => (
     <div className="config-field" key={key}>
       <span className="config-field-label">{label}</span>
       <input
@@ -269,15 +303,15 @@ export function ConfigProviderPage() {
       </h1>
       <p className="lead">
         Applies live on save. Disabling stops fetches, hides its channels, and
-        404s <code>/{id}.m3u</code> / <code>/{id}.xml</code>; the cache is kept so
-        re-enabling restores instantly. Triage stats live on the{' '}
+        404s <code>/{id}.m3u</code> / <code>/{id}.xml</code>; the cache is kept
+        so re-enabling restores instantly. Triage stats live on the{' '}
         <Link to={`/providers/${encodeURIComponent(id)}`}>provider page</Link>.
       </p>
 
       {!data.source.writable ? (
         <div className="empty-panel" role="alert">
-          <strong>Config is read-only.</strong> Mount <code>{data.source.path}</code>{' '}
-          read-write to save settings.
+          <strong>Config is read-only.</strong> Mount{' '}
+          <code>{data.source.path}</code> read-write to save settings.
         </div>
       ) : null}
 
@@ -292,7 +326,10 @@ export function ConfigProviderPage() {
           {saving ? 'Saving…' : 'Save & apply'}
         </button>
         {toast ? (
-          <span className={`meta config-toast${toast.ok ? '' : ' config-toast-error'}`} role="status">
+          <span
+            className={`meta config-toast${toast.ok ? '' : ' config-toast-error'}`}
+            role="status"
+          >
             {toast.message}
           </span>
         ) : null}
@@ -327,7 +364,11 @@ export function ConfigProviderPage() {
             'Min channels',
             'Reject a refresh whose upstream catalog is smaller than this (before Dedupes / export filters)',
           )}
-          {textField('refresh_interval', 'Refresh interval', 'Go duration, e.g. 3h')}
+          {textField(
+            'refresh_interval',
+            'Refresh interval',
+            'Go duration, e.g. 3h',
+          )}
           <div className="config-field">
             <span className="config-field-label">Exclusions</span>
             <textarea
@@ -336,7 +377,9 @@ export function ConfigProviderPage() {
               disabled={!data.source.writable}
               onChange={(e) => set('exclusions', e.target.value)}
             />
-            <span className="field-hint">One case-insensitive regex per line</span>
+            <span className="field-hint">
+              One case-insensitive regex per line
+            </span>
           </div>
         </div>
       </section>

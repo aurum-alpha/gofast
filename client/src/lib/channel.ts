@@ -132,7 +132,8 @@ export const HEALTH_FILTERS: { value: HealthFilterValue; label: string }[] = [
 export function effectiveFilterReasons(
   ch: Pick<Channel, 'filter_reason' | 'filter_reasons'>,
 ): string[] {
-  if (ch.filter_reasons && ch.filter_reasons.length > 0) return ch.filter_reasons
+  if (ch.filter_reasons && ch.filter_reasons.length > 0)
+    return ch.filter_reasons
   if (ch.filter_reason) return [ch.filter_reason]
   return []
 }
@@ -252,7 +253,9 @@ export function lineupStatusKinds(
 ): LineupStatusKind[] {
   if (!ch.excluded) {
     return [
-      ch.emitted_url && ch.emitted_url !== ch.stream_url ? 'proxied' : 'in-lineup',
+      ch.emitted_url && ch.emitted_url !== ch.stream_url
+        ? 'proxied'
+        : 'in-lineup',
     ]
   }
   const reasons = effectiveFilterReasons(ch)
@@ -372,7 +375,10 @@ export function canonicalClassification(classification?: string): string {
   return classification
 }
 
-export function classBadge(classification?: string): { label: string; kind: string } {
+export function classBadge(classification?: string): {
+  label: string
+  kind: string
+} {
   switch (canonicalClassification(classification)) {
     case 'NATIVE':
       return { label: 'NATIVE', kind: 'native' }
@@ -394,18 +400,27 @@ export function classBadge(classification?: string): { label: string; kind: stri
 }
 
 /** Matches gen l1ShouldSchedule: proxy dialects only with EmittedURL; SESSION never. */
-export function channelOnScheduledL1(ch: Pick<Channel, 'classification' | 'emitted_url' | 'stream_url'>): boolean {
+export function channelOnScheduledL1(
+  ch: Pick<Channel, 'classification' | 'emitted_url' | 'stream_url'>,
+): boolean {
   const cls = canonicalClassification(ch.classification)
   if (cls === 'SESSION' || cls === 'DRM' || !cls) return false
-  if (cls === 'AMAGI_SSAI' || cls === 'DISTRO_RESOLVE' || cls === 'STIRR_RESOLVE') {
+  if (
+    cls === 'AMAGI_SSAI' ||
+    cls === 'DISTRO_RESOLVE' ||
+    cls === 'STIRR_RESOLVE'
+  ) {
     return Boolean(ch.emitted_url)
   }
   return Boolean(ch.emitted_url || ch.stream_url)
 }
 
-export function l1SkipReason(ch: Pick<Channel, 'classification' | 'emitted_url'>): string {
+export function l1SkipReason(
+  ch: Pick<Channel, 'classification' | 'emitted_url'>,
+): string {
   const cls = canonicalClassification(ch.classification)
-  if (cls === 'SESSION') return 'not scheduled (SESSION mint — Manual / playback only)'
+  if (cls === 'SESSION')
+    return 'not scheduled (SESSION mint — Manual / playback only)'
   if (cls === 'DISTRO_RESOLVE' && !ch.emitted_url) {
     return 'not scheduled (Distro needs proxy EmittedURL)'
   }
@@ -433,8 +448,7 @@ export function nextL1Label(
 ): { title: string; value: string } {
   if (channelHasL1Retry(ch.health)) {
     const step = ch.health?.retry_step
-    const stepHint =
-      step != null && step > 0 ? ` (backoff step ${step})` : ''
+    const stepHint = step != null && step > 0 ? ` (backoff step ${step})` : ''
     return {
       title: 'Next L1 retry',
       value: `${formatHealthWhen(ch.health?.next_retry_at)}${stepHint}`,
@@ -446,14 +460,19 @@ export function nextL1Label(
   if (schedule?.l1_running) {
     return { title: 'Next L1 sweep', value: 'running now' }
   }
-  return { title: 'Next L1 sweep', value: formatHealthWhen(schedule?.next_l1_at) }
+  return {
+    title: 'Next L1 sweep',
+    value: formatHealthWhen(schedule?.next_l1_at),
+  }
 }
 
 export function displayNumber(n: number): string {
   return n > 0 ? String(n) : '—'
 }
 
-export function channelDetailPath(ch: Pick<Channel, 'provider' | 'normalized_id'>): string {
+export function channelDetailPath(
+  ch: Pick<Channel, 'provider' | 'normalized_id'>,
+): string {
   return `/channels/${encodeURIComponent(ch.provider)}/${encodeURIComponent(ch.normalized_id)}`
 }
 

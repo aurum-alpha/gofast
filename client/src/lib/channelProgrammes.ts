@@ -38,7 +38,10 @@ export function formatProgrammeRange(start: string, stop: string): string {
 }
 
 /** Current programme: start <= now < stop; if several, latest start. */
-export function programmeNow(list: Programme[], now = new Date()): Programme | null {
+export function programmeNow(
+  list: Programme[],
+  now = new Date(),
+): Programme | null {
   let best: Programme | null = null
   let bestStart = 0
   const t = now.getTime()
@@ -66,7 +69,12 @@ export function programmeNext(
   let best: Programme | null = null
   let bestStart = Number.POSITIVE_INFINITY
   for (const p of list) {
-    if (current && p.start === current.start && p.stop === current.stop && p.title === current.title) {
+    if (
+      current &&
+      p.start === current.start &&
+      p.stop === current.stop &&
+      p.title === current.title
+    ) {
       continue
     }
     const start = Date.parse(p.start)

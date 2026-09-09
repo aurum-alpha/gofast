@@ -14,7 +14,11 @@ import {
   lineupStatusKinds,
   STATUS_FILTERS,
 } from '../lib/channel'
-import type { Channel, HealthFilterValue, LineupStatusKind } from '../lib/channel'
+import type {
+  Channel,
+  HealthFilterValue,
+  LineupStatusKind,
+} from '../lib/channel'
 import {
   channelsFiltersFromSearch,
   channelsListDirty,
@@ -58,7 +62,11 @@ function SortTh({
   onSort: (key: ChannelsSortKey) => void
 }) {
   const active = sort.key === col
-  const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
+  const ariaSort = active
+    ? sort.dir === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : 'none'
   return (
     <th scope="col" aria-sort={ariaSort}>
       <button
@@ -100,8 +108,14 @@ export function ChannelsPage() {
     }
   }, [searchParams, setSearchParams])
 
-  const filters = useMemo(() => channelsFiltersFromSearch(searchParams), [searchParams])
-  const sort = useMemo(() => channelsSortFromSearch(searchParams), [searchParams])
+  const filters = useMemo(
+    () => channelsFiltersFromSearch(searchParams),
+    [searchParams],
+  )
+  const sort = useMemo(
+    () => channelsSortFromSearch(searchParams),
+    [searchParams],
+  )
   const providerFilter = filters.provider
   const groupFilter = filters.group
   const regionFilter = filters.region
@@ -177,9 +191,11 @@ export function ChannelsPage() {
 
   const regions = useMemo(() => {
     if (!data) return [] as string[]
-    return [...new Set(data.channels.map((c) => c.region).filter(Boolean) as string[])].sort(
-      (a, b) => a.localeCompare(b),
-    )
+    return [
+      ...new Set(
+        data.channels.map((c) => c.region).filter(Boolean) as string[],
+      ),
+    ].sort((a, b) => a.localeCompare(b))
   }, [data])
 
   const rows = useMemo(() => {
@@ -197,7 +213,8 @@ export function ChannelsPage() {
           if ((ch.region || '') !== regionFilter) return false
         }
         if (classFilter !== 'all') {
-          if (canonicalClassification(ch.classification) !== classFilter) return false
+          if (canonicalClassification(ch.classification) !== classFilter)
+            return false
         }
         if (
           statusFilter !== 'all' &&
@@ -244,8 +261,9 @@ export function ChannelsPage() {
       <p className="lead">
         Live lineup from the last successful refresh. Click a row for export
         status, reasons, URLs, health history, and identity. Class is the stream
-        dialect (NATIVE / Amagi SSAI / SESSION / Distro resolve / STIRR resolve / Xumo SSAI / DRM); Health comes from
-        segment/ffprobe checks. Click a column header to sort.
+        dialect (NATIVE / Amagi SSAI / SESSION / Distro resolve / STIRR resolve
+        / Xumo SSAI / DRM); Health comes from segment/ffprobe checks. Click a
+        column header to sort.
       </p>
 
       {error && (
@@ -381,23 +399,63 @@ export function ChannelsPage() {
             <table className="channels">
               <thead>
                 <tr>
-                  <SortTh label="#" col="number" sort={sort} onSort={patchSort} />
-                  <SortTh label="Prov #" col="prov" sort={sort} onSort={patchSort} />
+                  <SortTh
+                    label="#"
+                    col="number"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
+                  <SortTh
+                    label="Prov #"
+                    col="prov"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
                   <th scope="col" className="channel-logo-col">
                     Logo
                   </th>
-                  <SortTh label="Name" col="name" sort={sort} onSort={patchSort} />
+                  <SortTh
+                    label="Name"
+                    col="name"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
                   <SortTh
                     label="Provider"
                     col="provider"
                     sort={sort}
                     onSort={patchSort}
                   />
-                  <SortTh label="Region" col="region" sort={sort} onSort={patchSort} />
-                  <SortTh label="Group" col="group" sort={sort} onSort={patchSort} />
-                  <SortTh label="Class" col="class" sort={sort} onSort={patchSort} />
-                  <SortTh label="Health" col="health" sort={sort} onSort={patchSort} />
-                  <SortTh label="Status" col="status" sort={sort} onSort={patchSort} />
+                  <SortTh
+                    label="Region"
+                    col="region"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
+                  <SortTh
+                    label="Group"
+                    col="group"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
+                  <SortTh
+                    label="Class"
+                    col="class"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
+                  <SortTh
+                    label="Health"
+                    col="health"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
+                  <SortTh
+                    label="Status"
+                    col="status"
+                    sort={sort}
+                    onSort={patchSort}
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -462,7 +520,9 @@ export function ChannelsPage() {
                         <td>{ch.region || '—'}</td>
                         <td>{ch.group || '—'}</td>
                         <td>
-                          <span className={`badge badge-${cls.kind}`}>{cls.label}</span>
+                          <span className={`badge badge-${cls.kind}`}>
+                            {cls.label}
+                          </span>
                         </td>
                         <td>
                           <span

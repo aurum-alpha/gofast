@@ -137,7 +137,8 @@ export function DedupesPage() {
     if (!server) return []
     return server.clusters.map((c) => {
       const exportableCount = c.members.filter(effectiveExportable).length
-      const status: Cluster['status'] = exportableCount >= 2 ? 'unresolved' : 'resolved'
+      const status: Cluster['status'] =
+        exportableCount >= 2 ? 'unresolved' : 'resolved'
       return {
         ...c,
         status,
@@ -151,7 +152,11 @@ export function DedupesPage() {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     return clusters.filter((c) => {
-      if (filter === 'needs_review' && (c.status !== 'unresolved' || c.keep_all)) return false
+      if (
+        filter === 'needs_review' &&
+        (c.status !== 'unresolved' || c.keep_all)
+      )
+        return false
       if (filter === 'resolved' && c.status !== 'resolved') return false
       if (filter === 'keep_all' && !c.keep_all) return false
       if (!q) return true
@@ -165,7 +170,8 @@ export function DedupesPage() {
     })
   }, [clusters, filter, search])
 
-  const selected = clusters.find((c) => c.key === selectedKey) ?? visible[0] ?? null
+  const selected =
+    clusters.find((c) => c.key === selectedKey) ?? visible[0] ?? null
 
   const pendingCount = actions.length
 
@@ -182,15 +188,25 @@ export function DedupesPage() {
     for (const m of cluster.members) {
       const key = memberKey(m)
       if (keepIds.has(key)) {
-        next.push({ provider: m.provider, id: m.normalized_id, export: 'enabled' })
+        next.push({
+          provider: m.provider,
+          id: m.normalized_id,
+          export: 'enabled',
+        })
       } else {
-        next.push({ provider: m.provider, id: m.normalized_id, export: 'disabled' })
+        next.push({
+          provider: m.provider,
+          id: m.normalized_id,
+          export: 'disabled',
+        })
       }
     }
     queueActions(next)
     setKeepAllKeys((prev) => prev.filter((k) => k !== cluster.key))
     setSelectedMembers(new Set())
-    setToast(`Queued keep ${keepIds.size} of ${cluster.members.length} for ${cluster.title}`)
+    setToast(
+      `Queued keep ${keepIds.size} of ${cluster.members.length} for ${cluster.title}`,
+    )
   }
 
   function keepSelected() {
@@ -201,7 +217,9 @@ export function DedupesPage() {
   function keepPreferredInCluster(cluster: Cluster) {
     let winner: Member | null = null
     for (const p of preferred) {
-      const hit = cluster.members.find((m) => m.provider === p && effectiveExportable(m))
+      const hit = cluster.members.find(
+        (m) => m.provider === p && effectiveExportable(m),
+      )
       if (hit) {
         winner = hit
         break
@@ -226,13 +244,16 @@ export function DedupesPage() {
       if (c.status !== 'unresolved' || c.keep_all) continue
       let winner: Member | null = null
       for (const p of preferred) {
-        const hit = c.members.find((m) => m.provider === p && effectiveExportable(m))
+        const hit = c.members.find(
+          (m) => m.provider === p && effectiveExportable(m),
+        )
         if (hit) {
           winner = hit
           break
         }
       }
-      if (!winner) winner = c.members.find((m) => effectiveExportable(m)) ?? null
+      if (!winner)
+        winner = c.members.find((m) => effectiveExportable(m)) ?? null
       if (!winner) continue
       const keep = memberKey(winner)
       for (const m of c.members) {
@@ -262,7 +283,9 @@ export function DedupesPage() {
       export: 'auto' as ExportMode,
     }))
     queueActions(next)
-    setKeepAllKeys((prev) => (prev.includes(selected.key) ? prev : [...prev, selected.key]))
+    setKeepAllKeys((prev) =>
+      prev.includes(selected.key) ? prev : [...prev, selected.key],
+    )
     setSelectedMembers(new Set())
     setToast(`Queued keep-all for ${selected.title}`)
   }
@@ -356,15 +379,18 @@ export function DedupesPage() {
         <div>
           <h1>Dedupes</h1>
           <p className="subtle">
-            Same display title across providers (exact match after folding). BET / BET Pluto TV /
-            BET Her stay separate. Keep/drop writes channel emit export — nothing is purged
-            silently.
+            Same display title across providers (exact match after folding). BET
+            / BET Pluto TV / BET Her stay separate. Keep/drop writes channel
+            emit export — nothing is purged silently.
           </p>
         </div>
         <div className="groups-toolbar-actions">
           <label>
             Filter{' '}
-            <select value={filter} onChange={(e) => setFilter(e.target.value as FilterMode)}>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as FilterMode)}
+            >
               <option value="needs_review">Needs review</option>
               <option value="resolved">Resolved</option>
               <option value="keep_all">Keep-all</option>
@@ -400,10 +426,13 @@ export function DedupesPage() {
             disabled={
               server.read_only ||
               saving ||
-              (pendingCount === 0 && !preferredChanged(server, preferred, keepAllKeys))
+              (pendingCount === 0 &&
+                !preferredChanged(server, preferred, keepAllKeys))
             }
           >
-            {saving ? 'Applying…' : `Apply${pendingCount ? ` (${pendingCount})` : ''}`}
+            {saving
+              ? 'Applying…'
+              : `Apply${pendingCount ? ` (${pendingCount})` : ''}`}
           </button>
         </div>
       </div>
@@ -425,8 +454,8 @@ export function DedupesPage() {
       )}
 
       <p className="subtle">
-        {server.summary.clusters} clusters · {server.summary.channels_involved} channels ·{' '}
-        {server.summary.unresolved} unresolved
+        {server.summary.clusters} clusters · {server.summary.channels_involved}{' '}
+        channels · {server.summary.unresolved} unresolved
         {server.read_only ? ' · config read-only' : ''}
         {pendingCount ? ` · ${pendingCount} pending emit changes` : ''}
       </p>
@@ -435,7 +464,9 @@ export function DedupesPage() {
 
       <div className="dedupe-board">
         <div className="dedupe-list">
-          {visible.length === 0 && <p className="subtle">No clusters match this filter.</p>}
+          {visible.length === 0 && (
+            <p className="subtle">No clusters match this filter.</p>
+          )}
           {visible.map((c) => (
             <button
               key={c.key}
@@ -461,8 +492,8 @@ export function DedupesPage() {
             <>
               <h2>{selected.title}</h2>
               <p className="subtle">
-                key <code>{selected.key}</code> · {selected.exportable_count} exportable ·{' '}
-                {selected.status}
+                key <code>{selected.key}</code> · {selected.exportable_count}{' '}
+                exportable · {selected.status}
               </p>
               <table className="dedupe-members">
                 <thead>
@@ -495,7 +526,9 @@ export function DedupesPage() {
                           />
                         </td>
                         <td>
-                          <Link to={`/channels/${m.provider}/${encodeURIComponent(m.normalized_id)}`}>
+                          <Link
+                            to={`/channels/${m.provider}/${encodeURIComponent(m.normalized_id)}`}
+                          >
                             {m.provider}
                           </Link>
                         </td>
@@ -534,10 +567,20 @@ export function DedupesPage() {
                 >
                   Keep preferred
                 </button>
-                <button type="button" className="btn" onClick={keepAll} disabled={server.read_only}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={keepAll}
+                  disabled={server.read_only}
+                >
                   Keep all
                 </button>
-                <button type="button" className="btn" onClick={dropAll} disabled={server.read_only}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={dropAll}
+                  disabled={server.read_only}
+                >
                   Drop all
                 </button>
               </div>
@@ -554,7 +597,11 @@ function providerList(c: Cluster) {
   return `${ids.length} providers`
 }
 
-function preferredChanged(server: DedupesResponse, preferred: string[], keepAll: string[]) {
+function preferredChanged(
+  server: DedupesResponse,
+  preferred: string[],
+  keepAll: string[],
+) {
   const a = (server.preferred_providers ?? []).join(',')
   const b = preferred.join(',')
   const ka = [...(server.keep_all_keys ?? [])].sort().join(',')

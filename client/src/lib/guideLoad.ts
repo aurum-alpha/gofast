@@ -30,12 +30,7 @@ export type GuideRow = {
 }
 
 export type ProviderPhase =
-  | 'pending'
-  | 'fetching'
-  | 'parsing'
-  | 'ready'
-  | 'empty'
-  | 'error'
+  'pending' | 'fetching' | 'parsing' | 'ready' | 'empty' | 'error'
 
 export type ProviderStatus = {
   id: string
@@ -87,7 +82,9 @@ export function rowsFromProviderGuide(
       rawId: m?.id ?? '',
       normalizedId:
         m?.normalized_id ??
-        (xc.id.startsWith(`${provider}.`) ? xc.id.slice(provider.length + 1) : xc.id),
+        (xc.id.startsWith(`${provider}.`)
+          ? xc.id.slice(provider.length + 1)
+          : xc.id),
       classification: m?.classification ?? '',
       excluded: m?.excluded ?? false,
       programmes: list,
@@ -118,7 +115,9 @@ export function enabledProviderIds(
 
 export function summarizeLoad(statuses: ProviderStatus[]): string {
   if (statuses.length === 0) return 'Loading providers…'
-  const ready = statuses.filter((s) => s.phase === 'ready' || s.phase === 'empty').length
+  const ready = statuses.filter(
+    (s) => s.phase === 'ready' || s.phase === 'empty',
+  ).length
   const active = statuses.find(
     (s) => s.phase === 'fetching' || s.phase === 'parsing',
   )
@@ -168,9 +167,12 @@ export async function loadProviderGuides(
     hooks.onStatuses(statuses.slice())
 
     try {
-      const res = await fetch(`/api/guide/${encodeURIComponent(id)}.xml?includeAll=true`, {
-        signal: hooks.signal,
-      })
+      const res = await fetch(
+        `/api/guide/${encodeURIComponent(id)}.xml?includeAll=true`,
+        {
+          signal: hooks.signal,
+        },
+      )
       if (hooks.signal.aborted) return
       if (res.status === 404 || res.status === 503) {
         statuses[i] = { id, phase: 'empty' }

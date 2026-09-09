@@ -1,0 +1,30 @@
+# Fleet standard prettier config - byte-identical in every repo.
+#
+# DO NOT EDIT IN ONE REPO. Change it in every repo at once; the byte-identity
+# checker (tools/check-lint-configs) fails the build otherwise. The canonical
+# copy lives at config/.prettierrc.yaml in aurum-alpha/workflows.
+#
+# YAML rather than .prettierrc.json, and the reason is this header. Prettier
+# parses .prettierrc.json as STRICT json and rejects a comment in it, so the
+# JSON form could carry the config but not the sentence that stops eleven
+# copies drifting - and a shared file whose sharing rule is unwritten is the
+# failure check-lint-configs exists to catch. .prettierrc.yaml takes comments,
+# needs no module system (unlike prettier.config.js, which requires
+# "type": "module" in the package.json beside it), and is byte-comparable.
+#
+# TWO KEYS, AND EVERYTHING ELSE IS PRETTIER'S DEFAULT. Restating a default is
+# how a config acquires lines nobody can justify later: client-manager's
+# prettier.config.js carried `trailingComma: 'all'`, which was a real choice
+# under prettier 2 and has been the default since prettier 3.0. It is not
+# repeated here. Print width stays 80, tab width 2, arrow parens always,
+# because those are the defaults and the fleet has no argument with them.
+#
+# semi: false, singleQuote: true is the style the fleet's three hand-built
+# TypeScript codebases already use - client-manager (0 semicolon-terminated
+# lines, 338 single-quoted imports, 0 double), gha-runner-controller and
+# gofast. The seven repos that disagree are the Replit-generated ones, whose
+# semicolons and double quotes are a code generator's default rather than a
+# decision anyone made. Where the fleet has an opinion and a generator has a
+# habit, the opinion wins.
+semi: false
+singleQuote: true

@@ -37,11 +37,16 @@ export function ChannelPlayer({ channel }: Props) {
   ].join('\u0000')
   const [sourcePref, setSource] = useState<PreviewSource | null>(null)
   const source: PreviewSource =
-    (sourcePref === 'emitted' && urls.emitted) || (sourcePref === 'raw' && urls.raw)
+    (sourcePref === 'emitted' && urls.emitted) ||
+    (sourcePref === 'raw' && urls.raw)
       ? sourcePref
       : defaultPreviewSource(urls)
   const [proxyBaseURL, setProxyBaseURL] = useState<string | undefined>()
-  const [playback, setPlayback] = useState<{ key: string; playing: boolean; error: string }>({
+  const [playback, setPlayback] = useState<{
+    key: string
+    playing: boolean
+    error: string
+  }>({
     key: '',
     playing: false,
     error: '',
@@ -69,7 +74,9 @@ export function ChannelPlayer({ channel }: Props) {
       .then((cfg) => {
         if (cancelled) return
         const v = cfg.fields.proxy_base_url?.value
-        setProxyBaseURL(typeof v === 'string' && v.trim() ? v.trim() : undefined)
+        setProxyBaseURL(
+          typeof v === 'string' && v.trim() ? v.trim() : undefined,
+        )
       })
       .catch(() => {
         if (!cancelled) setProxyBaseURL(undefined)
@@ -230,7 +237,11 @@ export function ChannelPlayer({ channel }: Props) {
 
       <div className="preview-toolbar">
         {canToggle ? (
-          <div className="preview-source" role="group" aria-label="Stream source">
+          <div
+            className="preview-source"
+            role="group"
+            aria-label="Stream source"
+          >
             <button
               type="button"
               className={source === 'emitted' ? undefined : 'button-secondary'}
@@ -262,11 +273,19 @@ export function ChannelPlayer({ channel }: Props) {
           </span>
         )}
         {!playing ? (
-          <button type="button" onClick={() => void startPlayback()} disabled={Boolean(block)}>
+          <button
+            type="button"
+            onClick={() => void startPlayback()}
+            disabled={Boolean(block)}
+          >
             Play
           </button>
         ) : (
-          <button type="button" className="button-secondary" onClick={() => stopPlayback()}>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => stopPlayback()}
+          >
             Stop
           </button>
         )}

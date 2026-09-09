@@ -221,6 +221,21 @@ jobs:
     secrets: inherit
 
 
+  # Formatting, blocking from the first commit that carries it. There is no
+  # warn_only window and no debt to burn down: the reformat landed in this same
+  # change, so the tree is clean the moment the gate exists. Formatting debt has
+  # no gradient -- a file is prettier-clean or it is not -- so a stabilization
+  # window here would have no expiry anyone could write down. `format` in
+  # client/package.json runs the same command (015-commands.md DC2).
+  client-ts-react-fmt:
+    needs: client-ts-react-build
+    uses: aurum-alpha/workflows/.github/workflows/job-fmt-js-prettier.yml@main
+    with:
+      workdir: client
+      dir: "."
+    secrets: inherit
+
+
   # Was folded into the client build as `tsc -b && vite build`, so a type error
   # read as a build failure. `-b` because this client uses project references:
   # without build mode tsc has no inputs and exits 0 having checked nothing.
@@ -304,6 +319,7 @@ jobs:
       - server-go-test-unit
       - client-ts-react-build
       - client-ts-react-lint-oxlint
+      - client-ts-react-fmt
       - client-ts-react-typecheck
       - client-ts-react-test-unit
       - server-go-lint-errcheck
@@ -525,6 +541,7 @@ jobs:
       - server-go-test-unit
       - client-ts-react-build
       - client-ts-react-lint-oxlint
+      - client-ts-react-fmt
       - client-ts-react-typecheck
       - client-ts-react-test-unit
       - client-ts-react-depcheck

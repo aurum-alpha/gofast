@@ -38,7 +38,11 @@ function SortTh({
   onSort: (key: SortKey) => void
 }) {
   const active = sort.key === col
-  const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
+  const ariaSort = active
+    ? sort.dir === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : 'none'
   return (
     <th scope="col" aria-sort={ariaSort}>
       <button
@@ -55,7 +59,11 @@ function SortTh({
   )
 }
 
-function compareEvents(a: ClientAccessEvent, b: ClientAccessEvent, sort: Sort): number {
+function compareEvents(
+  a: ClientAccessEvent,
+  b: ClientAccessEvent,
+  sort: Sort,
+): number {
   let cmp = 0
   switch (sort.key) {
     case 'at':
@@ -87,10 +95,13 @@ export function AccessPage() {
   const status = searchParams.get('status') ?? ''
   const sortKey = (searchParams.get('sort') as SortKey | null) ?? 'at'
   const sortDir = (searchParams.get('dir') as SortDir | null) ?? 'desc'
-  const sort: Sort = useMemo(() => ({
-    key: ['at', 'file', 'ip', 'status'].includes(sortKey) ? sortKey : 'at',
-    dir: sortDir === 'asc' ? 'asc' : 'desc',
-  }), [sortKey, sortDir])
+  const sort: Sort = useMemo(
+    () => ({
+      key: ['at', 'file', 'ip', 'status'].includes(sortKey) ? sortKey : 'at',
+      dir: sortDir === 'asc' ? 'asc' : 'desc',
+    }),
+    [sortKey, sortDir],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -112,7 +123,8 @@ export function AccessPage() {
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err))
       })
     return () => {
       cancelled = true
@@ -154,7 +166,9 @@ export function AccessPage() {
     setSearchParams({}, { replace: true })
   }
 
-  const filtersDirty = Boolean(file || ip.trim() || status || sort.key !== 'at' || sort.dir !== 'desc')
+  const filtersDirty = Boolean(
+    file || ip.trim() || status || sort.key !== 'at' || sort.dir !== 'desc',
+  )
 
   return (
     <>
@@ -233,7 +247,12 @@ export function AccessPage() {
                 <SortTh label="When" col="at" sort={sort} onSort={onSort} />
                 <SortTh label="File" col="file" sort={sort} onSort={onSort} />
                 <SortTh label="IP" col="ip" sort={sort} onSort={onSort} />
-                <SortTh label="Status" col="status" sort={sort} onSort={onSort} />
+                <SortTh
+                  label="Status"
+                  col="status"
+                  sort={sort}
+                  onSort={onSort}
+                />
               </tr>
             </thead>
             <tbody>

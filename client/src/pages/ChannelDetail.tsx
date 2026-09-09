@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, Fragment, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  Fragment,
+  type ReactNode,
+} from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   channelOnScheduledL1,
@@ -132,7 +139,9 @@ type PresenceValue = {
   tvg_id?: string
 }
 
-function parsePresenceValue(value: PresenceHistoryEvent['value']): PresenceValue {
+function parsePresenceValue(
+  value: PresenceHistoryEvent['value'],
+): PresenceValue {
   if (!value) return {}
   try {
     if (typeof value === 'string') return JSON.parse(value) as PresenceValue
@@ -229,7 +238,9 @@ function ProgrammeSlot({
       {programme ? (
         <div className="guide-slot-body">
           <div className="guide-slot-title">{programme.title}</div>
-          <div className="meta">{formatProgrammeRange(programme.start, programme.stop)}</div>
+          <div className="meta">
+            {formatProgrammeRange(programme.start, programme.stop)}
+          </div>
           {cats.length > 0 ? (
             <div className="epg-detail-cats">
               {cats.map((c) => (
@@ -260,9 +271,8 @@ export function ChannelDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryResponse | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
-  const [presenceHistory, setPresenceHistory] = useState<PresenceHistoryResponse | null>(
-    null,
-  )
+  const [presenceHistory, setPresenceHistory] =
+    useState<PresenceHistoryResponse | null>(null)
   const [presenceError, setPresenceError] = useState<string | null>(null)
   const [probeBusy, setProbeBusy] = useState<'l1' | 'l2' | null>(null)
   const [logoBusy, setLogoBusy] = useState(false)
@@ -271,13 +281,18 @@ export function ChannelDetailPage() {
   const [probeError, setProbeError] = useState<string | null>(null)
   const [probeNote, setProbeNote] = useState<string | null>(null)
   const [schedule, setSchedule] = useState<ProbeSchedule | null>(null)
-  const [expandedHistory, setExpandedHistory] = useState<Record<string, boolean>>({})
+  const [expandedHistory, setExpandedHistory] = useState<
+    Record<string, boolean>
+  >({})
   const [revision, setRevision] = useState('')
   const [writable, setWritable] = useState(false)
   const [emitDraft, setEmitDraft] = useState<EmitDraft | null>(null)
   const [emitBaseline, setEmitBaseline] = useState<EmitDraft | null>(null)
   const [emitSaving, setEmitSaving] = useState(false)
-  const [emitToast, setEmitToast] = useState<{ ok: boolean; message: string } | null>(null)
+  const [emitToast, setEmitToast] = useState<{
+    ok: boolean
+    message: string
+  } | null>(null)
   // The guide result carries the channel it was loaded for, so a result for the
   // previous channel reads as "not loaded yet" during render rather than being
   // cleared by an effect on the way in.
@@ -342,7 +357,8 @@ export function ChannelDetailPage() {
       try {
         await loadChannel()
       } catch (err: unknown) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err))
       }
     })()
     return () => {
@@ -417,7 +433,12 @@ export function ChannelDetailPage() {
     setEmitToast(null)
     try {
       const payload = emitPayload(emitDraft)
-      const result = await saveChannelEmit(provider, normalizedId, revision, payload)
+      const result = await saveChannelEmit(
+        provider,
+        normalizedId,
+        revision,
+        payload,
+      )
       setChannel(result.channel)
       setRevision(result.revision)
       setWritable(result.writable)
@@ -430,10 +451,14 @@ export function ChannelDetailPage() {
         await loadChannel().catch(() => {})
         setEmitToast({
           ok: false,
-          message: 'Config changed elsewhere — reloaded latest values; re-apply your edits.',
+          message:
+            'Config changed elsewhere — reloaded latest values; re-apply your edits.',
         })
       } else {
-        setEmitToast({ ok: false, message: err instanceof Error ? err.message : String(err) })
+        setEmitToast({
+          ok: false,
+          message: err instanceof Error ? err.message : String(err),
+        })
       }
     } finally {
       setEmitSaving(false)
@@ -568,7 +593,11 @@ export function ChannelDetailPage() {
             <span className={`badge badge-${cls.kind}`}>{cls.label}</span>
             <span className={`badge badge-${hb.kind}`}>{hb.label}</span>
             {statuses.map((s) => (
-              <span key={s.kind} className={`badge ${s.className}`} title={s.title}>
+              <span
+                key={s.kind}
+                className={`badge ${s.className}`}
+                title={s.title}
+              >
                 {s.label}
               </span>
             ))}
@@ -584,8 +613,8 @@ export function ChannelDetailPage() {
           ) : null}
           {statusKinds.includes('needs-proxy') ? (
             <p className="status-reason">
-              Configure <code>proxy_base_url</code> / FASTProxy so Amagi SSAI streams can
-              be emitted.
+              Configure <code>proxy_base_url</code> / FASTProxy so Amagi SSAI
+              streams can be emitted.
             </p>
           ) : null}
           {statusKinds.includes('disabled-group') ? (
@@ -617,7 +646,9 @@ export function ChannelDetailPage() {
         </div>
       </div>
 
-      {channel.presence === 'absent' ? null : <ChannelPlayer channel={channel} />}
+      {channel.presence === 'absent' ? null : (
+        <ChannelPlayer channel={channel} />
+      )}
 
       <section className="detail-section">
         <h2>Catalog presence</h2>
@@ -684,313 +715,346 @@ export function ChannelDetailPage() {
           </p>
         ) : (
           <>
-        <p className="meta">
-          Customize Fastgen export values for this channel. Uncheck to use the
-          default fastgen produces. Does not change the upstream feed.
-        </p>
-        {!writable ? (
-          <div className="empty-panel" role="alert">
-            Config is read-only — mount the config path read-write to customize emit.
-          </div>
-        ) : null}
-        <div className="config-toolbar">
-          <button
-            type="button"
-            onClick={() => {
-              void saveEmit()
-            }}
-            disabled={emitSaving || !writable || !emitDirty || !emitDraft}
-          >
-            {emitSaving ? 'Saving…' : 'Save & apply'}
-          </button>
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={() => emitBaseline && setEmitDraft(emitBaseline)}
-            disabled={!emitDirty || !emitBaseline}
-          >
-            Discard
-          </button>
-          {emitToast ? (
-            <span
-              className={`meta config-toast${emitToast.ok ? '' : ' config-toast-error'}`}
-              role="status"
-            >
-              {emitToast.message}
-            </span>
-          ) : null}
-        </div>
-        {channel.emit?.export === 'enabled' && channel.excluded && reasons.length > 0 ? (
-          <p className="status-reason" role="status">
-            Cannot emit: {reasons.join('; ')}
-          </p>
-        ) : null}
-        <div className="table-wrap">
-          <table className="compare-table">
-            <thead>
-              <tr>
-                <th scope="col">Field</th>
-                <th scope="col">From provider</th>
-                <th scope="col">Fastgen export</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th scope="row">Channel id</th>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Upstream id</span>
-                    <Code value={channel.id} />
-                  </CellValue>
-                </td>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Normalized id (tvg-id / XMLTV)</span>
-                    <Code value={channel.normalized_id} />
-                  </CellValue>
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Region</th>
-                <td colSpan={2}>
-                  <CellValue>
-                    <span className="field-hint">
-                      Scrape geography (empty if provider ignores system regions)
-                    </span>
-                    <Code value={channel.region || undefined} />
-                  </CellValue>
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Name</th>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Provider name</span>
-                    <Plain value={channel.name} />
-                  </CellValue>
-                </td>
-                <td>
-                  <CellValue>
-                    <label className="emit-customize">
-                      <input
-                        type="checkbox"
-                        checked={emitDraft?.nameOn ?? false}
-                        disabled={!writable || !emitDraft}
-                        onChange={(e) => setEmit('nameOn', e.target.checked)}
-                      />
-                      Customize
-                    </label>
-                    {emitDraft?.nameOn ? (
-                      <input
-                        type="text"
-                        value={emitDraft.name}
-                        disabled={!writable}
-                        onChange={(e) => setEmit('name', e.target.value)}
-                      />
-                    ) : (
-                      <>
-                        <span className="field-hint">Emitted display-name</span>
-                        <Plain value={defaults?.name || channel.name} />
-                      </>
-                    )}
-                  </CellValue>
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Channel number</th>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Provider number</span>
-                    <Plain value={displayNumber(channel.number)} />
-                  </CellValue>
-                </td>
-                <td>
-                  <CellValue>
-                    <label className="emit-customize">
-                      <input
-                        type="checkbox"
-                        checked={emitDraft?.numberOn ?? false}
-                        disabled={!writable || !emitDraft}
-                        onChange={(e) => setEmit('numberOn', e.target.checked)}
-                      />
-                      Customize
-                    </label>
-                    {emitDraft?.numberOn ? (
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={emitDraft.number}
-                        disabled={!writable}
-                        onChange={(e) => setEmit('number', e.target.value)}
-                      />
-                    ) : (
-                      <>
-                        <span className="field-hint">Export number (tvg-chno / LCN)</span>
-                        <Plain
-                          value={displayNumber(defaults?.number ?? channel.offset_number)}
-                        />
-                      </>
-                    )}
-                  </CellValue>
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Group</th>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Provider group</span>
-                    <Plain value={channel.group || undefined} />
-                  </CellValue>
-                </td>
-                <td>
-                  <CellValue>
-                    <label className="emit-customize">
-                      <input
-                        type="checkbox"
-                        checked={emitDraft?.groupOn ?? false}
-                        disabled={!writable || !emitDraft}
-                        onChange={(e) => setEmit('groupOn', e.target.checked)}
-                      />
-                      Customize
-                    </label>
-                    {emitDraft?.groupOn ? (
-                      <input
-                        type="text"
-                        value={emitDraft.group}
-                        disabled={!writable}
-                        onChange={(e) => setEmit('group', e.target.value)}
-                      />
-                    ) : (
-                      <>
-                        <span className="field-hint">group-title</span>
-                        <Plain
-                          value={
-                            defaults?.group ||
-                            channel.emitted_group ||
-                            channel.group ||
-                            undefined
-                          }
-                        />
-                      </>
-                    )}
-                  </CellValue>
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Stream</th>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Upstream stream URL</span>
-                    <Url value={channel.stream_url} />
-                  </CellValue>
-                </td>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Emitted playback URL</span>
-                    {channel.excluded ? (
-                      <span className="subtle">not emitted</span>
-                    ) : (
-                      <Url value={exportedPlayback} />
-                    )}
-                  </CellValue>
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Logo</th>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Provider artwork URL</span>
-                    <LogoPreview src={providerLogo} />
-                    <Url value={providerLogo} />
-                  </CellValue>
-                </td>
-                <td>
-                  <CellValue>
-                    <label className="emit-customize">
-                      <input
-                        type="checkbox"
-                        checked={emitDraft?.logoOn ?? false}
-                        disabled={!writable || !emitDraft}
-                        onChange={(e) => setEmit('logoOn', e.target.checked)}
-                      />
-                      Customize
-                    </label>
-                    {emitDraft?.logoOn ? (
-                      <input
-                        type="text"
-                        value={emitDraft.logo}
-                        disabled={!writable}
-                        onChange={(e) => setEmit('logo', e.target.value)}
-                      />
-                    ) : (
-                      <>
-                        <span className="field-hint">Exported tvg-logo / icon</span>
-                        {channel.logo_error && (
-                          <p className="compare-error" role="status">
-                            {channel.logo_error}
-                          </p>
-                        )}
-                        {(defaults?.logo_url || exportedLogo) &&
-                        (defaults?.logo_url || exportedLogo) !== providerLogo ? (
-                          <LogoPreview src={defaults?.logo_url || exportedLogo} />
-                        ) : null}
-                        {defaults?.logo_url || exportedLogo ? (
-                          <Url value={defaults?.logo_url || exportedLogo} />
+            <p className="meta">
+              Customize Fastgen export values for this channel. Uncheck to use
+              the default fastgen produces. Does not change the upstream feed.
+            </p>
+            {!writable ? (
+              <div className="empty-panel" role="alert">
+                Config is read-only — mount the config path read-write to
+                customize emit.
+              </div>
+            ) : null}
+            <div className="config-toolbar">
+              <button
+                type="button"
+                onClick={() => {
+                  void saveEmit()
+                }}
+                disabled={emitSaving || !writable || !emitDirty || !emitDraft}
+              >
+                {emitSaving ? 'Saving…' : 'Save & apply'}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => emitBaseline && setEmitDraft(emitBaseline)}
+                disabled={!emitDirty || !emitBaseline}
+              >
+                Discard
+              </button>
+              {emitToast ? (
+                <span
+                  className={`meta config-toast${emitToast.ok ? '' : ' config-toast-error'}`}
+                  role="status"
+                >
+                  {emitToast.message}
+                </span>
+              ) : null}
+            </div>
+            {channel.emit?.export === 'enabled' &&
+            channel.excluded &&
+            reasons.length > 0 ? (
+              <p className="status-reason" role="status">
+                Cannot emit: {reasons.join('; ')}
+              </p>
+            ) : null}
+            <div className="table-wrap">
+              <table className="compare-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Field</th>
+                    <th scope="col">From provider</th>
+                    <th scope="col">Fastgen export</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">Channel id</th>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">Upstream id</span>
+                        <Code value={channel.id} />
+                      </CellValue>
+                    </td>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">
+                          Normalized id (tvg-id / XMLTV)
+                        </span>
+                        <Code value={channel.normalized_id} />
+                      </CellValue>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Region</th>
+                    <td colSpan={2}>
+                      <CellValue>
+                        <span className="field-hint">
+                          Scrape geography (empty if provider ignores system
+                          regions)
+                        </span>
+                        <Code value={channel.region || undefined} />
+                      </CellValue>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Name</th>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">Provider name</span>
+                        <Plain value={channel.name} />
+                      </CellValue>
+                    </td>
+                    <td>
+                      <CellValue>
+                        <label className="emit-customize">
+                          <input
+                            type="checkbox"
+                            checked={emitDraft?.nameOn ?? false}
+                            disabled={!writable || !emitDraft}
+                            onChange={(e) =>
+                              setEmit('nameOn', e.target.checked)
+                            }
+                          />
+                          Customize
+                        </label>
+                        {emitDraft?.nameOn ? (
+                          <input
+                            type="text"
+                            value={emitDraft.name}
+                            disabled={!writable}
+                            onChange={(e) => setEmit('name', e.target.value)}
+                          />
                         ) : (
-                          <span className="subtle">
-                            {channel.logo_error ? 'cleared (not exported)' : '—'}
-                          </span>
+                          <>
+                            <span className="field-hint">
+                              Emitted display-name
+                            </span>
+                            <Plain value={defaults?.name || channel.name} />
+                          </>
                         )}
-                      </>
-                    )}
-                  </CellValue>
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">In export</th>
-                <td>
-                  <CellValue>
-                    <span className="field-hint">Pipeline decision</span>
-                    <Plain value={inLineup ? 'included' : 'excluded'} />
-                  </CellValue>
-                </td>
-                <td>
-                  <CellValue>
-                    <label className="emit-customize">
-                      <input
-                        type="checkbox"
-                        checked={emitDraft?.exportOn ?? false}
-                        disabled={!writable || !emitDraft}
-                        onChange={(e) => setEmit('exportOn', e.target.checked)}
-                      />
-                      Customize
-                    </label>
-                    {emitDraft?.exportOn ? (
-                      <select
-                        value={emitDraft.exportMode}
-                        disabled={!writable}
-                        onChange={(e) =>
-                          setEmit(
-                            'exportMode',
-                            e.target.value === 'disabled' ? 'disabled' : 'enabled',
-                          )
-                        }
-                      >
-                        <option value="enabled">Include</option>
-                        <option value="disabled">Exclude</option>
-                      </select>
-                    ) : (
-                      <>
-                        <span className="field-hint">auto (pipeline decides)</span>
+                      </CellValue>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Channel number</th>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">Provider number</span>
+                        <Plain value={displayNumber(channel.number)} />
+                      </CellValue>
+                    </td>
+                    <td>
+                      <CellValue>
+                        <label className="emit-customize">
+                          <input
+                            type="checkbox"
+                            checked={emitDraft?.numberOn ?? false}
+                            disabled={!writable || !emitDraft}
+                            onChange={(e) =>
+                              setEmit('numberOn', e.target.checked)
+                            }
+                          />
+                          Customize
+                        </label>
+                        {emitDraft?.numberOn ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={emitDraft.number}
+                            disabled={!writable}
+                            onChange={(e) => setEmit('number', e.target.value)}
+                          />
+                        ) : (
+                          <>
+                            <span className="field-hint">
+                              Export number (tvg-chno / LCN)
+                            </span>
+                            <Plain
+                              value={displayNumber(
+                                defaults?.number ?? channel.offset_number,
+                              )}
+                            />
+                          </>
+                        )}
+                      </CellValue>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Group</th>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">Provider group</span>
+                        <Plain value={channel.group || undefined} />
+                      </CellValue>
+                    </td>
+                    <td>
+                      <CellValue>
+                        <label className="emit-customize">
+                          <input
+                            type="checkbox"
+                            checked={emitDraft?.groupOn ?? false}
+                            disabled={!writable || !emitDraft}
+                            onChange={(e) =>
+                              setEmit('groupOn', e.target.checked)
+                            }
+                          />
+                          Customize
+                        </label>
+                        {emitDraft?.groupOn ? (
+                          <input
+                            type="text"
+                            value={emitDraft.group}
+                            disabled={!writable}
+                            onChange={(e) => setEmit('group', e.target.value)}
+                          />
+                        ) : (
+                          <>
+                            <span className="field-hint">group-title</span>
+                            <Plain
+                              value={
+                                defaults?.group ||
+                                channel.emitted_group ||
+                                channel.group ||
+                                undefined
+                              }
+                            />
+                          </>
+                        )}
+                      </CellValue>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Stream</th>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">Upstream stream URL</span>
+                        <Url value={channel.stream_url} />
+                      </CellValue>
+                    </td>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">Emitted playback URL</span>
+                        {channel.excluded ? (
+                          <span className="subtle">not emitted</span>
+                        ) : (
+                          <Url value={exportedPlayback} />
+                        )}
+                      </CellValue>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Logo</th>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">Provider artwork URL</span>
+                        <LogoPreview src={providerLogo} />
+                        <Url value={providerLogo} />
+                      </CellValue>
+                    </td>
+                    <td>
+                      <CellValue>
+                        <label className="emit-customize">
+                          <input
+                            type="checkbox"
+                            checked={emitDraft?.logoOn ?? false}
+                            disabled={!writable || !emitDraft}
+                            onChange={(e) =>
+                              setEmit('logoOn', e.target.checked)
+                            }
+                          />
+                          Customize
+                        </label>
+                        {emitDraft?.logoOn ? (
+                          <input
+                            type="text"
+                            value={emitDraft.logo}
+                            disabled={!writable}
+                            onChange={(e) => setEmit('logo', e.target.value)}
+                          />
+                        ) : (
+                          <>
+                            <span className="field-hint">
+                              Exported tvg-logo / icon
+                            </span>
+                            {channel.logo_error && (
+                              <p className="compare-error" role="status">
+                                {channel.logo_error}
+                              </p>
+                            )}
+                            {(defaults?.logo_url || exportedLogo) &&
+                            (defaults?.logo_url || exportedLogo) !==
+                              providerLogo ? (
+                              <LogoPreview
+                                src={defaults?.logo_url || exportedLogo}
+                              />
+                            ) : null}
+                            {defaults?.logo_url || exportedLogo ? (
+                              <Url value={defaults?.logo_url || exportedLogo} />
+                            ) : (
+                              <span className="subtle">
+                                {channel.logo_error
+                                  ? 'cleared (not exported)'
+                                  : '—'}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </CellValue>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">In export</th>
+                    <td>
+                      <CellValue>
+                        <span className="field-hint">Pipeline decision</span>
                         <Plain value={inLineup ? 'included' : 'excluded'} />
-                      </>
-                    )}
-                  </CellValue>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                      </CellValue>
+                    </td>
+                    <td>
+                      <CellValue>
+                        <label className="emit-customize">
+                          <input
+                            type="checkbox"
+                            checked={emitDraft?.exportOn ?? false}
+                            disabled={!writable || !emitDraft}
+                            onChange={(e) =>
+                              setEmit('exportOn', e.target.checked)
+                            }
+                          />
+                          Customize
+                        </label>
+                        {emitDraft?.exportOn ? (
+                          <select
+                            value={emitDraft.exportMode}
+                            disabled={!writable}
+                            onChange={(e) =>
+                              setEmit(
+                                'exportMode',
+                                e.target.value === 'disabled'
+                                  ? 'disabled'
+                                  : 'enabled',
+                              )
+                            }
+                          >
+                            <option value="enabled">Include</option>
+                            <option value="disabled">Exclude</option>
+                          </select>
+                        ) : (
+                          <>
+                            <span className="field-hint">
+                              auto (pipeline decides)
+                            </span>
+                            <Plain value={inLineup ? 'included' : 'excluded'} />
+                          </>
+                        )}
+                      </CellValue>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </>
         )}
       </section>
@@ -1048,7 +1112,9 @@ export function ChannelDetailPage() {
               <dt>Final URL</dt>
               <dd>
                 {channel.health?.last_final_url ? (
-                  <code className="url-break">{channel.health.last_final_url}</code>
+                  <code className="url-break">
+                    {channel.health.last_final_url}
+                  </code>
                 ) : (
                   '—'
                 )}
@@ -1066,7 +1132,9 @@ export function ChannelDetailPage() {
               <dt>Failure detail</dt>
               <dd>
                 {channel.health?.last_failure_detail ? (
-                  <code className="url-break">{channel.health.last_failure_detail}</code>
+                  <code className="url-break">
+                    {channel.health.last_failure_detail}
+                  </code>
                 ) : (
                   '—'
                 )}
@@ -1145,8 +1213,16 @@ export function ChannelDetailPage() {
               caching is on.
             </span>
           </p>
-          {probeNote ? <p className="meta" role="status">{probeNote}</p> : null}
-          {logoNote ? <p className="meta" role="status">{logoNote}</p> : null}
+          {probeNote ? (
+            <p className="meta" role="status">
+              {probeNote}
+            </p>
+          ) : null}
+          {logoNote ? (
+            <p className="meta" role="status">
+              {logoNote}
+            </p>
+          ) : null}
           {probeError ? (
             <p className="compare-error" role="alert">
               {probeError}
@@ -1165,7 +1241,9 @@ export function ChannelDetailPage() {
             {historyError}
           </p>
         ) : null}
-        {!historyError && !history ? <p className="meta">Loading history…</p> : null}
+        {!historyError && !history ? (
+          <p className="meta">Loading history…</p>
+        ) : null}
         {history && (history.events?.length ?? 0) === 0 ? (
           <p className="meta">No probe events yet.</p>
         ) : null}
@@ -1196,7 +1274,11 @@ export function ChannelDetailPage() {
                   const open = Boolean(detail && expandedHistory[rowKey])
                   return (
                     <Fragment key={rowKey}>
-                      <tr className={detail ? 'history-row-expandable' : undefined}>
+                      <tr
+                        className={
+                          detail ? 'history-row-expandable' : undefined
+                        }
+                      >
                         <td className="history-expand-col">
                           {detail ? (
                             <button
@@ -1257,7 +1339,10 @@ export function ChannelDetailPage() {
                         </td>
                       </tr>
                       {open && detail ? (
-                        <tr id={`history-detail-${i}`} className="history-detail-row">
+                        <tr
+                          id={`history-detail-${i}`}
+                          className="history-detail-row"
+                        >
                           <td colSpan={9}>
                             <pre className="history-detail-body">
                               {h.last_final_url
@@ -1279,8 +1364,8 @@ export function ChannelDetailPage() {
       <section className="detail-section">
         <h2>Guide</h2>
         <p className="meta">
-          In-memory programmes for this channel (default window: last hour through
-          next 12 hours).
+          In-memory programmes for this channel (default window: last hour
+          through next 12 hours).
         </p>
         {programmesError ? (
           <p className="compare-error" role="alert">
@@ -1307,7 +1392,11 @@ export function ChannelDetailPage() {
               <button
                 type="button"
                 className="button-secondary"
-                onClick={() => setGuideExpandedFor((v) => (v === channelKey ? null : channelKey))}
+                onClick={() =>
+                  setGuideExpandedFor((v) =>
+                    v === channelKey ? null : channelKey,
+                  )
+                }
               >
                 {guideExpanded ? 'Hide programmes' : 'Show all programmes'}
               </button>
@@ -1341,7 +1430,9 @@ export function ChannelDetailPage() {
                             ))}
                           </div>
                         ) : null}
-                        {p.desc ? <p className="guide-slot-desc">{p.desc}</p> : null}
+                        {p.desc ? (
+                          <p className="guide-slot-desc">{p.desc}</p>
+                        ) : null}
                       </div>
                     </li>
                   )

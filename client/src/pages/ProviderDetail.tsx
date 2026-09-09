@@ -44,7 +44,9 @@ type ProviderDetail = {
 function validDate(value?: string): Date | null {
   if (!value) return null
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) || date.getUTCFullYear() <= 1 ? null : date
+  return Number.isNaN(date.getTime()) || date.getUTCFullYear() <= 1
+    ? null
+    : date
 }
 
 function relativeTime(value?: string): string {
@@ -88,7 +90,9 @@ function Breakdown({
 }) {
   const rows = useMemo(
     () =>
-      Object.entries(values ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+      Object.entries(values ?? {}).sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+      ),
     [values],
   )
   return (
@@ -106,7 +110,9 @@ function Breakdown({
                 <tr key={name}>
                   <td>
                     {classifications ? (
-                      <span className={`badge badge-${name.toLowerCase()}`}>{name}</span>
+                      <span className={`badge badge-${name.toLowerCase()}`}>
+                        {name}
+                      </span>
                     ) : (
                       name
                     )}
@@ -137,16 +143,25 @@ export function ProviderDetailPage() {
   const refreshNote = notice.id === id ? notice.note : null
   const refreshError = notice.id === id ? notice.error : null
   const setRefreshNote = (note: string | null) =>
-    setNotice((prev) => ({ id, note, error: prev.id === id ? prev.error : null }))
+    setNotice((prev) => ({
+      id,
+      note,
+      error: prev.id === id ? prev.error : null,
+    }))
   const setRefreshError = (error: string | null) =>
-    setNotice((prev) => ({ id, note: prev.id === id ? prev.note : null, error }))
+    setNotice((prev) => ({
+      id,
+      note: prev.id === id ? prev.note : null,
+      error,
+    }))
   const [cacheBusy, setCacheBusy] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     fetch(`/api/providers/${encodeURIComponent(id)}`)
       .then(async (response) => {
-        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
+        if (!response.ok)
+          throw new Error(`${response.status} ${response.statusText}`)
         return response.json() as Promise<ProviderDetail>
       })
       .then((detail) => {
@@ -156,7 +171,8 @@ export function ProviderDetailPage() {
         }
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason))
+        if (!cancelled)
+          setError(reason instanceof Error ? reason.message : String(reason))
       })
     return () => {
       cancelled = true
@@ -168,9 +184,12 @@ export function ProviderDetailPage() {
     setRefreshNote(null)
     setRefreshError(null)
     try {
-      const res = await fetch(`/api/providers/${encodeURIComponent(id)}/refresh`, {
-        method: 'POST',
-      })
+      const res = await fetch(
+        `/api/providers/${encodeURIComponent(id)}/refresh`,
+        {
+          method: 'POST',
+        },
+      )
       if (res.status === 409) {
         setRefreshError('Refresh already in progress')
         return
@@ -263,23 +282,38 @@ export function ProviderDetailPage() {
   if (error) {
     return (
       <>
-        <Link to="/providers" className="back-link">← Providers</Link>
-        <div className="empty-panel" role="alert">Failed to load provider: {error}</div>
+        <Link to="/providers" className="back-link">
+          ← Providers
+        </Link>
+        <div className="empty-panel" role="alert">
+          Failed to load provider: {error}
+        </div>
       </>
     )
   }
-  if (!data) return <div className="empty-panel" role="status">Loading…</div>
+  if (!data)
+    return (
+      <div className="empty-panel" role="status">
+        Loading…
+      </div>
+    )
 
   const { settings, stats } = data
   return (
     <>
-      <Link to="/providers" className="back-link">← Providers</Link>
+      <Link to="/providers" className="back-link">
+        ← Providers
+      </Link>
       <div className="detail-heading">
         <div>
           <h1>{settings.label || settings.id}</h1>
-          <p className="lead"><code>{settings.id}</code></p>
+          <p className="lead">
+            <code>{settings.id}</code>
+          </p>
         </div>
-        <span className={`badge ${settings.enabled ? 'badge-native' : 'badge-none'}`}>
+        <span
+          className={`badge ${settings.enabled ? 'badge-native' : 'badge-none'}`}
+        >
           {settings.enabled ? 'Enabled' : 'Disabled'}
         </span>
       </div>
@@ -327,7 +361,11 @@ export function ProviderDetailPage() {
         </Link>
         <Link to="/cache">Cache</Link>
       </p>
-      {refreshNote ? <p className="meta" role="status">{refreshNote}</p> : null}
+      {refreshNote ? (
+        <p className="meta" role="status">
+          {refreshNote}
+        </p>
+      ) : null}
       {refreshError ? (
         <div className="empty-panel" role="alert">
           <p>{refreshError}</p>
@@ -336,7 +374,9 @@ export function ProviderDetailPage() {
 
       {stats.last_error && (
         <div className="error-banner" role="alert">
-          <strong>Last refresh failed {relativeTime(stats.last_error_at)}</strong>
+          <strong>
+            Last refresh failed {relativeTime(stats.last_error_at)}
+          </strong>
           <span>{stats.last_error}</span>
         </div>
       )}
@@ -344,27 +384,49 @@ export function ProviderDetailPage() {
       {stats.refresh_interval_clamped &&
         stats.refresh_interval_configured &&
         stats.refresh_interval_effective && (
-        <div className="error-banner" role="status">
-          <strong>
-            Refresh interval adjusted for guide horizon:{' '}
-            <code>{stats.refresh_interval_configured}</code>
-            {' → '}
-            <code>{stats.refresh_interval_effective}</code>
-          </strong>
-          <span>
-            Capped to half the EPG ahead-horizon so the guide cannot expire before the next fetch.
-          </span>
-        </div>
-      )}
+          <div className="error-banner" role="status">
+            <strong>
+              Refresh interval adjusted for guide horizon:{' '}
+              <code>{stats.refresh_interval_configured}</code>
+              {' → '}
+              <code>{stats.refresh_interval_effective}</code>
+            </strong>
+            <span>
+              Capped to half the EPG ahead-horizon so the guide cannot expire
+              before the next fetch.
+            </span>
+          </div>
+        )}
 
       <div className="stat-grid">
-        <div className="stat"><span>Last success</span><strong>{relativeTime(stats.fetched_at)}</strong></div>
-        <div className="stat"><span>Last attempt</span><strong>{relativeTime(stats.last_attempt_at)}</strong></div>
-        <div className="stat"><span>Catalog</span><strong>{stats.total_channels.toLocaleString()}</strong></div>
-        <div className="stat"><span>Exported</span><strong>{stats.exported_channels.toLocaleString()}</strong></div>
-        <div className="stat"><span>Excluded</span><strong>{stats.excluded_channels.toLocaleString()}</strong></div>
-        <div className="stat"><span>Programmes</span><strong>{stats.total_programmes.toLocaleString()}</strong></div>
-        <div className="stat"><span>Exported programmes</span><strong>{stats.exported_programmes.toLocaleString()}</strong></div>
+        <div className="stat">
+          <span>Last success</span>
+          <strong>{relativeTime(stats.fetched_at)}</strong>
+        </div>
+        <div className="stat">
+          <span>Last attempt</span>
+          <strong>{relativeTime(stats.last_attempt_at)}</strong>
+        </div>
+        <div className="stat">
+          <span>Catalog</span>
+          <strong>{stats.total_channels.toLocaleString()}</strong>
+        </div>
+        <div className="stat">
+          <span>Exported</span>
+          <strong>{stats.exported_channels.toLocaleString()}</strong>
+        </div>
+        <div className="stat">
+          <span>Excluded</span>
+          <strong>{stats.excluded_channels.toLocaleString()}</strong>
+        </div>
+        <div className="stat">
+          <span>Programmes</span>
+          <strong>{stats.total_programmes.toLocaleString()}</strong>
+        </div>
+        <div className="stat">
+          <span>Exported programmes</span>
+          <strong>{stats.exported_programmes.toLocaleString()}</strong>
+        </div>
       </div>
 
       <section className="detail-section">
@@ -380,7 +442,10 @@ export function ProviderDetailPage() {
           </Link>
         </p>
         <dl className="settings-grid">
-          <div><dt>Refresh interval</dt><dd>{settings.refresh_interval}</dd></div>
+          <div>
+            <dt>Refresh interval</dt>
+            <dd>{settings.refresh_interval}</dd>
+          </div>
           <div>
             <dt>Channel offset</dt>
             <dd>
@@ -397,15 +462,31 @@ export function ProviderDetailPage() {
                 : '—'}
             </dd>
           </div>
-          <div><dt>Minimum channels</dt><dd>{settings.min_channels}</dd></div>
-          <div><dt>System regions</dt><dd>{settings.region || '—'}</dd></div>
-          <div><dt>Slug template</dt><dd>{settings.slug_template || '—'}</dd></div>
-          <div><dt>Exclusions</dt><dd>{settings.exclusions?.length ?? 0}</dd></div>
+          <div>
+            <dt>Minimum channels</dt>
+            <dd>{settings.min_channels}</dd>
+          </div>
+          <div>
+            <dt>System regions</dt>
+            <dd>{settings.region || '—'}</dd>
+          </div>
+          <div>
+            <dt>Slug template</dt>
+            <dd>{settings.slug_template || '—'}</dd>
+          </div>
+          <div>
+            <dt>Exclusions</dt>
+            <dd>{settings.exclusions?.length ?? 0}</dd>
+          </div>
         </dl>
       </section>
 
       <div className="breakdown-grid">
-        <Breakdown title="Classifications" values={stats.by_classification} classifications />
+        <Breakdown
+          title="Classifications"
+          values={stats.by_classification}
+          classifications
+        />
         <Breakdown title="Regions" values={stats.by_region} />
         <Breakdown title="Groups" values={stats.by_group} />
         <Breakdown title="Filter reasons" values={stats.filter_reasons} />
@@ -413,4 +494,3 @@ export function ProviderDetailPage() {
     </>
   )
 }
-

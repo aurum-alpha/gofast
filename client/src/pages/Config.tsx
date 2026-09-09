@@ -20,7 +20,15 @@ import {
   type OpsReportSchedule,
 } from '../lib/opsReport'
 
-type FieldKind = 'text' | 'bool' | 'int' | 'float' | 'duration' | 'select' | 'list' | 'password'
+type FieldKind =
+  | 'text'
+  | 'bool'
+  | 'int'
+  | 'float'
+  | 'duration'
+  | 'select'
+  | 'list'
+  | 'password'
 
 type FieldSpec = {
   path: string
@@ -83,7 +91,11 @@ const HEALTH_FIELDS: FieldSpec[] = [
     kind: 'int',
     hint: 'Consecutive probe failures before a channel is DOWN',
   },
-  { path: 'health.exclude_unhealthy', label: 'Exclude unhealthy', kind: 'bool' },
+  {
+    path: 'health.exclude_unhealthy',
+    label: 'Exclude unhealthy',
+    kind: 'bool',
+  },
   { path: 'health.l1_interval', label: 'L1 interval', kind: 'duration' },
   { path: 'health.l1_workers', label: 'L1 workers', kind: 'int' },
   { path: 'health.l2_enabled', label: 'L2 (ffprobe) enabled', kind: 'bool' },
@@ -133,7 +145,12 @@ const OPS_REPORT_FIELDS: FieldSpec[] = [
     hint: 'Comma-separated recipient addresses',
   },
   { path: 'ops_report.smtp.host', label: 'SMTP host', kind: 'text' },
-  { path: 'ops_report.smtp.port', label: 'SMTP port', kind: 'int', hint: 'SES typically 587' },
+  {
+    path: 'ops_report.smtp.port',
+    label: 'SMTP port',
+    kind: 'int',
+    hint: 'SES typically 587',
+  },
   { path: 'ops_report.smtp.starttls', label: 'STARTTLS', kind: 'bool' },
   {
     path: 'ops_report.smtp.username',
@@ -161,7 +178,11 @@ type DraftValue = string | boolean
 function toText(value: unknown): string {
   if (value === null || value === undefined) return ''
   if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
     return String(value)
   }
   return JSON.stringify(value) ?? ''
@@ -174,7 +195,10 @@ function listToDraft(value: unknown): string {
   return toText(value)
 }
 
-function draftFrom(fields: Record<string, ConfigField>, specs: FieldSpec[]): Record<string, DraftValue> {
+function draftFrom(
+  fields: Record<string, ConfigField>,
+  specs: FieldSpec[],
+): Record<string, DraftValue> {
   const out: Record<string, DraftValue> = {}
   for (const spec of specs) {
     const f = fields[spec.path]
@@ -222,14 +246,20 @@ function typedValue(spec: FieldSpec, raw: DraftValue): unknown {
 function SourceBadge({ field }: { field: ConfigField }) {
   if (field.source === 'env') {
     return (
-      <span className="badge badge-none" title="Environment always wins; unset the variable to edit here">
+      <span
+        className="badge badge-none"
+        title="Environment always wins; unset the variable to edit here"
+      >
         set by {field.env}
       </span>
     )
   }
   if (field.restart_required) {
     return (
-      <span className="badge badge-none" title="Edit config.yaml and restart to change">
+      <span
+        className="badge badge-none"
+        title="Edit config.yaml and restart to change"
+      >
         restart required
       </span>
     )
@@ -261,7 +291,11 @@ function FieldControl({
   }
   if (spec.kind === 'select') {
     return (
-      <select value={String(value)} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      <select
+        value={String(value)}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {(spec.options ?? []).map((o) => (
           <option key={o} value={o}>
             {o}
@@ -275,7 +309,9 @@ function FieldControl({
       type={spec.kind === 'password' ? 'password' : 'text'}
       autoComplete={spec.kind === 'password' ? 'new-password' : undefined}
       placeholder={spec.kind === 'password' ? '••••••••' : undefined}
-      inputMode={spec.kind === 'int' || spec.kind === 'float' ? 'decimal' : undefined}
+      inputMode={
+        spec.kind === 'int' || spec.kind === 'float' ? 'decimal' : undefined
+      }
       value={String(value)}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
@@ -303,12 +339,20 @@ function FieldRow({
       <span className="config-field-label">
         {spec.label} <SourceBadge field={field} />
         {spec.kind === 'password' && passwordSet ? (
-          <span className="badge badge-native" title="A password is configured (value never shown)">
+          <span
+            className="badge badge-native"
+            title="A password is configured (value never shown)"
+          >
             set
           </span>
         ) : null}
       </span>
-      <FieldControl spec={spec} field={field} value={value} onChange={onChange} />
+      <FieldControl
+        spec={spec}
+        field={field}
+        value={value}
+        onChange={onChange}
+      />
       {spec.hint ? <span className="field-hint">{spec.hint}</span> : null}
     </div>
   )
@@ -319,7 +363,9 @@ export function ConfigPage() {
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, DraftValue>>({})
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<{ ok: boolean; message: string } | null>(null)
+  const [toast, setToast] = useState<{ ok: boolean; message: string } | null>(
+    null,
+  )
   const [cacheBusy, setCacheBusy] = useState<string | null>(null)
   const [cacheNote, setCacheNote] = useState<string | null>(null)
   const [cacheError, setCacheError] = useState<string | null>(null)
@@ -329,7 +375,10 @@ export function ConfigPage() {
   const [opsNote, setOpsNote] = useState<string | null>(null)
   const [opsError, setOpsError] = useState<string | null>(null)
 
-  const editableSpecs = useMemo(() => [...GENERAL_FIELDS, ...HEALTH_FIELDS, ...OPS_REPORT_FIELDS], [])
+  const editableSpecs = useMemo(
+    () => [...GENERAL_FIELDS, ...HEALTH_FIELDS, ...OPS_REPORT_FIELDS],
+    [],
+  )
 
   const hydrate = useCallback(
     (body: ConfigResponse) => {
@@ -340,7 +389,10 @@ export function ConfigPage() {
   )
 
   const loadOps = useCallback(async () => {
-    const [schedule, archives] = await Promise.all([fetchOpsSchedule(), fetchOpsArchives()])
+    const [schedule, archives] = await Promise.all([
+      fetchOpsSchedule(),
+      fetchOpsArchives(),
+    ])
     setOpsSchedule(schedule)
     setOpsArchives(archives)
   }, [])
@@ -360,7 +412,8 @@ export function ConfigPage() {
       try {
         await load()
       } catch (err: unknown) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err))
       }
     })()
     return () => {
@@ -417,17 +470,24 @@ export function ConfigPage() {
         await load().catch(() => {})
         setToast({
           ok: false,
-          message: 'Config changed elsewhere — reloaded the latest values; re-apply your edits.',
+          message:
+            'Config changed elsewhere — reloaded the latest values; re-apply your edits.',
         })
       } else {
-        setToast({ ok: false, message: err instanceof Error ? err.message : String(err) })
+        setToast({
+          ok: false,
+          message: err instanceof Error ? err.message : String(err),
+        })
       }
     } finally {
       setSaving(false)
     }
   }
 
-  async function runOpsAction(kind: 'test' | 'preview' | 'resend', id?: string) {
+  async function runOpsAction(
+    kind: 'test' | 'preview' | 'resend',
+    id?: string,
+  ) {
     setOpsBusy(kind === 'resend' ? `resend:${id}` : kind)
     setOpsNote(null)
     setOpsError(null)
@@ -501,14 +561,14 @@ export function ConfigPage() {
       <p className="lead">
         Edits here save to <code>config.yaml</code> and apply live — no restart.
         Hand-edits to the file itself need a restart. Fields set by environment
-        variables are locked (env always wins). The <Link to="/groups">Groups</Link>{' '}
-        taxonomy has its own editor.
+        variables are locked (env always wins). The{' '}
+        <Link to="/groups">Groups</Link> taxonomy has its own editor.
       </p>
 
       {!data.source.writable ? (
         <div className="empty-panel" role="alert">
-          <strong>Config is read-only.</strong> Mount <code>{data.source.path}</code>{' '}
-          read-write to save settings.
+          <strong>Config is read-only.</strong> Mount{' '}
+          <code>{data.source.path}</code> read-write to save settings.
         </div>
       ) : null}
 
@@ -520,10 +580,15 @@ export function ConfigPage() {
           }}
           disabled={saving || !data.source.writable || dirtyPaths.length === 0}
         >
-          {saving ? 'Saving…' : `Save & apply${dirtyPaths.length > 0 ? ` (${dirtyPaths.length})` : ''}`}
+          {saving
+            ? 'Saving…'
+            : `Save & apply${dirtyPaths.length > 0 ? ` (${dirtyPaths.length})` : ''}`}
         </button>
         {toast ? (
-          <span className={`meta config-toast${toast.ok ? '' : ' config-toast-error'}`} role="status">
+          <span
+            className={`meta config-toast${toast.ok ? '' : ' config-toast-error'}`}
+            role="status"
+          >
             {toast.message}
           </span>
         ) : null}
@@ -545,7 +610,8 @@ export function ConfigPage() {
               : formatHealthWhen(data.probe_schedule.next_l1_at)}
             {data.probe_schedule.l2_enabled ? (
               <>
-                {' · '}L2: last {formatHealthWhen(data.probe_schedule.last_l2_at)}, next{' '}
+                {' · '}L2: last{' '}
+                {formatHealthWhen(data.probe_schedule.last_l2_at)}, next{' '}
                 {data.probe_schedule.l2_running
                   ? 'running now'
                   : formatHealthWhen(data.probe_schedule.next_l2_at)}
@@ -558,19 +624,24 @@ export function ConfigPage() {
       <section className="detail-section">
         <h2>Ops report email</h2>
         <p className="meta">
-          Daily HTML digest (fleet health, provider status, channel deltas) via SMTP /
-          SES. Prefer <code>FASTGEN_SMTP_PASSWORD</code> in the environment for secrets.
+          Daily HTML digest (fleet health, provider status, channel deltas) via
+          SMTP / SES. Prefer <code>FASTGEN_SMTP_PASSWORD</code> in the
+          environment for secrets.
         </p>
         <div className="config-form">{renderFields(OPS_REPORT_FIELDS)}</div>
         {opsSchedule ? (
           <p className="meta">
             Last official: {formatHealthWhen(opsSchedule.last_success_at)}
-            {opsSchedule.last_success_local ? ` (${opsSchedule.last_success_local})` : ''}
+            {opsSchedule.last_success_local
+              ? ` (${opsSchedule.last_success_local})`
+              : ''}
             {' · '}Next: {formatHealthWhen(opsSchedule.next_at)}
             {opsSchedule.last_error ? (
               <>
                 {' · '}
-                <span className="config-toast-error">Error: {opsSchedule.last_error}</span>
+                <span className="config-toast-error">
+                  Error: {opsSchedule.last_error}
+                </span>
               </>
             ) : null}
           </p>
@@ -677,7 +748,9 @@ export function ConfigPage() {
                 setCacheNote(null)
                 setCacheError(null)
                 try {
-                  const res = await fetch('/api/cache/purge', { method: 'POST' })
+                  const res = await fetch('/api/cache/purge', {
+                    method: 'POST',
+                  })
                   if (res.status === 403) {
                     setCacheError('Request blocked (same-origin check)')
                     return
@@ -694,7 +767,9 @@ export function ConfigPage() {
                     `Removed ${body.deleted_files ?? 0} files · refresh ${body.refresh ?? '—'}`,
                   )
                 } catch (err: unknown) {
-                  setCacheError(err instanceof Error ? err.message : String(err))
+                  setCacheError(
+                    err instanceof Error ? err.message : String(err),
+                  )
                 } finally {
                   setCacheBusy(null)
                 }
@@ -729,7 +804,9 @@ export function ConfigPage() {
                   }
                   setCacheNote(`Cleared ${body.deleted_files ?? 0} logo files`)
                 } catch (err: unknown) {
-                  setCacheError(err instanceof Error ? err.message : String(err))
+                  setCacheError(
+                    err instanceof Error ? err.message : String(err),
+                  )
                 } finally {
                   setCacheBusy(null)
                 }
@@ -775,12 +852,16 @@ export function ConfigPage() {
               {data.providers.map((p) => (
                 <tr key={p.settings.id}>
                   <td>
-                    <Link to={`/config/providers/${encodeURIComponent(p.settings.id)}`}>
+                    <Link
+                      to={`/config/providers/${encodeURIComponent(p.settings.id)}`}
+                    >
                       <code>{p.settings.id}</code>
                     </Link>
                   </td>
                   <td>
-                    <span className={`badge ${p.settings.enabled ? 'badge-native' : 'badge-none'}`}>
+                    <span
+                      className={`badge ${p.settings.enabled ? 'badge-native' : 'badge-none'}`}
+                    >
                       {p.settings.enabled ? 'yes' : 'no'}
                     </span>
                   </td>
@@ -793,7 +874,9 @@ export function ConfigPage() {
                   </td>
                   <td className="number-cell">{p.settings.min_channels}</td>
                   <td>
-                    <Link to={`/config/providers/${encodeURIComponent(p.settings.id)}`}>
+                    <Link
+                      to={`/config/providers/${encodeURIComponent(p.settings.id)}`}
+                    >
                       Edit settings
                     </Link>
                   </td>
@@ -807,9 +890,9 @@ export function ConfigPage() {
       <section className="detail-section">
         <h2>Deployment</h2>
         <p className="meta">
-          Restart-only: edit <code>{data.source.path}</code> (or the environment)
-          and restart the server. Kept out of the editor so "in the UI = live"
-          stays true.
+          Restart-only: edit <code>{data.source.path}</code> (or the
+          environment) and restart the server. Kept out of the editor so "in the
+          UI = live" stays true.
         </p>
         <div className="config-form">
           {DEPLOYMENT_FIELDS.map((spec) => {

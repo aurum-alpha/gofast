@@ -1,8 +1,4 @@
-import {
-  canonicalClassification,
-  lineupStatus,
-  type Channel,
-} from './channel'
+import { canonicalClassification, lineupStatus, type Channel } from './channel'
 
 export type PreviewSource = 'emitted' | 'raw'
 
@@ -25,7 +21,9 @@ export function isDemuxStablePipeURL(url: string): boolean {
 }
 
 /** Resolve raw vs emitted playback URLs for the channel preview player. */
-export function previewURLs(ch: Pick<Channel, 'stream_url' | 'emitted_url'>): PreviewURLs {
+export function previewURLs(
+  ch: Pick<Channel, 'stream_url' | 'emitted_url'>,
+): PreviewURLs {
   const raw = ch.stream_url?.trim() || undefined
   // EmittedURL may exist on excluded channels (duplicate/regex); still previewable.
   const emitted = ch.emitted_url?.trim() || undefined
@@ -48,7 +46,10 @@ export function defaultPreviewSource(urls: PreviewURLs): PreviewSource {
   return 'raw'
 }
 
-export function previewURLForSource(urls: PreviewURLs, source: PreviewSource): string | undefined {
+export function previewURLForSource(
+  urls: PreviewURLs,
+  source: PreviewSource,
+): string | undefined {
   return source === 'emitted' ? urls.emitted : urls.raw
 }
 
@@ -71,7 +72,10 @@ function withBrowserQuery(url: string): string {
  * native HLS support).
  */
 export function browserPreviewURL(
-  ch: Pick<Channel, 'provider' | 'normalized_id' | 'id' | 'stream_url' | 'emitted_url'>,
+  ch: Pick<
+    Channel,
+    'provider' | 'normalized_id' | 'id' | 'stream_url' | 'emitted_url'
+  >,
   source: PreviewSource,
   proxyBaseURL: string | undefined,
 ): string | undefined {
@@ -103,7 +107,14 @@ export function browserPreviewURL(
  * may be attempted (browser CORS/codec may still fail at runtime).
  */
 export function previewBlockReason(
-  ch: Pick<Channel, 'classification' | 'excluded' | 'filter_reason' | 'stream_url' | 'emitted_url'>,
+  ch: Pick<
+    Channel,
+    | 'classification'
+    | 'excluded'
+    | 'filter_reason'
+    | 'stream_url'
+    | 'emitted_url'
+  >,
   source: PreviewSource,
 ): string {
   if (canonicalClassification(ch.classification) === 'DRM') {
@@ -132,7 +143,14 @@ export function previewBlockReason(
 
 /** Soft warning when attempting raw while the lineup still needs FASTProxy. */
 export function previewNeedsProxyWarning(
-  ch: Pick<Channel, 'classification' | 'excluded' | 'filter_reason' | 'stream_url' | 'emitted_url'>,
+  ch: Pick<
+    Channel,
+    | 'classification'
+    | 'excluded'
+    | 'filter_reason'
+    | 'stream_url'
+    | 'emitted_url'
+  >,
   source: PreviewSource,
 ): string {
   if (source !== 'raw') return ''
