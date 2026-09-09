@@ -87,10 +87,10 @@ export function AccessPage() {
   const status = searchParams.get('status') ?? ''
   const sortKey = (searchParams.get('sort') as SortKey | null) ?? 'at'
   const sortDir = (searchParams.get('dir') as SortDir | null) ?? 'desc'
-  const sort: Sort = {
+  const sort: Sort = useMemo(() => ({
     key: ['at', 'file', 'ip', 'status'].includes(sortKey) ? sortKey : 'at',
     dir: sortDir === 'asc' ? 'asc' : 'desc',
-  }
+  }), [sortKey, sortDir])
 
   useEffect(() => {
     let cancelled = false

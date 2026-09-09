@@ -127,14 +127,23 @@ export function ProviderDetailPage() {
   const [data, setData] = useState<ProviderDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshBusy, setRefreshBusy] = useState(false)
-  const [refreshNote, setRefreshNote] = useState<string | null>(null)
-  const [refreshError, setRefreshError] = useState<string | null>(null)
+  // A refresh notice belongs to the provider it was raised for, so navigating to
+  // another provider drops it during render rather than through an effect.
+  const [notice, setNotice] = useState<{
+    id: string
+    note: string | null
+    error: string | null
+  }>({ id: '', note: null, error: null })
+  const refreshNote = notice.id === id ? notice.note : null
+  const refreshError = notice.id === id ? notice.error : null
+  const setRefreshNote = (note: string | null) =>
+    setNotice((prev) => ({ id, note, error: prev.id === id ? prev.error : null }))
+  const setRefreshError = (error: string | null) =>
+    setNotice((prev) => ({ id, note: prev.id === id ? prev.note : null, error }))
   const [cacheBusy, setCacheBusy] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    setRefreshNote(null)
-    setRefreshError(null)
     fetch(`/api/providers/${encodeURIComponent(id)}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
@@ -178,7 +187,7 @@ export function ProviderDetailPage() {
         void fetch(`/api/providers/${encodeURIComponent(id)}`)
           .then(async (r) => {
             if (!r.ok) return
-            setData(await r.json())
+            setData((await r.json()) as ProviderDetail)
           })
           .catch(() => {})
       }, 3000)

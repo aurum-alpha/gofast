@@ -81,18 +81,20 @@ export function CachePage() {
   const [actionError, setActionError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    setError(null)
     try {
       const res = await fetch('/api/cache')
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       setData((await res.json()) as CacheResponse)
+      setError(null)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [])
 
   useEffect(() => {
-    void load()
+    void (async () => {
+      await load()
+    })()
   }, [load])
 
   async function runAction(

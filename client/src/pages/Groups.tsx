@@ -304,7 +304,7 @@ export function GroupsPage() {
           />{' '}
           Enable group taxonomy
         </label>
-        <button type="button" onClick={save} disabled={saving || server.read_only}>
+        <button type="button" onClick={() => void save()} disabled={saving || server.read_only}>
           {saving ? 'Saving…' : 'Save & apply'}
         </button>
         {toast ? (

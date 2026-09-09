@@ -278,9 +278,19 @@ export function ChannelDetailPage() {
   const [emitBaseline, setEmitBaseline] = useState<EmitDraft | null>(null)
   const [emitSaving, setEmitSaving] = useState(false)
   const [emitToast, setEmitToast] = useState<{ ok: boolean; message: string } | null>(null)
-  const [programmes, setProgrammes] = useState<Programme[] | null>(null)
-  const [programmesError, setProgrammesError] = useState<string | null>(null)
-  const [guideExpanded, setGuideExpanded] = useState(false)
+  // The guide result carries the channel it was loaded for, so a result for the
+  // previous channel reads as "not loaded yet" during render rather than being
+  // cleared by an effect on the way in.
+  const channelKey = `${provider}/${normalizedId}`
+  const [guide, setGuide] = useState<{
+    key: string
+    list: Programme[] | null
+    error: string | null
+  }>({ key: '', list: null, error: null })
+  const [guideExpandedFor, setGuideExpandedFor] = useState<string | null>(null)
+  const programmes = guide.key === channelKey ? guide.list : null
+  const programmesError = guide.key === channelKey ? guide.error : null
+  const guideExpanded = guideExpandedFor === channelKey
 
   const loadHistory = useCallback(() => {
     const path = `/api/channels/${encodeURIComponent(provider)}/${encodeURIComponent(normalizedId)}/health/history`
@@ -328,9 +338,13 @@ export function ChannelDetailPage() {
 
   useEffect(() => {
     let cancelled = false
-    loadChannel().catch((err: unknown) => {
-      if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-    })
+    void (async () => {
+      try {
+        await loadChannel()
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+      }
+    })()
     return () => {
       cancelled = true
     }
@@ -346,26 +360,24 @@ export function ChannelDetailPage() {
 
   useEffect(() => {
     let cancelled = false
-    setProgrammes(null)
-    setProgrammesError(null)
-    setGuideExpanded(false)
-    fetchChannelProgrammes(provider, normalizedId)
-      .then((list) => {
+    void (async () => {
+      try {
+        const list = await fetchChannelProgrammes(provider, normalizedId)
+        if (!cancelled) setGuide({ key: channelKey, list, error: null })
+      } catch (err: unknown) {
         if (!cancelled) {
-          setProgrammes(list)
-          setProgrammesError(null)
+          setGuide({
+            key: channelKey,
+            list: [],
+            error: err instanceof Error ? err.message : String(err),
+          })
         }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setProgrammes([])
-          setProgrammesError(err instanceof Error ? err.message : String(err))
-        }
-      })
+      }
+    })()
     return () => {
       cancelled = true
     }
-  }, [provider, normalizedId])
+  }, [provider, normalizedId, channelKey])
 
   useEffect(() => {
     let cancelled = false
@@ -1105,14 +1117,14 @@ export function ChannelDetailPage() {
           <p className="probe-actions">
             <button
               type="button"
-              onClick={() => runProbe('l1')}
+              onClick={() => void runProbe('l1')}
               disabled={probeBusy !== null || logoBusy}
             >
               {probeBusy === 'l1' ? 'Probing L1…' : 'Probe L1'}
             </button>
             <button
               type="button"
-              onClick={() => runProbe('l2')}
+              onClick={() => void runProbe('l2')}
               disabled={probeBusy !== null || logoBusy}
             >
               {probeBusy === 'l2' ? 'Probing L2…' : 'Test now (L2)'}
@@ -1295,7 +1307,7 @@ export function ChannelDetailPage() {
               <button
                 type="button"
                 className="button-secondary"
-                onClick={() => setGuideExpanded((v) => !v)}
+                onClick={() => setGuideExpandedFor((v) => (v === channelKey ? null : channelKey))}
               >
                 {guideExpanded ? 'Hide programmes' : 'Show all programmes'}
               </button>

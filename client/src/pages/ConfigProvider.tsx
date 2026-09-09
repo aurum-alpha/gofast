@@ -88,7 +88,7 @@ function parseOptionalInt(raw: string): number | null {
 
 // Optional adapter fields keyed by field_support names, with control metadata.
 // Region is system-wide (Config → Regions); not edited per provider.
-const OPTIONAL_FIELDS: Array<{ key: keyof Draft & string; label: string; hint?: string }> = [
+const OPTIONAL_FIELDS: Array<{ key: keyof Draft; label: string; hint?: string }> = [
   { key: 'slug_template', label: 'Slug template', hint: 'Stream slug override (e.g. plu-{id}.m3u8)' },
   { key: 'channels_url', label: 'Channels URL' },
   { key: 'epg_url', label: 'EPG URL' },
@@ -115,9 +115,13 @@ export function ConfigProviderPage() {
 
   useEffect(() => {
     let cancelled = false
-    load().catch((err: unknown) => {
-      if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-    })
+    void (async () => {
+      try {
+        await load()
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+      }
+    })()
     return () => {
       cancelled = true
     }
@@ -145,10 +149,10 @@ export function ConfigProviderPage() {
       // Always pin enabled explicitly: creating a providers.<id> block without
       // it would default the provider to enabled.
       ops.push({ path: `${prefix}enabled`, value: draft.enabled })
-      const pushText = (key: keyof Draft & string) => {
+      const pushText = (key: keyof Draft) => {
         if (draft[key] !== original[key]) ops.push({ path: prefix + key, value: draft[key] })
       }
-      const pushOptionalInt = (key: keyof Draft & string, label: string): boolean => {
+      const pushOptionalInt = (key: keyof Draft, label: string): boolean => {
         if (draft[key] === original[key]) return true
         const n = parseOptionalInt(String(draft[key]))
         if (n === null) {
@@ -237,7 +241,7 @@ export function ConfigProviderPage() {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev))
 
   const textField = (
-    key: keyof Draft & string,
+    key: keyof Draft,
     label: string,
     hint?: string,
   ) => (

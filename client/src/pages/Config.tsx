@@ -156,11 +156,22 @@ const DEPLOYMENT_FIELDS: FieldSpec[] = [
 
 type DraftValue = string | boolean
 
+/** Renders a config value for a text input. Objects go to JSON rather than
+ * String()'s "[object Object]", which no operator could edit or read. */
+function toText(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  return JSON.stringify(value) ?? ''
+}
+
 function listToDraft(value: unknown): string {
   if (Array.isArray(value)) {
-    return value.map(String).join(', ')
+    return (value as unknown[]).map(toText).join(', ')
   }
-  return String(value ?? '')
+  return toText(value)
 }
 
 function draftFrom(fields: Record<string, ConfigField>, specs: FieldSpec[]): Record<string, DraftValue> {
@@ -175,14 +186,14 @@ function draftFrom(fields: Record<string, ConfigField>, specs: FieldSpec[]): Rec
     } else if (spec.kind === 'password') {
       out[spec.path] = ''
     } else {
-      out[spec.path] = String(f.value ?? '')
+      out[spec.path] = toText(f.value)
     }
   }
   return out
 }
 
 /** Converts a draft input back to a typed op value; null means invalid / skip. */
-function typedValue(spec: FieldSpec, raw: DraftValue): unknown | null {
+function typedValue(spec: FieldSpec, raw: DraftValue): unknown {
   switch (spec.kind) {
     case 'bool':
       return raw === true
@@ -345,9 +356,13 @@ export function ConfigPage() {
 
   useEffect(() => {
     let cancelled = false
-    load().catch((err: unknown) => {
-      if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-    })
+    void (async () => {
+      try {
+        await load()
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+      }
+    })()
     return () => {
       cancelled = true
     }
@@ -368,7 +383,7 @@ export function ConfigPage() {
         if (spec.kind === 'list') {
           return draft[spec.path] !== listToDraft(f.value)
         }
-        return draft[spec.path] !== String(f.value ?? '')
+        return draft[spec.path] !== toText(f.value)
       })
       .map((spec) => spec.path)
   }, [data, draft, editableSpecs])

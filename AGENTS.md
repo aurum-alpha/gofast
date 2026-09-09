@@ -58,7 +58,7 @@ Client, from `client/`:
 
 ```sh
 pnpm exec tsc -b --noEmit                       # typecheck
-pnpm exec oxlint . --type-aware                  # lint
+pnpm exec oxlint . --type-aware --deny-warnings  # lint
 pnpm exec vitest run                            # unit tests
 pnpm exec vite build                            # build
 ```
@@ -68,9 +68,11 @@ translation of the eslint config it replaced, at the same rules and severities,
 and the two were run side by side until they agreed finding for finding — which
 is what let the retirement be a deletion rather than a migration.
 
-The oxlint job runs `warn_only: true` against a standing backlog — 30 findings
-in `client` at the time of writing, 25 of them errors. eslint ran `warn_only`
-too, so its going removed no gate.
+The oxlint job is blocking and the client reports no findings. The backlog it
+used to carry — 30 findings, 25 of them errors — is gone, so the rule here is
+the ordinary one: lint passes before you commit. `--deny-warnings` is part of
+the command because the job runs it that way, and a warning nobody must fix is
+a warning nobody reads.
 
 Local development: `docker compose up` from the root; `pnpm dev` in `client/`
 for the Vite dev server.
