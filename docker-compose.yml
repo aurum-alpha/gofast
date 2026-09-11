@@ -52,7 +52,12 @@ services:
       # providers enabled), since every provider requires its own YAML block.
       - ./.data:/data
     environment:
-      PORT: "8180"
+      # No PORT. 016-local-development.md LD2: the container binds its own
+      # default, which for fastgen is config.DefaultListen by way of
+      # /data/config.yaml, and the publish line above maps the block onto it.
+      # This said PORT: "8180", which is that same default written a second
+      # time. It also meant an operator who edited `listen:` in their
+      # /data/config.yaml was silently overridden by this file.
       FASTGEN_PROXY_BASE_URL: "${FASTGEN_PROXY_BASE_URL:-}"
       # Gen-side health probes (Manual L2) — Docker DNS to the proxy service.
       # Keep FASTGEN_PROXY_BASE_URL as the Jellyfin/browser-facing origin (e.g. localhost:4601).
@@ -76,7 +81,8 @@ services:
     ports:
       - "${FASTPROXY_HOST_PORT:-4601}:8181"
     environment:
-      PORT: "8181"
+      # No PORT, as above. fastproxy's default is the ":8181" constant passed to
+      # config.ListenFromEnv in cmd/fastproxy/main.go.
       # Internal Docker DNS to gen for origin lookup + telemetry push.
       FASTPROXY_GEN_URL: "${FASTPROXY_GEN_URL:-http://fastgen:8180}"
       # Client-facing origin for rewritten /s and /seg URIs. Set behind TLS to
