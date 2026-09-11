@@ -1,0 +1,42 @@
+# air rebuilds fastproxy in place when Go source changes, inside the dev container
+# Dockerfile.dev builds. Used only there; nothing in CI or a shipped image reads
+# this file.
+#
+# One file per binary, because the two differ only in which package they build.
+
+root = "."
+# Outside the bind mount on purpose. The repository is mounted at /src, so a tmp
+# directory under root would write build output into the working tree on the
+# host, which is noise a developer then has to gitignore.
+tmp_dir = "/tmp/air-fastproxy"
+
+[build]
+  cmd = "go build -o /tmp/fastproxy ./cmd/fastproxy"
+  # `entrypoint`, not the older `bin`: air 1.67 warns that bin is deprecated.
+  entrypoint = "/tmp/fastproxy"
+
+  include_ext = ["go"]
+  # Only the trees that compile into the binary. A change anywhere else must not
+  # restart the service.
+  include_dir = ["cmd", "internal"]
+  # client/ is the React app and has its own dev server; a component edit
+  # rebuilding Go would couple the two stacks through a file watcher.
+  #
+  # .data/ holds the runtime data volume, config.yaml included.
+  # config.example.yaml states that the config file is deliberately never
+  # watched, and a source watcher must not quietly make it one: editing it still
+  # needs a restart, exactly as that file says.
+  exclude_dir = ["client", "deploy", "docs", ".data", ".git"]
+  # A test file does not change what the service runs.
+  exclude_regex = ["_test\\.go"]
+
+  # Coalesce the burst of events an editor emits when it saves.
+  delay = 300
+
+  # false, so a compile error leaves the last good binary serving rather than
+  # taking the service down. The error goes to `docker compose logs -f fastproxy`.
+  stop_on_error = false
+
+[misc]
+  # /tmp is not the working tree, so there is nothing to clean up in it.
+  clean_on_exit = false

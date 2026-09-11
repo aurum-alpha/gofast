@@ -32,18 +32,28 @@ services:
           echo "seed-config: seeded /data/config.yaml from config.example.yaml"
         fi
 
+  # Rebuilt in place by air when Go source changes (016-local-development.md
+  # LD8). It builds Dockerfile.dev, which carries the Go toolchain and the
+  # watcher; Dockerfile still builds the local runtime images and Dockerfile.prod
+  # still packages the CI-built binaries, and neither carries air.
   fastgen:
-    image: ghcr.io/j27-aurum/gofast/fastgen:latest
+    image: gofast-fastgen:dev
     build:
       context: .
-      dockerfile: Dockerfile
-      target: fastgen
+      dockerfile: Dockerfile.dev
+    command: ["air", "-c", ".air.fastgen.toml"]
     depends_on:
       seed-config:
         condition: service_completed_successfully
     ports:
       - "${FASTGEN_HOST_PORT:-4600}:8180"
     volumes:
+      # LD8: the whole repository, so air sees every Go file.
+      - .:/src
+      # The Go build cache, so a rebuild after an edit is incremental rather
+      # than cold. Named, so `docker compose down -v` clears something
+      # addressable.
+      - go_build_cache:/root/.cache/go-build
       # Single writable data volume (matches prod). fastgen owns /data:
       # generated artifacts under ./.data/cache, channel attrs under
       # ./.data/channelattr, and an operator-editable ./.data/config.yaml.
@@ -52,7 +62,18 @@ services:
       # providers enabled), since every provider requires its own YAML block.
       - ./.data:/data
     environment:
-      PORT: "8180"
+      # No PORT. 016-local-development.md LD2: the container binds its own
+      # default, which for fastgen is config.DefaultListen by way of
+      # /data/config.yaml, and the publish line above maps the block onto it.
+      # This said PORT: "8180", which is that same default written a second
+      # time. It also meant an operator who edited `listen:` in their
+      # /data/config.yaml was silently overridden by this file.
+      # The runtime images place the built React app at /srv/gofast/ui, which
+      # this container has no copy of. Point it at the bind-mounted client
+      # build, so `pnpm -C client build` puts a UI where fastgen reads one.
+      # Without that build the API still works and the UI 404s, which is the
+      # right degradation for a container whose job is the Go half.
+      FASTGEN_UI_DIR: "/src/client/dist"
       FASTGEN_PROXY_BASE_URL: "${FASTGEN_PROXY_BASE_URL:-}"
       # Gen-side health probes (Manual L2) — Docker DNS to the proxy service.
       # Keep FASTGEN_PROXY_BASE_URL as the Jellyfin/browser-facing origin (e.g. localhost:4601).
@@ -63,22 +84,31 @@ services:
       # (env always wins when set). Export FASTGEN_CACHE_LOGOS=true|false to force.
       FASTGEN_CACHE_LOGOS: "${FASTGEN_CACHE_LOGOS:-}"
 
+  # Same dev image as fastgen; the two differ only in which .air.*.toml they
+  # pass, because they differ only in which package they build.
   fastproxy:
     profiles:
       - proxy
-    image: ghcr.io/j27-aurum/gofast/fastproxy:latest
+    image: gofast-fastgen:dev
     build:
       context: .
-      dockerfile: Dockerfile
-      target: fastproxy
+      dockerfile: Dockerfile.dev
+    command: ["air", "-c", ".air.fastproxy.toml"]
     depends_on:
       - fastgen
+    volumes:
+      - .:/src
+      - go_build_cache:/root/.cache/go-build
     ports:
       - "${FASTPROXY_HOST_PORT:-4601}:8181"
     environment:
-      PORT: "8181"
+      # No PORT, as above. fastproxy's default is the ":8181" constant passed to
+      # config.ListenFromEnv in cmd/fastproxy/main.go.
       # Internal Docker DNS to gen for origin lookup + telemetry push.
       FASTPROXY_GEN_URL: "${FASTPROXY_GEN_URL:-http://fastgen:8180}"
       # Client-facing origin for rewritten /s and /seg URIs. Set behind TLS to
       # the same HTTPS value as FASTGEN_PROXY_BASE_URL; leave empty for local http.
       FASTPROXY_PUBLIC_BASE_URL: "${FASTPROXY_PUBLIC_BASE_URL:-http://localhost:4601}"
+
+volumes:
+  go_build_cache:
