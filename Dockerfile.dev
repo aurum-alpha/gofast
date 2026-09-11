@@ -1,0 +1,44 @@
+# Development image for both binaries (016-local-development.md LD5). This file
+# never ships: Dockerfile builds the local images and Dockerfile.prod packages
+# the CI-built binaries, and neither carries a watcher.
+#
+# No source is copied in. docker-compose.yml bind-mounts the repository, so an
+# edit is visible without a container restart (LD8), and air rebuilds in place.
+#
+# One image serves fastgen and fastproxy. They differ only in which .air.*.toml
+# the service passes, because they differ only in which package they build.
+
+# The same pin Dockerfile's build stage uses, so the dev container and the
+# shipped binary compile on one toolchain.
+FROM golang@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36
+
+WORKDIR /src
+
+# fastgen shells out to ffprobe for Health L2 probes and fastproxy runs ffmpeg
+# for the demux-stable pipes, so the dev image carries what the runtime images
+# carry. A dev container that cannot run a health probe is a dev container that
+# cannot reproduce a health bug.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
+# air watches the source and recompiles in place, which is the property `tsx
+# watch` gives the Node stacks and the Go side never had.
+#
+# Pinned, because Principle 1 is one source of truth per pin and `@latest` is
+# not a version. Installed here and nowhere else, so it cannot reach a shipped
+# image.
+ARG AIR_VERSION=v1.67.4
+RUN go install github.com/air-verse/air@${AIR_VERSION}
+
+# Module downloads are their own layer, so editing cmd/ or internal/ does not
+# refetch them. The bind mount replaces these two files at run time; the module
+# cache they populated lives in GOPATH, not here.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Documentation only, and both, because one image serves both services. No
+# ENV PORT (LD2): each binary binds its own default and compose maps the block
+# onto them.
+EXPOSE 8180 8181
+
+CMD ["air", "-c", ".air.fastgen.toml"]
