@@ -5,6 +5,8 @@ Instructions for humans and coding agents working in this repository.
 This repository follows the Aurum Alpha agent standard:
 https://github.com/aurum-alpha/workflows/blob/main/AGENTS.md
 Rules below are additional to it, or state where this repository differs.
+Nothing below restates it: a paragraph that could be pasted unchanged into
+another repository belongs in the standard, not here.
 
 ## Source of truth
 
@@ -15,29 +17,16 @@ Rules below are additional to it, or state where this repository differs.
   what it says. Never a tag first. (Arrives in the release pull request that
   cuts `1.0.0`; see **Version bumps**.)
 
-When code and these documents disagree, the documents are right and the code is
-a defect — until someone changes the documents, in their own pull request,
-saying so.
-
 ## Work queue
 
 **GitHub Issues** on [aurum-alpha/gofast](https://github.com/aurum-alpha/gofast/issues).
 This is a public repository, and public repositories track work in GitHub Issues.
 
 **Linear (team J27) is not in use here.** The GoFAST project still exists in
-Linear and is legacy: an issue filed there is invisible to everyone working from
-GitHub, which is worse than an unfiled issue because it looks handled. Do not
-create or update Linear issues for this repository.
+Linear and is legacy. Do not create or update Linear issues for this repository.
 
-Implement **one GitHub issue at a time**. Do not invent parallel workstreams from a plan file.
-
-## Branch and pull request rules
-
-1. **One GitHub issue per pull request.** Do not combine unrelated issues in one PR.
-2. **Branch name** should include the issue number, e.g.:
-   - `37-distrotv-session-mint`
-   - `issue-37-distrotv-session-mint`
-3. Open the PR against `main` (unless the issue says otherwise). Link the GitHub issue in the PR description (`Fixes #N` / `Closes #N` when the PR completes the work).
+The branch name carries the issue number: `37-distrotv-session-mint`, or
+`issue-37-distrotv-session-mint`.
 
 ## Commands
 
@@ -65,42 +54,39 @@ pnpm build                                      # vite build
 pnpm dev:client                                 # the Vite dev server
 ```
 
-These are the canonical names from the fleet's
-[developer-commands standard](https://github.com/aurum-alpha/workflows/blob/main/standards/015-commands.md),
-and each script's body is the invocation the matching catalog job runs.
-`check-package-scripts` fails the build if the two drift apart, so the script
-name is what to quote here rather than the tool it wraps.
-
-`pnpm format` checks. `pnpm exec prettier --write .` fixes, and it is
-deliberately not a script: no gate runs it, so it gets no canonical name. The
-formatting job is blocking with no window, because the reformat that made the
-tree clean is in the same change that added the gate.
+`pnpm format` checks; `pnpm exec prettier --write .` fixes. Why the fix command
+is not a script, and why `.oxlintrc.json` and `.prettierrc.yaml` cannot be
+edited here, are the
+[developer-commands standard](https://github.com/aurum-alpha/workflows/blob/main/standards/015-commands.md)'s
+to answer.
 
 One linter now. eslint has been retired: `.oxlintrc.json` was written as a
 translation of the eslint config it replaced, at the same rules and severities,
 and the two were run side by side until they agreed finding for finding — which
 is what let the retirement be a deletion rather than a migration.
 
-The oxlint job is blocking and the client reports no findings. The backlog it
-used to carry — 30 findings, 25 of them errors — is gone, so the rule here is
-the ordinary one: lint passes before you commit. `--deny-warnings` is part of
-the command because the job runs it that way, and a warning nobody must fix is
-a warning nobody reads.
+**Both the oxlint and the formatting job are blocking here, with no
+stabilization window.** So the ordinary rule applies: lint and format pass
+before you commit. `--deny-warnings` is part of the command because the job runs
+it that way, and a warning nobody must fix is a warning nobody reads.
 
 Local development: `docker compose up` from the root; `pnpm dev:client` in
 `client/` for the Vite dev server. There is no `pnpm dev` here: `dev` means
 bring up the whole local stack, and in this repository that is compose, not a
 `package.json` script.
 
-## Quality gates (before commit and before push)
+## Quality gates
 
-1. **Automated tests must pass** before commit:
-   - `test -z "$(gofmt -l .)"` (or the CI gofmt step)
-   - `go test ./...`
-   - Any issue-specific checks called out in the acceptance criteria
-2. **Agent smoke checks** (optional, on the branch): run quick local verification to catch obvious breakage before handing off.
-3. Do not commit or push with failing tests.
-4. Do not use `--no-verify` to skip hooks.
+Before a commit, and again before a push:
+
+- `test -z "$(gofmt -l .)"` and `go test ./...` for Go changes.
+- The client's five commands when `client/` changed. None of them carries a
+  stabilization window here.
+- Any issue-specific check named in the acceptance criteria.
+
+**Agent smoke checks are worth the minute.** Quick local verification on the
+branch catches obvious breakage before the handoff, and this repository's
+deliverables are two images an operator points a TV client at.
 
 ## Version bumps
 
@@ -173,20 +159,13 @@ Version increments follow semantic versioning:
 A release pull request covering several merged issues takes the highest
 applicable bump: one MINOR issue plus three PATCH issues is one MINOR bump.
 
-## Human approval gate (required)
+## Approval
 
-**Do not merge, deploy, or close a GitHub issue until the human has manually tested and given feedback.**
+The standard's gate applies unchanged. This repository adds no earlier hold and
+relaxes nothing.
 
-**The gate is at merge, and pushing is not the gate.** `main` takes changes only through a pull request, so a push releases nothing — it is how the work reaches CI.
-
-Workflow for agents:
-
-1. Implement on a branch. Commit, push, and open or update the PR as soon as the work is coherent — do not wait to be asked. A branch nobody has built is a branch nobody knows is broken.
-2. Post a short handoff: what changed, **exact commands to run**, and **what to look for** (expected logs, files, API fields, UI). Always include this verification block at the end of an implementation turn — do not wait to be asked.
-3. Wait for explicit human sign-off (e.g. “looks good”, “merge it”) before merging.
-4. Only after sign-off: merge, and close or let `Fixes #N` close the issue.
-
-Agents may comment on the GitHub issue while coding (progress, blockers, PR link). Never close an issue on agent-only verification.
+The one local mechanic: after sign-off, merging is what closes the issue, via
+`Fixes #N` in the pull request body. Do not close it by hand ahead of the merge.
 
 ## Issue status workflow
 
