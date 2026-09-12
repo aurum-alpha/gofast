@@ -91,7 +91,7 @@ deliverables are two images an operator points a TV client at.
 ## Version bumps
 
 **The fleet decides versioning semantics; this repository does not.** Read
-[`standards/ci.md`](https://github.com/aurum-alpha/workflows/blob/main/standards/ci.md),
+[`standards/010-ci.md`](https://github.com/aurum-alpha/workflows/blob/main/standards/010-ci.md),
 "One versioning implementation, and no repo defines its own" — when a release is
 cut, how a build between releases names itself, and what may be emitted are
 stated there and not restated here. What follows is only what is local.
