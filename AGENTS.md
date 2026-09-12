@@ -99,14 +99,14 @@ stated there and not restated here. What follows is only what is local.
 `.version` is the source of truth, and it starts at `1.0.0`.
 
 *The file itself is not in the pull request that wired all this up, and could
-not have been: `job-version-gate` refuses a commit that moves `.version`
+not have been: the version gate refuses a commit that moves `.version`
 alongside anything but markdown, and the wiring is Go and YAML. It arrives in
 the release pull request immediately after — `.version` and prose, nothing else
 — which is the first thing this repository cuts under the rule and a working
 demonstration of it.*
 
 **A version bump is NOT part of the change. It is its own pull request.**
-`job-version-gate` rejects a pull request that moves `.version` alongside
+The version gate rejects a pull request that moves `.version` alongside
 anything but markdown, so a commit carrying both is refused by name, with the
 strays listed. Land the code first; cut the release afterwards in a pull request
 touching `.version` and prose and nothing else. It also fails a version that
@@ -123,7 +123,7 @@ Those images are runnable. They are simply not minted.
 
 **Two things here are named for a version, and both are gated on the version
 actually having moved.** `version` and `version_changed` come from
-`job-go-build`; nothing re-derives them.
+the build; nothing re-derives them.
 
 | Emission | Between releases | On a release commit |
 | --- | --- | --- |
@@ -139,7 +139,7 @@ anyone could have cut, so it cannot be mistaken for a release — the property t
 `-local` suffix buys elsewhere. Do not add a Makefile to change this.
 
 **Minting is wired through the catalog, not written here.** `ci.yml`'s
-`release` stub calls `job-version-release`, the same implementation
+`release` stub calls the shared release job, the same implementation
 `lid-firmware` and `gha-runner-controller` call: it cuts the git tag and the
 GitHub release on exactly the commit that moved `.version`, reading `version`
 and `version_changed` from the fastgen build and re-deriving neither. The

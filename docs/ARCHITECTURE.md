@@ -79,21 +79,28 @@ flowchart LR
 
 **Production images must not recompile.** CI is the build authority; `Dockerfile.prod` only packages artifacts.
 
-CI follows the fleet job catalog — one compile, artifact hand-off, parallel gates, a rollup check. The standard Go capabilities are **thin stubs of the shared jobs** in `aurum-alpha/workflows`, which own the commands themselves; this repo keeps no wrapper script or Make target for them — run the native commands directly for local work. The React build is the shared `job-node-build`, and since the catalog gained `job-go-build` nothing is repo-specific here at all — version stamping moved into that job, which derives `internal/version` from the module path in `go.mod`.
+CI follows the portfolio job catalog: compile once per binary, hand the artifact off, run the gates in parallel, and roll them up into `ci-ok`, which is the single required check. Every job is a thin stub of a shared job in `aurum-alpha/workflows`, which owns the command itself, so this repo keeps no wrapper script or Make target for any of them — run the native commands directly for local work. Version stamping happens in the shared build job.
 
-| Job | What runs | Output |
-|-----|-----------|--------|
-| `go-mod` | shared `job-go-mod` (`go mod download && go mod verify`) | verified modules |
-| `client-ts-react-build` | shared `job-node-build` (`pnpm run build`) in `client/` | `dist` artifact |
-| `build` | shared `job-go-build` (`go build ./...` + `CGO_ENABLED=0 -trimpath` links, provenance stamped) — **build once** | `go-binaries` artifact |
-| `gofmt` | shared `job-go-gofmt` (`gofmt -l .` must be empty) | pass/fail gate |
-| `vet` | shared `job-go-vet` (`go vet ./...`) | pass/fail gate |
-| `test-unit` | shared `job-go-test-unit` (`go test ./... -race -covermode=atomic`) + Codecov upload | pass/fail gate |
-| `client-ts-react-lint` | shared `job-node-lint` (`pnpm run lint` — oxlint) in `client/` | pass/fail gate |
-| `image` | `Dockerfile.prod` copies the **prebuilt** `go-binaries` and `dist` artifacts into `debian:bookworm-slim` + ffmpeg (no in-image rebuild) | GHCR `…/fastgen`, `…/fastproxy` (`latest`, `build-N`, `sha-*`) |
-| `ci-ok` | rollup (`if: always()`), fails if any needed job failed/cancelled | single required check |
+**The job list is `.github/workflows/ci.yml`, and is not repeated here.** It moves
+whenever the catalog gains a gate, and a table of it in this document would be a
+second copy that nothing makes disagree when it goes stale. That is how the table
+this replaces came to name jobs under ids they no longer have, and shared jobs
+that no longer exist. What is stable is the shape above, and these properties:
 
-Why this works: both binaries are **standalone** static Go (`CGO_ENABLED=0`), and fastgen's UI travels beside it in the image. Runtime images are **debian:bookworm-slim + ffmpeg** (ffprobe for gen Health L2; ffmpeg encode for proxy Class B `/stable/`). CI must build for the platforms you deploy (today: `linux/amd64` on `ubuntu-latest`; add `arm64` later if a NAS/Pi needs it).
+- **Nothing after the build compiles anything.** `Dockerfile.prod` copies the
+  prebuilt binaries and `client/dist` into `debian:bookworm-slim` + ffmpeg. The
+  images do not rebuild from source.
+- **Both images build `linux/amd64` and `linux/arm64`**, so a NAS or Pi pulls the
+  same tag an x86 host does.
+- **Every job runs on the self-hosted runner fleet**, through
+  `runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}`. Nothing here is pinned to a
+  GitHub-hosted label. Unsetting `vars.RUNNER` is the repair path when the fleet
+  is down.
+
+Why this works: both binaries are **standalone** static Go (`CGO_ENABLED=0`), and
+fastgen's UI travels beside it in the image. Runtime images are
+**debian:bookworm-slim + ffmpeg** (ffprobe for gen Health L2; ffmpeg encode for
+proxy Class B `/stable/`).
 
 | File | Role |
 |------|------|
@@ -102,7 +109,7 @@ Why this works: both binaries are **standalone** static Go (`CGO_ENABLED=0`), an
 | `docker-compose.yml` | Local/dev (build via `Dockerfile` or pull) |
 | `docker-compose.prod.yml` | Homelab/Portainer — **pull GHCR only** (no build) |
 
-CI uses Node from `client/.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The `build` job injects `internal/version` via `-ldflags` in the shared `job-go-build` (`Version` = `dev`, since nothing outside this repo decides from it; `Build` = Actions run number, `Commit` = short SHA, `BuiltAt` = UTC timestamp). Production images are packaged only via `Dockerfile.prod` from those CI binaries and tagged `latest` / `build-N` / `sha-*`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
+CI uses Node from `client/.node-version` and Go from `go.mod` (same pins as the local `Dockerfile` image). The build jobs inject `internal/version` via `-ldflags` (`Build` = Actions run number, `Commit` = short SHA, `BuiltAt` = UTC timestamp). What `Version` carries is decided by `.version` and stated in `AGENTS.md` under **Version bumps**, not here. Production images are packaged only via `Dockerfile.prod` from those CI binaries, and tagged `latest`, `sha-<short>` and the branch name from the catalog defaults, plus `build-<run>` on `main` and `v<version>` on a commit that moves `.version`. Homelab never builds from source for production; it pulls `:latest` or pinned `IMAGE_TAG=build-N` after logging into GHCR. Running identity is on `GET /healthz` and Status → System.
 
 ## Config
 
