@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
 
-  // Fleet standard oxlint config — byte-identical in every repo.
+  // Standard oxlint config — byte-identical in every repo.
   //
   // DO NOT EDIT IN ONE REPO. Change it in every repo at once; the byte-identity
   // checker fails the build otherwise. The canonical copy lives at
@@ -28,9 +28,9 @@
   // an alias. The split is not arbitrary: `react-hooks` is a namespace oxlint
   // reserves for its native implementation, so a JS plugin claiming it must be
   // aliased — and an alias renames the rule, which silently breaks every
-  // existing `// eslint-disable-next-line react-hooks/exhaustive-deps` in the
-  // fleet. The three rules developers actually suppress by name across the
-  // fleet — exhaustive-deps, rules-of-hooks, and react-refresh's
+  // existing `// eslint-disable-next-line react-hooks/exhaustive-deps` in
+  // adopting repositories. The three rules developers actually suppress by
+  // name — exhaustive-deps, rules-of-hooks, and react-refresh's
   // only-export-components — therefore keep the names those comments use.
   // `react-refresh` is not a reserved namespace, so its plugin needs no alias
   // and its suppressions keep working unchanged.
@@ -74,7 +74,7 @@
     // claim about the code that is not true -- the next reader has to prove it
     // themselves.
     //
-    // Measured before adopting, not after: 28 findings across the whole fleet,
+    // Measured before adopting, not after: 28 findings across every adopting repository,
     // 16 prefer-const and 12 no-useless-assignment, against a baseline of
     // 1,244 errors and 4,473 warnings. Four of the nine repos gain nothing at
     // all. That is what makes these two safe to turn on everywhere at once

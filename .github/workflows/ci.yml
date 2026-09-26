@@ -460,10 +460,8 @@ jobs:
       - server-go-fastproxy-image-build
       - server-go-fastproxy-image-starts
       - server-go-fastproxy-image-publish
-      # Skipped on every push to main — version-gate is pull_request-only.
-      # ci-ok survives that skip because it carries always(); anything placed
-      # BELOW ci-ok would not, and would stop running in silence.
       - version-gate
+      - version-release
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 30
@@ -475,12 +473,40 @@ jobs:
       - uses: aurum-alpha/workflows/.github/actions/ci-ok@main
         with:
           needs_json: ${{ toJSON(needs) }}
+          main_only_jobs: version-release
+          on_default_branch: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
   version-release:
-    needs: [ci-ok, server-go-fastgen-build]
+    needs: [coverage-upload, ci-conformance, osv-scan, server-go-mod, server-go-fastgen-build, server-go-fastproxy-build, server-go-fmt, server-go-vet, server-go-test-unit, client-ts-react-build, client-ts-react-lint-oxlint, client-ts-react-fmt, client-ts-react-typecheck, client-ts-react-test-unit, client-ts-react-depcheck, server-go-lint-errcheck, server-go-lint-staticcheck, server-go-lint-ineffassign, server-go-lint-unused, server-go-govulncheck, server-go-fastgen-image-build, server-go-fastgen-image-starts, server-go-fastgen-image-publish, server-go-fastproxy-image-build, server-go-fastproxy-image-starts, server-go-fastproxy-image-publish, version-gate]
     if: >-
       always()
-      && needs.ci-ok.result == 'success'
+      && (needs.coverage-upload.result == 'success' || needs.coverage-upload.result == 'skipped')
+      && (needs.ci-conformance.result == 'success' || needs.ci-conformance.result == 'skipped')
+      && (needs.osv-scan.result == 'success' || needs.osv-scan.result == 'skipped')
+      && (needs.server-go-mod.result == 'success' || needs.server-go-mod.result == 'skipped')
+      && needs.server-go-fastgen-build.result == 'success'
+      && (needs.server-go-fastproxy-build.result == 'success' || needs.server-go-fastproxy-build.result == 'skipped')
+      && (needs.server-go-fmt.result == 'success' || needs.server-go-fmt.result == 'skipped')
+      && (needs.server-go-vet.result == 'success' || needs.server-go-vet.result == 'skipped')
+      && (needs.server-go-test-unit.result == 'success' || needs.server-go-test-unit.result == 'skipped')
+      && (needs.client-ts-react-build.result == 'success' || needs.client-ts-react-build.result == 'skipped')
+      && (needs.client-ts-react-lint-oxlint.result == 'success' || needs.client-ts-react-lint-oxlint.result == 'skipped')
+      && (needs.client-ts-react-fmt.result == 'success' || needs.client-ts-react-fmt.result == 'skipped')
+      && (needs.client-ts-react-typecheck.result == 'success' || needs.client-ts-react-typecheck.result == 'skipped')
+      && (needs.client-ts-react-test-unit.result == 'success' || needs.client-ts-react-test-unit.result == 'skipped')
+      && (needs.client-ts-react-depcheck.result == 'success' || needs.client-ts-react-depcheck.result == 'skipped')
+      && (needs.server-go-lint-errcheck.result == 'success' || needs.server-go-lint-errcheck.result == 'skipped')
+      && (needs.server-go-lint-staticcheck.result == 'success' || needs.server-go-lint-staticcheck.result == 'skipped')
+      && (needs.server-go-lint-ineffassign.result == 'success' || needs.server-go-lint-ineffassign.result == 'skipped')
+      && (needs.server-go-lint-unused.result == 'success' || needs.server-go-lint-unused.result == 'skipped')
+      && (needs.server-go-govulncheck.result == 'success' || needs.server-go-govulncheck.result == 'skipped')
+      && (needs.server-go-fastgen-image-build.result == 'success' || needs.server-go-fastgen-image-build.result == 'skipped')
+      && (needs.server-go-fastgen-image-starts.result == 'success' || needs.server-go-fastgen-image-starts.result == 'skipped')
+      && (needs.server-go-fastgen-image-publish.result == 'success' || needs.server-go-fastgen-image-publish.result == 'skipped')
+      && (needs.server-go-fastproxy-image-build.result == 'success' || needs.server-go-fastproxy-image-build.result == 'skipped')
+      && (needs.server-go-fastproxy-image-starts.result == 'success' || needs.server-go-fastproxy-image-starts.result == 'skipped')
+      && (needs.server-go-fastproxy-image-publish.result == 'success' || needs.server-go-fastproxy-image-publish.result == 'skipped')
+      && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     permissions:
       contents: write
     uses: aurum-alpha/workflows/.github/workflows/job-version-release.yml@main
