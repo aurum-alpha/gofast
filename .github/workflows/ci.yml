@@ -43,6 +43,16 @@ concurrency:
 # version comment, and always will. Same syntax, opposite reasoning.
 
 jobs:
+  # Every graph root waits on this (rule FG), so a pull request's later push
+  # whose head lacks main's current tip fails here in seconds and builds
+  # nothing: it could not merge until it took main in and ran again anyway.
+  # A pull request's first run, and every push to main, pass at once. No if:
+  # on this job, ever — a skip would propagate to every build below it.
+  freshness-gate:
+    permissions:
+      contents: read
+    uses: aurum-alpha/workflows/.github/workflows/job-freshness-gate.yml@main
+
   ci-conformance:
     permissions:
       contents: read
@@ -50,10 +60,12 @@ jobs:
     secrets: inherit
 
   server-go-mod:
+    needs: [freshness-gate]
     uses: aurum-alpha/workflows/.github/workflows/job-go-mod.yml@main
     secrets: inherit
 
   client-ts-react-build:
+    needs: [freshness-gate]
     uses: aurum-alpha/workflows/.github/workflows/job-build-js-vite.yml@main
     with:
       workdir: client
@@ -421,8 +433,10 @@ jobs:
     # unit's test results, which are exactly the run Codecov's test analytics
     # wants. A failed unit publishes no coverage of its own; the collector finds
     # one artifact fewer and says so.
-    if: ${{ !cancelled() }}
+    # !cancelled() also overrides the skip the freshness gate sends down, so this job checks the gate itself.
+    if: ${{ !cancelled() && needs.freshness-gate.result == 'success' }}
     needs:
+      - freshness-gate
       - server-go-test-unit
       - client-ts-react-test-unit
     # Narrower than the file-level floor: this job reads artifacts and the tree,
@@ -436,6 +450,7 @@ jobs:
     needs:
       - coverage-upload
       - ci-conformance
+      - freshness-gate
       - osv-scan
       - server-go-mod
       - server-go-fastgen-build
