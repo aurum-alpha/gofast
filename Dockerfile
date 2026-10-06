@@ -10,8 +10,11 @@
 FROM node:26-bookworm AS web
 WORKDIR /src/web
 COPY client/package.json client/pnpm-lock.yaml ./
-# corepack activates the pnpm version pinned by packageManager in package.json.
-RUN corepack enable && pnpm install --frozen-lockfile
+# Node 26 images do not bundle corepack, so pnpm is installed with npm. The
+# version is read from packageManager in package.json, never written here: one
+# pin, read where it lives (016-local-development.md LD6).
+RUN npm i -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")" \
+  && pnpm install --frozen-lockfile
 COPY client/ ./
 RUN pnpm run build
 
