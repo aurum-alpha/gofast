@@ -204,7 +204,7 @@ docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 curl http://localhost:8180/healthz
 ```
 
-CI builds UI + binaries inside `node:22-bookworm` / `golang:1.26.6-bookworm` (same pins as local `Dockerfile`), then packages with [`Dockerfile.prod`](Dockerfile.prod) into GHCR.
+CI builds the UI and the binaries with Node from [`client/.node-version`](client/.node-version), pnpm at the `packageManager` version in [`client/package.json`](client/package.json), and Go from [`go.mod`](go.mod). CI then packages them with [`Dockerfile.prod`](Dockerfile.prod) into GHCR.
 
 ### Portainer (homelab stack)
 
@@ -298,7 +298,7 @@ Deploy-specific values (`PORT`, `FASTGEN_BASE_URL`, `FASTGEN_PROXY_BASE_URL`, `F
 
 ### Local build from source
 
-Full rebuild via [`Dockerfile`](Dockerfile) (Node + Go multi-stage — same image pins as CI):
+Full rebuild via [`Dockerfile`](Dockerfile), a Node and Go multi-stage build. Its Node and Go versions are the image pins in that file, which CI does not read. Keep its Node pin in step with [`client/.node-version`](client/.node-version). It installs pnpm with npm at the `packageManager` version in [`client/package.json`](client/package.json), not with corepack:
 
 ```bash
 docker compose build
@@ -308,7 +308,7 @@ docker compose up -d
 Or build UI/Go on the host, then run the binary:
 
 ```bash
-cd web && pnpm install --frozen-lockfile && pnpm run build
+(cd client && pnpm install --frozen-lockfile && pnpm run build)
 go run ./cmd/fastgen
 # open http://localhost:8180/
 ```
