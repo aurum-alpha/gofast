@@ -250,19 +250,8 @@ jobs:
   server-go-fastgen-image-build:
     needs:
       - server-go-fastgen-build
-      - server-go-fmt
-      - server-go-vet
-      - server-go-test-unit
       - client-ts-react-build
-      - client-ts-react-lint-oxlint
-      - client-ts-react-fmt
-      - client-ts-react-typecheck
-      - client-ts-react-test-unit
-      - server-go-lint-errcheck
-      - server-go-lint-staticcheck
-      - server-go-lint-ineffassign
-      - server-go-lint-unused
-      - server-go-govulncheck
+      - server-go-fastproxy-build
     permissions:
       contents: read
       packages: write
@@ -319,6 +308,18 @@ jobs:
       - server-go-fastgen-image-build
       - server-go-fastgen-image-starts
       - server-go-fastgen-build
+      - server-go-fmt
+      - server-go-vet
+      - server-go-test-unit
+      - client-ts-react-lint-oxlint
+      - client-ts-react-fmt
+      - client-ts-react-typecheck
+      - client-ts-react-test-unit
+      - server-go-lint-errcheck
+      - server-go-lint-staticcheck
+      - server-go-lint-ineffassign
+      - server-go-lint-unused
+      - server-go-govulncheck
     permissions:
       contents: read
       packages: write
@@ -344,14 +345,7 @@ jobs:
   server-go-fastproxy-image-build:
     needs:
       - server-go-fastproxy-build
-      - server-go-fmt
-      - server-go-vet
-      - server-go-test-unit
-      - server-go-lint-errcheck
-      - server-go-lint-staticcheck
-      - server-go-lint-ineffassign
-      - server-go-lint-unused
-      - server-go-govulncheck
+      - server-go-fastgen-build
     permissions:
       contents: read
       packages: write
@@ -404,6 +398,14 @@ jobs:
       - server-go-fastproxy-image-build
       - server-go-fastproxy-image-starts
       - server-go-fastproxy-build
+      - server-go-fmt
+      - server-go-vet
+      - server-go-test-unit
+      - server-go-lint-errcheck
+      - server-go-lint-staticcheck
+      - server-go-lint-ineffassign
+      - server-go-lint-unused
+      - server-go-govulncheck
     permissions:
       contents: read
       packages: write
