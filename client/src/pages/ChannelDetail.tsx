@@ -418,13 +418,14 @@ export function ChannelDetailPage() {
     return !draftsEqual(emitDraft, emitBaseline)
   }, [emitDraft, emitBaseline])
 
+  const [guideClock] = useState(() => new Date())
   const guideNow = useMemo(
     () => (programmes ? programmeNow(programmes) : null),
     [programmes],
   )
   const guideNext = useMemo(
-    () => (programmes ? programmeNext(programmes, new Date(), guideNow) : null),
-    [programmes, guideNow],
+    () => (programmes ? programmeNext(programmes, guideClock, guideNow) : null),
+    [programmes, guideClock, guideNow],
   )
 
   async function saveEmit() {
