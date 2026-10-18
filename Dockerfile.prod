@@ -19,10 +19,11 @@
 # does not inherit across FROM, and a missing declaration expands to empty and
 # fails as a confusing "not found".
 #
-# The apt-get below runs under QEMU on a foreign architecture and is the slow
-# part of an arm64 build (workflows#158). It stays because the alternative was
-# distroless plus a third-party static-ffmpeg image in a public production
-# image, and that was the worse trade.
+# The apt-get below is the slow part of the build. Where the fleet has arm64
+# runners (vars.RUNNER_ARM64), job-image-build runs it natively on them; without
+# them it runs under QEMU on the foreign architecture (workflows#158). It stays
+# because the alternative was distroless plus a third-party static-ffmpeg image
+# in a public production image, and that was the worse trade.
 
 # fastgen ships ffprobe for Health L2 probes.
 FROM debian:bookworm-slim AS fastgen
