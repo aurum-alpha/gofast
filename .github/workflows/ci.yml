@@ -262,9 +262,10 @@ jobs:
       image_name: gofast/fastgen
       dockerfile: Dockerfile.prod
       target: fastgen
-      # Both, explicitly. The apt-get in this stage runs under QEMU for arm64
-      # and is the slow part of the build (workflows#158); stated here so what
-      # this image ships is visible at the call site.
+      # Both, explicitly, so what this image ships is visible at the call site.
+      # The apt-get in this stage is the slow part of the build: native on the
+      # arm64 runners where vars.RUNNER_ARM64 names them, under QEMU otherwise
+      # (workflows#158).
       platforms: linux/amd64,linux/arm64
       # fastgen serves the React app from files in the image, so it is the
       # one that consumes client-dist.
@@ -356,9 +357,10 @@ jobs:
       image_name: gofast/fastproxy
       dockerfile: Dockerfile.prod
       target: fastproxy
-      # Both, explicitly. The apt-get in this stage runs under QEMU for arm64
-      # and is the slow part of the build (workflows#158); stated here so what
-      # this image ships is visible at the call site.
+      # Both, explicitly, so what this image ships is visible at the call site.
+      # The apt-get in this stage is the slow part of the build: native on the
+      # arm64 runners where vars.RUNNER_ARM64 names them, under QEMU otherwise
+      # (workflows#158).
       platforms: linux/amd64,linux/arm64
       # fastproxy carries no UI at all — which is how the Dockerfile.prod path
       # error localised itself when fastgen failed and fastproxy passed.
