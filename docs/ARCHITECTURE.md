@@ -91,11 +91,16 @@ that no longer exist. What is stable is the shape above, and these properties:
   prebuilt binaries and `client/dist` into `debian:bookworm-slim` + ffmpeg. The
   images do not rebuild from source.
 - **Both images build `linux/amd64` and `linux/arm64`**, so a NAS or Pi pulls the
-  same tag an x86 host does.
+  same tag an x86 host does. The arm64 binaries are cross-compiled on amd64; the
+  arm64 image layer builds natively on the fleet's arm64 runners, and the unit
+  tests run there a second time (`server-go-test-unit-arm64`), which is the one
+  place gofast's arm64 code runs before it ships.
 - **Every job runs on the self-hosted runner fleet**, through
-  `runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}`. Nothing here is pinned to a
-  GitHub-hosted label. Unsetting `vars.RUNNER` is the repair path when the fleet
-  is down.
+  `runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}`, and the arm64 work through
+  `vars.RUNNER_ARM64`. Nothing here is pinned to a GitHub-hosted label.
+  Unsetting `vars.RUNNER` is the repair path when the fleet is down; unsetting
+  `vars.RUNNER_ARM64` is the repair path when the arm64 runners are, which
+  skips the arm64 tests and puts the arm64 image layer back on emulation.
 
 Why this works: both binaries are **standalone** static Go (`CGO_ENABLED=0`), and
 fastgen's UI travels beside it in the image. Runtime images are

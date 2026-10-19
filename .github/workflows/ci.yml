@@ -176,6 +176,25 @@ jobs:
     uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@main
     secrets: inherit
 
+  # The same unit tests, run on real arm64 hardware. The arm64 binaries are
+  # cross-compiled on amd64, which proves they compile and nothing more; this
+  # is the run that proves the code behaves on the architecture half the
+  # images ship for. `shard` keeps its coverage and junit artifacts apart from
+  # the amd64 run's, and coverage-upload waits for it, so whether they are in
+  # the upload never depends on which job finished first.
+  #
+  # Gated on the same switch the image build reads (vars.RUNNER_ARM64): with
+  # the arm64 runners down, unsetting it skips this job rather than leaving it
+  # queued, and an empty runner would only run the amd64 tests twice.
+  server-go-test-unit-arm64:
+    needs: [server-go-fastgen-build, server-go-fastproxy-build]
+    if: vars.RUNNER_ARM64 != ''
+    uses: aurum-alpha/workflows/.github/workflows/job-go-test-unit.yml@main
+    with:
+      runner: ${{ vars.RUNNER_ARM64 }}
+      shard: arm64
+    secrets: inherit
+
   client-ts-react-lint-oxlint:
     needs: client-ts-react-build
     uses: aurum-alpha/workflows/.github/workflows/job-lint-js-oxlint.yml@main
@@ -442,6 +461,7 @@ jobs:
     needs:
       - freshness-gate
       - server-go-test-unit
+      - server-go-test-unit-arm64
       - client-ts-react-test-unit
     # Narrower than the file-level floor: this job reads artifacts and the tree,
     # never the private registry.
@@ -462,6 +482,7 @@ jobs:
       - server-go-fmt
       - server-go-vet
       - server-go-test-unit
+      - server-go-test-unit-arm64
       - client-ts-react-build
       - client-ts-react-lint-oxlint
       - client-ts-react-fmt
