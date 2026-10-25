@@ -10,7 +10,7 @@
 
 # The same pin Dockerfile's build stage uses, so the dev container and the
 # shipped binary compile on one toolchain.
-FROM golang@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c
+FROM golang@sha256:f20d83a83e18dbd2a4714b8ffd4b30b287b6243962dd75608e86abcc63ba4efc
 
 WORKDIR /src
 
