@@ -23,3 +23,34 @@ updates:
     groups:
       gomod-minor-patch:
         update-types: [minor, patch]
+
+  # A bump to a package aurum-alpha/workflows' dependency-versions.json
+  # asserts fails check-dependency-versions until the fleet moves it as a wave.
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # Images. `docker` reads the FROM lines of the Dockerfiles; `docker-compose`
+  # reads the compose files' `image:` keys. One image is often pinned in both,
+  # so the two share one multi-ecosystem group and a bump moves every copy in
+  # one pull request. Dependabot reads a literal FROM only, never an ARG
+  # default. GitHub documents `docker-compose` as supporting version updates
+  # only, so a CVE fix for a compose-only image arrives with the weekly run.
+  - package-ecosystem: docker
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: images
+
+  - package-ecosystem: docker-compose
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: images
+
+multi-ecosystem-groups:
+  images:
+    schedule:
+      interval: weekly
