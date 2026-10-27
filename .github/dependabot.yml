@@ -44,11 +44,39 @@ updates:
     directory: /
     patterns: ["*"]
     multi-ecosystem-group: images
+    # A database major is a data migration, made on purpose with the
+    # deployed stack beside it, never a weekly bump. Minor and patch
+    # releases still arrive.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: [version-update:semver-major]
+      - dependency-name: "*/postgres"
+        update-types: [version-update:semver-major]
+      - dependency-name: "pgvector/pgvector"
+        update-types: [version-update:semver-major]
+      - dependency-name: "mysql"
+        update-types: [version-update:semver-major]
+      - dependency-name: "*/mysql"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker-compose
     directory: /
     patterns: ["*"]
     multi-ecosystem-group: images
+    # A database major is a data migration, made on purpose with the
+    # deployed stack beside it, never a weekly bump. Minor and patch
+    # releases still arrive.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: [version-update:semver-major]
+      - dependency-name: "*/postgres"
+        update-types: [version-update:semver-major]
+      - dependency-name: "pgvector/pgvector"
+        update-types: [version-update:semver-major]
+      - dependency-name: "mysql"
+        update-types: [version-update:semver-major]
+      - dependency-name: "*/mysql"
+        update-types: [version-update:semver-major]
 
 multi-ecosystem-groups:
   images:
