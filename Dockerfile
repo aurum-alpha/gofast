@@ -3,7 +3,7 @@
 # LOCAL / DEV — build UI + Go from source (docker compose build).
 # Production/GHCR uses Dockerfile.prod (CI binaries only). Keep image pins in sync:
 #   node:26-bookworm
-#   golang:1.26.10-bookworm
+#   golang:1.27.3-bookworm
 #   debian:bookworm-slim (fastgen + fastproxy — ships ffmpeg)
 #   busybox:1.36.1-musl (legacy note; fastproxy HEALTHCHECK uses wget from apt)
 
@@ -18,8 +18,8 @@ RUN npm i -g "pnpm@$(node -p "require('./package.json').packageManager.split('@'
 COPY client/ ./
 RUN pnpm run build
 
-# golang:1.26.10-bookworm
-FROM golang@sha256:f20d83a83e18dbd2a4714b8ffd4b30b287b6243962dd75608e86abcc63ba4efc AS build
+# golang:1.27.3-bookworm
+FROM golang@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
