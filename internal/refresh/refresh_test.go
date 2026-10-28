@@ -46,15 +46,15 @@ func (staticReader) Fetch(context.Context) (provider.Raw, error) {
 func (staticReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
 	start := time.Now().UTC()
 	return []model.Channel{{
-			ID:        "news",
-			Name:      "News",
-			StreamURL: "https://example.test/news.m3u8",
-		}}, []model.Programme{{
-			ChannelID: "news",
-			Title:     "News",
-			Start:     start,
-			Stop:      start.Add(time.Hour),
-		}}, nil
+		ID:        "news",
+		Name:      "News",
+		StreamURL: "https://example.test/news.m3u8",
+	}}, []model.Programme{{
+		ChannelID: "news",
+		Title:     "News",
+		Start:     start,
+		Stop:      start.Add(time.Hour),
+	}}, nil
 }
 
 func TestApplyEmissionPolicyDropsDRM(t *testing.T) {
@@ -644,24 +644,24 @@ func (r *seqReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, err
 func goodLineup() ([]model.Channel, []model.Programme) {
 	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	return []model.Channel{{
-			ID:        "news",
-			Name:      "News",
-			StreamURL: "https://example.test/news.m3u8",
-		}, {
-			ID:        "sports",
-			Name:      "Sports",
-			StreamURL: "https://example.test/sports.m3u8",
-		}}, []model.Programme{{
-			ChannelID: "news",
-			Title:     "News Hour",
-			Start:     start,
-			Stop:      start.Add(time.Hour),
-		}, {
-			ChannelID: "sports",
-			Title:     "Sports Hour",
-			Start:     start,
-			Stop:      start.Add(time.Hour),
-		}}
+		ID:        "news",
+		Name:      "News",
+		StreamURL: "https://example.test/news.m3u8",
+	}, {
+		ID:        "sports",
+		Name:      "Sports",
+		StreamURL: "https://example.test/sports.m3u8",
+	}}, []model.Programme{{
+		ChannelID: "news",
+		Title:     "News Hour",
+		Start:     start,
+		Stop:      start.Add(time.Hour),
+	}, {
+		ChannelID: "sports",
+		Title:     "Sports Hour",
+		Start:     start,
+		Stop:      start.Add(time.Hour),
+	}}
 }
 
 func TestGuttedLineupKeepsLastGoodHTTPtest(t *testing.T) {
@@ -954,16 +954,16 @@ func (r logoReader) Fetch(context.Context) (provider.Raw, error) {
 func (r logoReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
 	start := time.Now().UTC()
 	return []model.Channel{{
-			ID:        "news",
-			Name:      "News",
-			StreamURL: "https://example.test/news.m3u8",
-			LogoURL:   r.logoURL,
-		}}, []model.Programme{{
-			ChannelID: "news",
-			Title:     "News",
-			Start:     start,
-			Stop:      start.Add(time.Hour),
-		}}, nil
+		ID:        "news",
+		Name:      "News",
+		StreamURL: "https://example.test/news.m3u8",
+		LogoURL:   r.logoURL,
+	}}, []model.Programme{{
+		ChannelID: "news",
+		Title:     "News",
+		Start:     start,
+		Stop:      start.Add(time.Hour),
+	}}, nil
 }
 
 func TestPrepareRewritesLogosWhenEnabled(t *testing.T) {
@@ -1201,10 +1201,10 @@ func (r *gateReader) Fetch(context.Context) (provider.Raw, error) {
 func (r *gateReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
 	start := time.Now().UTC()
 	return []model.Channel{{
-			ID: "news", Name: "News", StreamURL: "https://example.test/news.m3u8",
-		}}, []model.Programme{{
-			ChannelID: "news", Title: "News", Start: start, Stop: start.Add(time.Hour),
-		}}, nil
+		ID: "news", Name: "News", StreamURL: "https://example.test/news.m3u8",
+	}}, []model.Programme{{
+		ChannelID: "news", Title: "News", Start: start, Stop: start.Add(time.Hour),
+	}}, nil
 }
 
 func TestEmitPresenceAddDropNoOp(t *testing.T) {

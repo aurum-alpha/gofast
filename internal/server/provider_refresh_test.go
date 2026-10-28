@@ -30,15 +30,15 @@ func (r *blockingReader) Fetch(context.Context) (provider.Raw, error) {
 func (r *blockingReader) Parse(provider.Raw) ([]model.Channel, []model.Programme, error) {
 	start := time.Now().UTC()
 	return []model.Channel{{
-			ID:        "news",
-			Name:      "News",
-			StreamURL: "https://example.test/news.m3u8",
-		}}, []model.Programme{{
-			ChannelID: "news",
-			Title:     "News",
-			Start:     start,
-			Stop:      start.Add(time.Hour),
-		}}, nil
+		ID:        "news",
+		Name:      "News",
+		StreamURL: "https://example.test/news.m3u8",
+	}}, []model.Programme{{
+		ChannelID: "news",
+		Title:     "News",
+		Start:     start,
+		Stop:      start.Add(time.Hour),
+	}}, nil
 }
 
 func TestProviderRefreshAPI(t *testing.T) {
