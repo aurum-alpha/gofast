@@ -86,7 +86,7 @@ services:
   edge:
     profiles:
       - edge
-    image: nginx:1.31-alpine
+    image: nginx:1.31.8-alpine@sha256:785835ea65db4bba6f021acc0f3be91b0fef76a53fe41f8588c6698d2aed0606
     ports:
       - "${EDGE_HTTP_PORT:-80}:80"
       - "${EDGE_HTTPS_PORT:-443}:443"
