@@ -44,39 +44,31 @@ updates:
     directory: /
     patterns: ["*"]
     multi-ecosystem-group: images
-    # A database major is a data migration, made on purpose with the
-    # deployed stack beside it, never a weekly bump. Minor and patch
-    # releases still arrive.
+    # A database image follows production's pin in aurum-alpha/deploy,
+    # and moving it is a data migration made on purpose with the
+    # deployed stack beside it. So no update of one is proposed, a
+    # patch included.
     ignore:
       - dependency-name: "postgres"
-        update-types: [version-update:semver-major]
       - dependency-name: "*/postgres"
-        update-types: [version-update:semver-major]
       - dependency-name: "pgvector/pgvector"
-        update-types: [version-update:semver-major]
       - dependency-name: "mysql"
-        update-types: [version-update:semver-major]
       - dependency-name: "*/mysql"
-        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker-compose
     directory: /
     patterns: ["*"]
     multi-ecosystem-group: images
-    # A database major is a data migration, made on purpose with the
-    # deployed stack beside it, never a weekly bump. Minor and patch
-    # releases still arrive.
+    # A database image follows production's pin in aurum-alpha/deploy,
+    # and moving it is a data migration made on purpose with the
+    # deployed stack beside it. So no update of one is proposed, a
+    # patch included.
     ignore:
       - dependency-name: "postgres"
-        update-types: [version-update:semver-major]
       - dependency-name: "*/postgres"
-        update-types: [version-update:semver-major]
       - dependency-name: "pgvector/pgvector"
-        update-types: [version-update:semver-major]
       - dependency-name: "mysql"
-        update-types: [version-update:semver-major]
       - dependency-name: "*/mysql"
-        update-types: [version-update:semver-major]
 
 multi-ecosystem-groups:
   images:
