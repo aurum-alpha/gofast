@@ -3,7 +3,7 @@
 # PRODUCTION — package CI-built binaries only (no npm / go rebuild).
 # Used by GitHub Actions to push GHCR. Homelab pulls those images (compose.prod).
 # Keep image pins in sync with Dockerfile / CI:
-#   debian:bookworm-slim (fastgen + fastproxy — ships ffmpeg)
+#   debian:trixie-slim (fastgen + fastproxy — ships ffmpeg)
 #
 # Expectation: context includes executable bin/<name>-linux-<arch> for every
 # architecture in the image job's `platforms` (linux, CGO_ENABLED=0, same flags
@@ -12,7 +12,7 @@
 # go:embed, so the UI is packaged here too.
 #
 # MULTI-ARCH: buildx runs each stage once per target platform. `FROM
-# debian:bookworm-slim` resolves to that platform automatically because the
+# debian:trixie-slim` resolves to that platform automatically because the
 # upstream tag is a manifest list, and client/dist is architecture-independent,
 # so the only thing needing selection is our own binary — hence ARG TARGETARCH
 # and the per-arch COPY. Declare TARGETARCH in EVERY stage that reads it: it
@@ -26,7 +26,7 @@
 # in a public production image, and that was the worse trade.
 
 # fastgen ships ffprobe for Health L2 probes.
-FROM debian:bookworm-slim AS fastgen
+FROM debian:trixie-slim AS fastgen
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
   && rm -rf /var/lib/apt/lists/* \
@@ -41,7 +41,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/fastgen"]
 
 # fastproxy ships ffmpeg for Class B (/stable/) demux-stable encode pipes.
-FROM debian:bookworm-slim AS fastproxy
+FROM debian:trixie-slim AS fastproxy
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
   && rm -rf /var/lib/apt/lists/* \

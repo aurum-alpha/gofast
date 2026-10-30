@@ -651,7 +651,7 @@ under ten seconds.
 ## FASTProxy requirements
 
 - Separate `cmd/fastproxy` binary and Docker image (not a gen mode flag).
-  Image is `debian:bookworm-slim` + **ffmpeg** (Class B encode; not distroless).
+  Image is `debian:trixie-slim` + **ffmpeg** (Class B encode; not distroless).
 - **Class A / dialect endpoints:** `/stream/{provider}/{id}.m3u8`, rewritten
   variant paths `/s/{sid}/{n}`, `/seg/{token}` (Amagi shuttle), 302 for NATIVE /
   XUMO under `proxy_all`, SESSION mint → 302, Distro/STIRR resolve → 302 or rewrite.

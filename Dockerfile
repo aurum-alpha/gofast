@@ -2,12 +2,12 @@
 #
 # LOCAL / DEV — build UI + Go from source (docker compose build).
 # Production/GHCR uses Dockerfile.prod (CI binaries only). Keep image pins in sync:
-#   node:26-bookworm
-#   golang:1.27.3-bookworm
-#   debian:bookworm-slim (fastgen + fastproxy — ships ffmpeg)
+#   node:26-trixie
+#   golang:1.27.3-trixie
+#   debian:trixie-slim (fastgen + fastproxy — ships ffmpeg)
 #   busybox:1.36.1-musl (legacy note; fastproxy HEALTHCHECK uses wget from apt)
 
-FROM node:26-bookworm AS web
+FROM node:26-trixie AS web
 WORKDIR /src/web
 COPY client/package.json client/pnpm-lock.yaml ./
 # Node 26 images do not bundle corepack, so pnpm is installed with npm. The
@@ -18,8 +18,8 @@ RUN npm i -g "pnpm@$(node -p "require('./package.json').packageManager.split('@'
 COPY client/ ./
 RUN pnpm run build
 
-# golang:1.27.3-bookworm
-FROM golang@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS build
+# golang:1.27.3-trixie
+FROM golang@sha256:c65ecfe613b539ac74c62a4c3b2c27e8f8a6076384c8f27e8a3c0f3be17cc385 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -40,7 +40,7 @@ RUN LDFLAGS="-s -w \
 
 # fastgen needs ffprobe (Health L2). Use slim Debian + ffmpeg rather than
 # distroless/static (dynamically linked ffprobe will not run there).
-FROM debian:bookworm-slim AS fastgen
+FROM debian:trixie-slim AS fastgen
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
@@ -55,7 +55,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/fastgen"]
 
 # fastproxy needs ffmpeg for Class B (/stable/) demux-stable encode pipes.
-FROM debian:bookworm-slim AS fastproxy
+FROM debian:trixie-slim AS fastproxy
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg wget \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --uid 65532 --user-group --no-create-home --shell /usr/sbin/nologin nonroot
