@@ -34,5 +34,13 @@
     "typescript": "7.0.2",
     "vite": "8.3.5",
     "vitest": "4.1.12"
+  },
+  "pnpm": {
+    "overrides": {
+      "minimatch": "11.0.3"
+    },
+    "overrideReasons": {
+      "minimatch": "GHSA-g3hv-75wg-m249 (denial of service through globparts amplification) affects minimatch below 11.0.1, which @eslint/config-array and eslint reach at 10.2.6, and no 10.x release carries the fix. Retires when every parent depends on minimatch 11.0.1 or later on its own."
+    }
   }
 }
