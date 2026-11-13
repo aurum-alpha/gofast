@@ -3,7 +3,7 @@
 # LOCAL / DEV — build UI + Go from source (docker compose build).
 # Production/GHCR uses Dockerfile.prod (CI binaries only). Keep image pins in sync:
 #   node:26-trixie
-#   golang:1.27.3-trixie
+#   golang:1.27.4-trixie
 #   debian:trixie-slim (fastgen + fastproxy — ships ffmpeg)
 #   busybox:1.36.1-musl (legacy note; fastproxy HEALTHCHECK uses wget from apt)
 
@@ -18,8 +18,8 @@ RUN npm i -g "pnpm@$(node -p "require('./package.json').packageManager.split('@'
 COPY client/ ./
 RUN pnpm run build
 
-# golang:1.27.3-trixie
-FROM golang@sha256:c65ecfe613b539ac74c62a4c3b2c27e8f8a6076384c8f27e8a3c0f3be17cc385 AS build
+# golang:1.27.4-trixie
+FROM golang@sha256:b54b2639de8c1bfe538ec5ffc45f29b1932235ac5f6d63c059853646677112d9 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
