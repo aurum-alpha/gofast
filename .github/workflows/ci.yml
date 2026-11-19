@@ -275,6 +275,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # setup-builder mints the job's GitHub Actions ID token to ask the
+      # runner controller for the build farm's client key
+      # (aurum-alpha/workflows#779). A called workflow holds no more than
+      # its caller grants.
+      id-token: write
     uses: aurum-alpha/workflows/.github/workflows/job-image-build.yml@main
     with:
       # A name under the owner: ghcr.io/aurum-alpha/gofast/fastgen, which is what
@@ -370,6 +375,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # the farm's client key, as server-go-fastgen-image-build
     uses: aurum-alpha/workflows/.github/workflows/job-image-build.yml@main
     with:
       # A name under the owner: ghcr.io/aurum-alpha/gofast/fastproxy, which is what
