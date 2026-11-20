@@ -19,7 +19,7 @@ COPY client/ ./
 RUN pnpm run build
 
 # golang:1.27.4-trixie
-FROM golang@sha256:b54b2639de8c1bfe538ec5ffc45f29b1932235ac5f6d63c059853646677112d9 AS build
+FROM golang@sha256:205c7636d74e0ffbe3d007162df7d74f859f5a8c8322dfb9f907977686c126cf AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
